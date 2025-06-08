@@ -44,10 +44,12 @@ const NBAGuessGame = () => {
         const player = playerData[playerName];
         if (!player) return false;
         
-        const startYear = player.start_year || 0;
-        const seasons = player.seasons || [];
+        // Use start_year or draft_year for debut year
+        const startYear = player.start_year || player.draft_year || 0;
+        // Use career_length for number of seasons
+        const careerLength = player.career_length || 0;
         
-        return startYear >= 2011 && seasons.length >= 5;
+        return startYear >= 2011 && careerLength >= 5;
       });
     }
     
