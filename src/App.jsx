@@ -67,44 +67,96 @@ const NBAGuessGame = () => {
     return playersArray[randomIndex];
   };
 
-  const startNewGame = () => {
-    const playersToUse = getFilteredPlayers();
-    const randomPlayer = selectRandomPlayer(playersToUse);
-    
-    if (randomPlayer) {
-      setTargetPlayer(randomPlayer);
-      setAllPlayers(playersToUse);
-      resetGameState();
-      
-      console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+  const startNewGame = async () => {
+    try {
+      // Get a random player from the backend for the current game mode
+      const response = await fetch(`${API_BASE}/random_player`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: gameMode
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setTargetPlayer(result.player);
+        console.log('New game started with:', result.player, 'Mode:', gameMode);
+        resetGameState();
+      } else {
+        // Fallback to local selection
+        const playersToUse = getFilteredPlayers();
+        const randomPlayer = selectRandomPlayer(playersToUse);
+        if (randomPlayer) {
+          setTargetPlayer(randomPlayer);
+          resetGameState();
+          console.log('Fallback: New game started with:', randomPlayer, 'Mode:', gameMode);
+        }
+      }
+    } catch (error) {
+      console.error('Error starting new game:', error);
+      // Fallback to local selection
+      const playersToUse = getFilteredPlayers();
+      const randomPlayer = selectRandomPlayer(playersToUse);
+      if (randomPlayer) {
+        setTargetPlayer(randomPlayer);
+        resetGameState();
+        console.log('Error fallback: New game started with:', randomPlayer, 'Mode:', gameMode);
+      }
     }
   };
 
-  const switchGameMode = (newMode) => {
+  const switchGameMode = async (newMode) => {
     if (newMode === gameMode) return; // Don't switch if it's the same mode
     
     setGameMode(newMode);
     
-    // Get filtered players for the new mode
-    const playersToUse = getFilteredPlayers(newMode);
-    
-    let randomPlayer;
-    if (playersToUse.length === 0) {
-      // Fallback if no players match criteria
-      const fallbackPlayers = modernPlayers;
-      randomPlayer = selectRandomPlayer(fallbackPlayers);
-      setTargetPlayer(randomPlayer);
-      setAllPlayers(fallbackPlayers);
-    } else {
-      randomPlayer = selectRandomPlayer(playersToUse);
+    try {
+      // Get a random player from the backend for the new game mode
+      const response = await fetch(`${API_BASE}/random_player`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mode: newMode
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setTargetPlayer(result.player);
+        
+        // Update the available players list for the new mode
+        const playersToUse = getFilteredPlayers(newMode);
+        setAllPlayers(playersToUse);
+        
+        resetGameState();
+        console.log('Game mode switched to:', newMode, 'New target:', result.player);
+      } else {
+        // Fallback to local selection
+        const playersToUse = getFilteredPlayers(newMode);
+        const randomPlayer = selectRandomPlayer(playersToUse);
+        setTargetPlayer(randomPlayer);
+        setAllPlayers(playersToUse);
+        resetGameState();
+        console.log('Fallback mode switch to:', newMode, 'New target:', randomPlayer);
+      }
+    } catch (error) {
+      console.error('Error switching game mode:', error);
+      // Fallback to local selection
+      const playersToUse = getFilteredPlayers(newMode);
+      const randomPlayer = selectRandomPlayer(playersToUse);
       setTargetPlayer(randomPlayer);
       setAllPlayers(playersToUse);
+      resetGameState();
+      console.log('Error fallback mode switch to:', newMode, 'New target:', randomPlayer);
     }
-    
-    resetGameState();
-    console.log('Game mode switched to:', newMode, 'New target:', randomPlayer);
   };
 
+  // Load initial player data
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
@@ -128,10 +180,28 @@ const NBAGuessGame = () => {
             setAllPlayers(playerNames);
             
             if (playerNames.length > 0) {
-              const randomPlayer = selectRandomPlayer(playerNames);
-              setTargetPlayer(randomPlayer);
-              console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
-              console.log('Initial random player:', randomPlayer);
+              // Use the backend to get a random player
+              const randomResponse = await fetch(`${API_BASE}/random_player`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  mode: gameMode
+                })
+              });
+
+              if (randomResponse.ok) {
+                const randomResult = await randomResponse.json();
+                setTargetPlayer(randomResult.player);
+                console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
+                console.log('Initial random player:', randomResult.player);
+              } else {
+                // Fallback to local random selection
+                const randomPlayer = selectRandomPlayer(playerNames);
+                setTargetPlayer(randomPlayer);
+                console.log('Fallback initial random player:', randomPlayer);
+              }
             }
           } else {
             // Fallback if data format is different (array of strings)
@@ -157,25 +227,7 @@ const NBAGuessGame = () => {
     };
 
     loadPlayerNames();
-  }, []); // Remove gameMode dependency to prevent infinite loops
-
-  // Separate effect to handle game mode changes after initial load
-  useEffect(() => {
-    if (allPlayersData.length > 0 && targetPlayer) {
-      const playersToUse = getFilteredPlayers(gameMode);
-      setAllPlayers(playersToUse);
-      
-      // Only set a new target if the current target isn't in the new mode
-      // This prevents unnecessary changes when switching modes
-      if (!playersToUse.includes(targetPlayer)) {
-        if (playersToUse.length > 0) {
-          const randomPlayer = selectRandomPlayer(playersToUse);
-          setTargetPlayer(randomPlayer);
-          console.log('Mode change required new player:', randomPlayer);
-        }
-      }
-    }
-  }, [gameMode, allPlayersData, targetPlayer]);
+  }, []); // Only run once on mount
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -194,7 +246,8 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: guess.trim(),
-          target: targetPlayer
+          target: targetPlayer,
+          mode: gameMode // Include game mode in the request
         })
       });
 
@@ -251,7 +304,8 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: targetPlayer,
-          target: targetPlayer
+          target: targetPlayer,
+          mode: gameMode // Include game mode in the request
         })
       });
 
