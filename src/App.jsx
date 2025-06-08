@@ -47,7 +47,7 @@ const NBAGuessGame = () => {
         const startYear = player.start_year || 0;
         const seasonsCount = player.career_length || 0; // Changed from seasons.length
         
-        return startYear >= 2011 && seasonsCount >= 5;
+        return startYear >= 2011;
       });
     }
     
