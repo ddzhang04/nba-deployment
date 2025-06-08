@@ -32,12 +32,12 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const getFilteredPlayers = () => {
+  const getFilteredPlayers = (mode = gameMode) => {
     if (allPlayersData.length === 0) {
       return modernPlayers;
     }
 
-    if (gameMode === 'classic') {
+    if (mode === 'classic') {
       // Filter for players who started in 2011+ with 5+ seasons
       return allPlayersData
         .filter(player => player.start_year >= 2011 && player.career_length >= 5)
@@ -48,11 +48,7 @@ const NBAGuessGame = () => {
     return allPlayersData.map(player => player.name);
   };
 
-  const startNewGame = () => {
-    const playersToUse = getFilteredPlayers();
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-    
-    setTargetPlayer(randomPlayer);
+  const resetGameState = () => {
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -63,41 +59,41 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
+  };
+
+  const startNewGame = () => {
+    const playersToUse = getFilteredPlayers();
+    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    
+    setTargetPlayer(randomPlayer);
+    setAllPlayers(playersToUse);
+    resetGameState();
     
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
 
   const switchGameMode = (newMode) => {
+    if (newMode === gameMode) return; // Don't switch if it's the same mode
+    
     setGameMode(newMode);
-    // Reset the game when switching modes
-    setTimeout(() => {
-      const playersToUse = gameMode === 'classic' 
-        ? allPlayersData.filter(player => player.start_year >= 2011 && player.career_length >= 5).map(player => player.name)
-        : allPlayersData.map(player => player.name);
-      
-      if (playersToUse.length === 0) {
-        // Fallback if no players match criteria
-        const fallbackPlayers = modernPlayers;
-        const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
-        setTargetPlayer(randomPlayer);
-        setAllPlayers(fallbackPlayers);
-      } else {
-        const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-        setTargetPlayer(randomPlayer);
-        setAllPlayers(playersToUse);
-      }
-      
-      setGuess('');
-      setGuessHistory([]);
-      setGameWon(false);
-      setGuessCount(0);
-      setError('');
-      setTop5Players([]);
-      setShowAnswer(false);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
-    }, 100);
+    
+    // Get filtered players for the new mode
+    const playersToUse = getFilteredPlayers(newMode);
+    
+    if (playersToUse.length === 0) {
+      // Fallback if no players match criteria
+      const fallbackPlayers = modernPlayers;
+      const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
+      setTargetPlayer(randomPlayer);
+      setAllPlayers(fallbackPlayers);
+    } else {
+      const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+      setTargetPlayer(randomPlayer);
+      setAllPlayers(playersToUse);
+    }
+    
+    resetGameState();
+    console.log('Game mode switched to:', newMode, 'New target:', playersToUse.length > 0 ? playersToUse[Math.floor(Math.random() * playersToUse.length)] : 'fallback');
   };
 
   useEffect(() => {
@@ -118,11 +114,8 @@ const NBAGuessGame = () => {
             setAllPlayersData(playersData);
             
             // Filter players based on current mode
-            const filteredPlayers = gameMode === 'classic' 
-              ? playersData.filter(player => player.start_year >= 2011 && player.career_length >= 5)
-              : playersData;
-            
-            const playerNames = filteredPlayers.map(player => player.name).sort();
+            const filteredPlayers = getFilteredPlayers(gameMode);
+            const playerNames = filteredPlayers.sort();
             setAllPlayers(playerNames);
             
             if (playerNames.length > 0) {
@@ -150,20 +143,27 @@ const NBAGuessGame = () => {
         setTargetPlayer(randomPlayer);
       }
 
-      setGuess('');
-      setGuessHistory([]);
-      setGameWon(false);
-      setGuessCount(0);
-      setError('');
-      setTop5Players([]);
-      setShowAnswer(false);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
+      resetGameState();
     };
 
     loadPlayerNames();
-  }, [gameMode]);
+  }, []); // Remove gameMode dependency to prevent infinite loops
+
+  // Separate effect to handle game mode changes after initial load
+  useEffect(() => {
+    if (allPlayersData.length > 0) {
+      const playersToUse = getFilteredPlayers(gameMode);
+      setAllPlayers(playersToUse);
+      
+      // Only set a new target if we don't have one or if the current target isn't in the new mode
+      if (!targetPlayer || !playersToUse.includes(targetPlayer)) {
+        if (playersToUse.length > 0) {
+          const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+          setTargetPlayer(randomPlayer);
+        }
+      }
+    }
+  }, [gameMode, allPlayersData]);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
