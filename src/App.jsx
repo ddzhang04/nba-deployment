@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import './NBAGuessGame.css'; // Import the CSS file
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -18,6 +17,7 @@ const NBAGuessGame = () => {
   const [gameMode, setGameMode] = useState('classic');
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
+  const [gameStats, setGameStats] = useState({ total_players: 0, games_played: 0 });
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -56,6 +56,18 @@ const NBAGuessGame = () => {
     return players;
   };
 
+  const loadGameStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/stats`);
+      if (response.ok) {
+        const stats = await response.json();
+        setGameStats(stats);
+      }
+    } catch (error) {
+      console.log('Could not load game stats:', error);
+    }
+  };
+
   const startNewGame = () => {
     const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
@@ -71,6 +83,9 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
+    
+    // Load fresh stats after starting new game
+    setTimeout(loadGameStats, 500);
     
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
@@ -103,12 +118,40 @@ const NBAGuessGame = () => {
     console.log('Mode changed to:', newMode, 'Players available:', filtered.length);
   };
 
+  const checkServerHealth = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/health`);
+      if (response.ok) {
+        const health = await response.json();
+        console.log('Server health:', health);
+        return true;
+      }
+    } catch (error) {
+      console.log('Server health check failed:', error);
+    }
+    return false;
+  };
+
   useEffect(() => {
     const loadPlayerNames = async () => {
+      console.log('Loading players from API...');
+      
+      // Check server health first
+      const serverHealthy = await checkServerHealth();
+      if (!serverHealthy) {
+        console.log('Server not responding, using fallback players');
+        setAllPlayers(modernPlayers);
+        setFilteredPlayers(modernPlayers);
+        const randomPlayer = modernPlayers[Math.floor(Math.random() * modernPlayers.length)];
+        setTargetPlayer(randomPlayer);
+        return;
+      }
+
       try {
         // Load player names
         let response = await fetch(`${API_BASE}/players`);
         if (!response.ok) {
+          // Fallback to player_awards endpoint
           response = await fetch(`${API_BASE}/player_awards`);
         }
         
@@ -116,6 +159,7 @@ const NBAGuessGame = () => {
           const playerNames = await response.json();
           const sortedPlayers = playerNames.sort();
           setAllPlayers(sortedPlayers);
+          console.log('Loaded', sortedPlayers.length, 'player names');
           
           // Try to load full player data for filtering
           try {
@@ -123,6 +167,7 @@ const NBAGuessGame = () => {
             if (fullDataResponse.ok) {
               const fullData = await fullDataResponse.json();
               setPlayersData(fullData);
+              console.log('Loaded detailed data for', Object.keys(fullData).length, 'players');
               
               // Filter players based on current mode
               const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
@@ -132,20 +177,20 @@ const NBAGuessGame = () => {
                 const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
                 setTargetPlayer(randomPlayer);
               }
-              console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
+              console.log('Filtered to', filtered.length, 'players for', gameMode, 'mode');
             } else {
+              console.log('Could not load detailed player data, using all players');
               // Fallback: use all players if we can't get detailed data
               setFilteredPlayers(sortedPlayers);
               const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
               setTargetPlayer(randomPlayer);
-              console.log('Using all players (no filtering data available)');
             }
           } catch (err) {
+            console.log('Error loading detailed player data:', err);
             // Fallback: use all players
             setFilteredPlayers(sortedPlayers);
             const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
             setTargetPlayer(randomPlayer);
-            console.log('Using all players (filtering failed)');
           }
         } else {
           throw new Error('Failed to fetch players');
@@ -159,6 +204,7 @@ const NBAGuessGame = () => {
         setTargetPlayer(randomPlayer);
       }
 
+      // Reset game state
       setGuess('');
       setGuessHistory([]);
       setGameWon(false);
@@ -169,6 +215,9 @@ const NBAGuessGame = () => {
       setSuggestions([]);
       setShowSuggestions(false);
       setSelectedSuggestionIndex(-1);
+
+      // Load game stats
+      loadGameStats();
     };
 
     loadPlayerNames();
@@ -218,6 +267,8 @@ const NBAGuessGame = () => {
           if (score === 100) {
             setGameWon(true);
             setTop5Players(top_5 || []);
+            // Refresh stats after win
+            setTimeout(loadGameStats, 500);
           }
         } else {
           setError('You have already guessed this player!');
@@ -264,6 +315,19 @@ const NBAGuessGame = () => {
     setLoading(false);
   };
 
+  const getPlayerDetails = async (playerName) => {
+    try {
+      const response = await fetch(`${API_BASE}/player/${encodeURIComponent(playerName)}`);
+      if (response.ok) {
+        const result = await response.json();
+        return result.data;
+      }
+    } catch (error) {
+      console.log('Could not fetch player details:', error);
+    }
+    return null;
+  };
+
   const handleSuggestionSelect = (selectedName) => {
     setGuess(selectedName);
     setSuggestions([]);
@@ -283,47 +347,32 @@ const NBAGuessGame = () => {
     const color = getScoreColor(score);
     
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-        <div style={{ 
-          position: 'relative',
-          width: '100%',
-          height: '24px',
-          backgroundColor: '#f3f4f6',
-          borderRadius: '12px',
-          overflow: 'hidden'
-        }}>
+      <div className="flex items-center gap-2 mt-1">
+        <div className="relative w-full h-6 bg-gray-200 rounded-full overflow-hidden">
           <div 
+            className="h-full transition-all duration-300 ease-out"
             style={{
               width: `${percentage}%`,
-              height: '100%',
               background: `linear-gradient(90deg, ${color}dd, ${color})`,
-              boxShadow: `0 0 10px ${color}40`,
-              transition: 'width 0.3s ease'
+              boxShadow: `0 0 10px ${color}40`
             }}
           />
           {showLabel && (
             <div 
+              className="absolute inset-0 flex items-center justify-center text-xs font-bold"
               style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
                 color: percentage > 30 ? 'white' : color,
-                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none',
-                fontWeight: 'bold',
-                fontSize: '12px'
+                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none'
               }}
             >
               {score}
             </div>
           )}
         </div>
-        <div style={{ 
-          color: color, 
-          fontWeight: 'bold', 
-          fontSize: '12px',
-          minWidth: '40px'
-        }}>
+        <div 
+          className="text-xs font-bold min-w-[40px]"
+          style={{ color }}
+        >
           {score}/100
         </div>
       </div>
@@ -347,67 +396,47 @@ const NBAGuessGame = () => {
   };
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#0f172a', 
-      color: 'white', 
-      fontFamily: 'system-ui, -apple-system, sans-serif' 
-    }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+    <div className="min-h-screen bg-slate-900 text-white font-sans">
+      <div className="max-w-6xl mx-auto p-5">
         {/* Header */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, #1e293b, #334155)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
-          textAlign: 'center',
-          border: '1px solid #334155'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
-            <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA-MANTLE</h1>
-            <span style={{ fontSize: '32px' }}>🎯</span>
+        <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 mb-6 text-center border border-slate-600">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <span className="text-3xl">🏀</span>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-amber-400 to-red-500 bg-clip-text text-transparent">
+              NBA-MANTLE
+            </h1>
+            <span className="text-3xl">🎯</span>
           </div>
           
-          <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '1.1rem' }}>
+          <p className="text-slate-400 mb-5 text-lg">
             Guess the mystery NBA player by finding similar players!
           </p>
 
           {/* Game Mode Selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div className="mb-5">
+            <div className="flex justify-center gap-3 flex-wrap">
               <button
                 onClick={() => handleModeChange('classic')}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'classic' ? '#3b82f6' : '#475569',
-                  color: 'white'
-                }}
+                className={`px-5 py-2.5 rounded-lg font-bold cursor-pointer transition-all duration-200 ${
+                  gameMode === 'classic' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-600 text-white hover:bg-slate-500'
+                }`}
               >
                 🏆 Classic Mode
               </button>
               <button
                 onClick={() => handleModeChange('all')}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'all' ? '#3b82f6' : '#475569',
-                  color: 'white'
-                }}
+                className={`px-5 py-2.5 rounded-lg font-bold cursor-pointer transition-all duration-200 ${
+                  gameMode === 'all' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-600 text-white hover:bg-slate-500'
+                }`}
               >
                 🌟 All Players
               </button>
             </div>
-            <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
+            <div className="mt-2 text-sm text-slate-400">
               {gameMode === 'classic' ? 
                 `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)` : 
                 `All Players: Complete database (${filteredPlayers.length} players)`
@@ -415,33 +444,30 @@ const NBAGuessGame = () => {
             </div>
           </div>
           
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem' }}>
-            <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
+          <div className="flex justify-center gap-8 flex-wrap text-lg">
+            <span className="text-amber-400">⚡ Attempt #{guessCount}</span>
             {!gameWon && !showAnswer && (
-              <span style={{ color: '#94a3b8' }}>Mystery Player: ???</span>
+              <span className="text-slate-400">Mystery Player: ???</span>
             )}
             {(gameWon || showAnswer) && (
-              <span style={{ color: '#10b981' }}>Answer: {targetPlayer}</span>
+              <span className="text-emerald-400">Answer: {targetPlayer}</span>
+            )}
+            {gameStats.total_players > 0 && (
+              <span className="text-blue-400">📊 {gameStats.games_played} games played</span>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Panel */}
           <div>
             {/* Input Section */}
-            <div style={{ 
-              background: 'linear-gradient(135deg, #1e293b, #334155)',
-              borderRadius: '16px',
-              padding: '24px',
-              marginBottom: '24px',
-              border: '1px solid #334155'
-            }}>
-              <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
+            <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 mb-6 border border-slate-600">
+              <h3 className="text-xl mb-4 text-slate-100">🔍 Make Your Guess</h3>
               
               {!gameWon && !showAnswer && (
                 <div>
-                  <div style={{ position: 'relative', marginBottom: '16px' }}>
+                  <div className="relative mb-4">
                     <input
                       type="text"
                       value={guess}
@@ -502,42 +528,17 @@ const NBAGuessGame = () => {
                       }}
                       placeholder="Enter NBA player name..."
                       disabled={loading}
-                      style={{
-                        width: '100%',
-                        padding: '12px 16px',
-                        borderRadius: '8px',
-                        border: '2px solid #475569',
-                        backgroundColor: '#0f172a',
-                        color: 'white',
-                        fontSize: '16px'
-                      }}
+                      className="w-full p-3 rounded-lg border-2 border-slate-600 bg-slate-900 text-white text-base focus:border-blue-500 focus:outline-none"
                     />
                     
                     {showSuggestions && suggestions.length > 0 && (
-                      <ul style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        backgroundColor: '#1e293b',
-                        border: '1px solid #475569',
-                        borderRadius: '8px',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                        zIndex: 1000,
-                        listStyle: 'none',
-                        padding: 0,
-                        margin: 0
-                      }}>
+                      <ul className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-600 rounded-lg max-h-48 overflow-y-auto z-50 mt-1">
                         {suggestions.map((suggestion, index) => (
                           <li
                             key={index}
-                            style={{
-                              padding: '12px 16px',
-                              cursor: 'pointer',
-                              backgroundColor: index === selectedSuggestionIndex ? '#334155' : 'transparent',
-                              borderBottom: index < suggestions.length - 1 ? '1px solid #334155' : 'none'
-                            }}
+                            className={`p-3 cursor-pointer border-b border-slate-700 last:border-b-0 ${
+                              index === selectedSuggestionIndex ? 'bg-slate-700' : 'hover:bg-slate-700'
+                            }`}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSuggestionSelect(suggestion);
@@ -554,17 +555,11 @@ const NBAGuessGame = () => {
                   <button
                     onClick={makeGuess}
                     disabled={loading || !guess.trim()}
-                    style={{
-                      width: '100%',
-                      padding: '12px 24px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: loading || !guess.trim() ? '#475569' : '#3b82f6',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      cursor: loading || !guess.trim() ? 'not-allowed' : 'pointer',
-                      fontSize: '16px'
-                    }}
+                    className={`w-full p-3 rounded-lg font-bold text-base transition-all duration-200 ${
+                      loading || !guess.trim()
+                        ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                    }`}
                   >
                     {loading ? 'Searching...' : 'Submit Guess'}
                   </button>
@@ -572,63 +567,33 @@ const NBAGuessGame = () => {
               )}
 
               {error && (
-                <div style={{ 
-                  backgroundColor: '#fecaca', 
-                  color: '#dc2626', 
-                  padding: '12px', 
-                  borderRadius: '8px', 
-                  marginTop: '16px' 
-                }}>
+                <div className="bg-red-100 text-red-700 p-3 rounded-lg mt-4">
                   {error}
                 </div>
               )}
 
               {gameWon && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  backgroundColor: '#22c55e', 
-                  color: 'white', 
-                  padding: '20px', 
-                  borderRadius: '12px', 
-                  margin: '16px 0' 
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
-                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
+                <div className="text-center bg-emerald-500 text-white p-5 rounded-xl my-4">
+                  <div className="text-3xl mb-2">🎉</div>
+                  <p className="text-lg font-medium">
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
                 </div>
               )}
 
               {showAnswer && !gameWon && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  backgroundColor: '#f59e0b', 
-                  color: 'white', 
-                  padding: '20px', 
-                  borderRadius: '12px', 
-                  margin: '16px 0' 
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
-                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
+                <div className="text-center bg-amber-500 text-white p-5 rounded-xl my-4">
+                  <div className="text-3xl mb-2">🎯</div>
+                  <p className="text-lg font-medium">
                     The answer was {targetPlayer}
                   </p>
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <div className="flex gap-3 mt-4">
                 <button 
                   onClick={startNewGame}
-                  style={{
-                    flex: 1,
-                    padding: '12px 20px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    fontSize: '16px'
-                  }}
+                  className="flex-1 p-3 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer hover:bg-emerald-700 transition-colors duration-200"
                 >
                   🔄 New Game
                 </button>
@@ -636,17 +601,7 @@ const NBAGuessGame = () => {
                 {!gameWon && !showAnswer && (
                   <button 
                     onClick={revealAnswer}
-                    style={{
-                      flex: 1,
-                      padding: '12px 20px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: '#f59e0b',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '16px'
-                    }}
+                    className="flex-1 p-3 rounded-lg bg-amber-600 text-white font-bold cursor-pointer hover:bg-amber-700 transition-colors duration-200"
                   >
                     👁️ Reveal
                   </button>
@@ -656,32 +611,16 @@ const NBAGuessGame = () => {
 
             {/* Top 5 Similar Players */}
             {top5Players.length > 0 && (
-              <div style={{ 
-                background: 'linear-gradient(135deg, #1e293b, #334155)',
-                borderRadius: '16px',
-                padding: '24px',
-                border: '1px solid #334155'
-              }}>
-                <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
-                <div>
+              <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 border border-slate-600">
+                <h3 className="text-xl mb-4 text-slate-100">📈 Top 5 Most Similar</h3>
+                <div className="space-y-4">
                   {top5Players.map(([name, score], index) => (
-                    <div key={name} style={{ marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                        <span style={{ 
-                          backgroundColor: '#3b82f6', 
-                          color: 'white', 
-                          width: '24px', 
-                          height: '24px', 
-                          borderRadius: '50%', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center', 
-                          fontSize: '12px', 
-                          fontWeight: 'bold' 
-                        }}>
+                    <div key={name} className="space-y-2">
+                      <div className="flex items-center gap-3">
+                        <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
                           {index + 1}
                         </span>
-                        <span style={{ fontWeight: 'bold', color: '#f1f5f9' }}>{name}</span>
+                        <span className="font-bold text-slate-100">{name}</span>
                       </div>
                       <ScoreBar score={score} />
                     </div>
@@ -692,37 +631,26 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Right Panel - Guess History */}
-          <div style={{ 
-            background: 'linear-gradient(135deg, #1e293b, #334155)',
-            borderRadius: '16px',
-            padding: '24px',
-            border: '1px solid #334155'
-          }}>
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>👥 Guess History ({guessHistory.length})</h3>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-6 border border-slate-600">
+            <h3 className="text-xl mb-4 text-slate-100">👥 Guess History ({guessHistory.length})</h3>
             
             {guessHistory.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px' }}>
-                <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🔍</div>
+              <div className="text-center text-slate-400 py-10">
+                <div className="text-5xl mb-4">🔍</div>
                 <p>No guesses yet. Start by entering a player name!</p>
               </div>
             ) : (
-              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              <div className="max-h-96 overflow-y-auto space-y-3">
                 {guessHistory.map((item, index) => (
-                  <div key={index} style={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '12px', 
-                    padding: '16px', 
-                    marginBottom: '12px',
-                    border: '1px solid #334155'
-                  }}>
-                    <div style={{ marginBottom: '12px' }}>
-                      <h4 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{item.name}</h4>
+                  <div key={index} className="bg-slate-900 rounded-xl p-4 border border-slate-700">
+                    <div className="mb-3">
+                      <h4 className="text-lg font-semibold text-slate-100">{item.name}</h4>
                     </div>
                     
                     <ScoreBar score={item.score} />
                     
                     {item.breakdown && Object.keys(item.breakdown).length > 0 && (
-                      <div style={{ marginTop: '12px' }}>
+                      <div className="mt-3 space-y-1">
                         {Object.entries(item.breakdown)
                           .filter(([key, value]) => 
                             key !== 'total' && 
@@ -730,15 +658,9 @@ const NBAGuessGame = () => {
                             value > 0
                           )
                           .map(([key, value]) => (
-                            <div key={key} style={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between', 
-                              fontSize: '12px', 
-                              color: '#94a3b8', 
-                              marginBottom: '4px' 
-                            }}>
+                            <div key={key} className="flex justify-between text-xs text-slate-400">
                               <span>{formatBreakdownKey(key)}</span>
-                              <span style={{ color: '#10b981', fontWeight: 'bold' }}>+{value}</span>
+                              <span className="text-emerald-400 font-bold">+{value}</span>
                             </div>
                           ))}
                       </div>
