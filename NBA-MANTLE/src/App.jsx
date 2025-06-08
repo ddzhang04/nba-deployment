@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './NBAGuessGame.css'; // You'll need to create this CSS file
+import './styles.css'; // Import the CSS file
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -16,7 +16,10 @@ const NBAGuessGame = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
-  // Fallback modern NBA players (only used if JSON loading fails)
+  // API base URL
+  const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
+
+  // Fallback modern NBA players (only used if API loading fails)
   const modernPlayers = [
     'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
     'Luka Dončić', 'Jayson Tatum', 'Joel Embiid', 'Nikola Jokić', 'Damian Lillard',
@@ -49,15 +52,19 @@ const NBAGuessGame = () => {
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
-        const response = await fetch('/players_cleaned.json');
-        const text = await response.text();
-        const data = JSON.parse(text);
-        const playerNames = Object.keys(data).sort();
-        setAllPlayers(playerNames);
-        const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
-        setTargetPlayer(randomPlayer);
+        const response = await fetch(`${API_BASE}/players`);
+        if (response.ok) {
+          const playerNames = await response.json();
+          const sortedPlayers = playerNames.sort();
+          setAllPlayers(sortedPlayers);
+          const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+          setTargetPlayer(randomPlayer);
+          console.log('Loaded', sortedPlayers.length, 'players from API');
+        } else {
+          throw new Error('Failed to fetch players');
+        }
       } catch (error) {
-        console.error('Could not load players_cleaned.json', error);
+        console.error('Could not load players from API, using fallback:', error);
         const fallback = modernPlayers;
         setAllPlayers(fallback);
         const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
@@ -89,7 +96,7 @@ const NBAGuessGame = () => {
     setError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/guess', {
+      const response = await fetch(`${API_BASE}/guess`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
@@ -134,7 +141,8 @@ const NBAGuessGame = () => {
         setError(errorData.error || 'Unknown error occurred');
       }
     } catch (err) {
-      setError('Connection error. Make sure the Flask server is running on port 5000');
+      setError('Connection error. Please check your internet connection and try again.');
+      console.error('API Error:', err);
     }
 
     setLoading(false);
@@ -145,7 +153,7 @@ const NBAGuessGame = () => {
     
     setLoading(true);
     try {
-      const response = await fetch('http://127.0.0.1:5000/guess', {
+      const response = await fetch(`${API_BASE}/guess`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
@@ -209,7 +217,10 @@ const NBAGuessGame = () => {
             </div>
           )}
         </div>
-        <div className="score-bar-value" style={{ color: color }}>
+        <div 
+          className="score-bar-value"
+          style={{ color: color }}
+        >
           {score}/100
         </div>
       </div>
@@ -237,7 +248,7 @@ const NBAGuessGame = () => {
     <div className="game-container">
       <div className="game-content">
         {/* Header */}
-        <div className="header">
+        <div className="header panel">
           <div className="title-section">
             <span>🏀</span>
             <h1>NBA-MANTLE</h1>
@@ -271,6 +282,7 @@ const NBAGuessGame = () => {
                   <div className="input-container">
                     <input
                       type="text"
+                      className="player-input"
                       value={guess}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -328,7 +340,6 @@ const NBAGuessGame = () => {
                         }, 150);
                       }}
                       placeholder="Enter NBA player name..."
-                      className="player-input"
                       disabled={loading}
                     />
                     
@@ -337,14 +348,12 @@ const NBAGuessGame = () => {
                         {suggestions.map((suggestion, index) => (
                           <li
                             key={index}
+                            className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSuggestionSelect(suggestion);
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                            className={`suggestion-item ${
-                              index === selectedSuggestionIndex ? 'selected' : ''
-                            }`}
                             dangerouslySetInnerHTML={{ __html: suggestion }}
                           />
                         ))}
@@ -369,26 +378,30 @@ const NBAGuessGame = () => {
               )}
 
               {gameWon && (
-                <div className="win-message">
+                <div className="win-message panel">
                   <div className="emoji">🎉</div>
-                  <p>Congratulations! You found {targetPlayer} in {guessCount} guesses!</p>
+                  <p>
+                    Congratulations! You found {targetPlayer} in {guessCount} guesses!
+                  </p>
                 </div>
               )}
 
               {showAnswer && !gameWon && (
-                <div className="reveal-message">
+                <div className="reveal-message panel">
                   <div className="emoji">🎯</div>
-                  <p>The answer was {targetPlayer}</p>
+                  <p>
+                    The answer was {targetPlayer}
+                  </p>
                 </div>
               )}
 
               <div className="button-group">
-                <button onClick={startNewGame} className="new-game-btn">
+                <button className="new-game-btn" onClick={startNewGame}>
                   🔄 New Game
                 </button>
                 
                 {!gameWon && !showAnswer && (
-                  <button onClick={revealAnswer} className="reveal-btn">
+                  <button className="reveal-btn" onClick={revealAnswer}>
                     👁️ Reveal
                   </button>
                 )}
@@ -415,52 +428,50 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Right Panel - Guess History */}
-          <div className="right-panel">
-            <div className="panel">
-              <h3>👥 Guess History ({guessHistory.length})</h3>
-              
-              {guessHistory.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">🔍</div>
-                  <p>No guesses yet. Start by entering a player name!</p>
-                </div>
-              ) : (
-                <div className="guess-list">
-                  {guessHistory.map((item, index) => (
-                    <div key={index} className="guess-item">
-                      <div className="guess-header">
-                        <h4>{item.name}</h4>
-                      </div>
-                      
-                      <div className="guess-score">
-                        <ScoreBar score={item.score} />
-                      </div>
-                      
-                      {item.breakdown && Object.keys(item.breakdown).length > 0 && (
-                        <div className="breakdown">
-                          {Object.entries(item.breakdown)
-                            .filter(([key, value]) => 
-                              key !== 'total' && 
-                              key !== 'shared_seasons_detail' && 
-                              value > 0
-                            )
-                            .map(([key, value]) => (
-                              <div key={key} className="breakdown-item">
-                                <span className="breakdown-label">
-                                  {formatBreakdownKey(key)}
-                                </span>
-                                <span className="breakdown-value">
-                                  +{value}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      )}
+          <div className="panel right-panel">
+            <h3>👥 Guess History ({guessHistory.length})</h3>
+            
+            {guessHistory.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🔍</div>
+                <p>No guesses yet. Start by entering a player name!</p>
+              </div>
+            ) : (
+              <div className="guess-list">
+                {guessHistory.map((item, index) => (
+                  <div key={index} className="guess-item">
+                    <div className="guess-header">
+                      <h4>{item.name}</h4>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    
+                    <div className="guess-score">
+                      <ScoreBar score={item.score} />
+                    </div>
+                    
+                    {item.breakdown && Object.keys(item.breakdown).length > 0 && (
+                      <div className="breakdown">
+                        {Object.entries(item.breakdown)
+                          .filter(([key, value]) => 
+                            key !== 'total' && 
+                            key !== 'shared_seasons_detail' && 
+                            value > 0
+                          )
+                          .map(([key, value]) => (
+                            <div key={key} className="breakdown-item">
+                              <span className="breakdown-label">
+                                {formatBreakdownKey(key)}
+                              </span>
+                              <span className="breakdown-value">
+                                +{value}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
