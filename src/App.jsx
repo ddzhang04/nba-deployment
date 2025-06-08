@@ -52,7 +52,7 @@ const NBAGuessGame = () => {
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
-        const response = await fetch(`${API_BASE}/players`);
+        const response = await fetch(`${API_BASE}/player_awards`);
         if (response.ok) {
           const playerNames = await response.json();
           const sortedPlayers = playerNames.sort();
