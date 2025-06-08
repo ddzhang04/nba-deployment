@@ -16,7 +16,7 @@ const NBAGuessGame = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [gameMode, setGameMode] = useState('all-time'); // 'all-time' or 'classic'
-  const [allPlayersData, setAllPlayersData] = useState([]);
+  const [playersLoading, setPlayersLoading] = useState(true);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -32,22 +32,6 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const getFilteredPlayers = (mode = gameMode) => {
-    if (allPlayersData.length === 0) {
-      return modernPlayers;
-    }
-
-    if (mode === 'classic') {
-      // Filter for players who started in 2011+ with 5+ seasons
-      return allPlayersData
-        .filter(player => player.start_year >= 2011 && player.career_length >= 5)
-        .map(player => player.name);
-    }
-
-    // All time mode - return all players
-    return allPlayersData.map(player => player.name);
-  };
-
   const resetGameState = () => {
     setGuess('');
     setGuessHistory([]);
@@ -61,109 +45,99 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
   };
 
-  const startNewGame = () => {
-    const playersToUse = getFilteredPlayers();
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-    
-    setTargetPlayer(randomPlayer);
-    setAllPlayers(playersToUse);
+  // Load players for current game mode from backend
+  const loadPlayersForMode = async (mode) => {
+    setPlayersLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/player_names`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mode: mode })
+      });
+
+      if (response.ok) {
+        const playerNames = await response.json();
+        if (Array.isArray(playerNames) && playerNames.length > 0) {
+          setAllPlayers(playerNames.sort());
+          console.log(`Loaded ${playerNames.length} players for ${mode} mode`);
+          return playerNames;
+        } else {
+          throw new Error('Invalid player data format');
+        }
+      } else {
+        throw new Error('Failed to fetch players');
+      }
+    } catch (error) {
+      console.error('Could not load players from API, using fallback:', error);
+      setAllPlayers(modernPlayers);
+      return modernPlayers;
+    } finally {
+      setPlayersLoading(false);
+    }
+  };
+
+  // Get random player from backend for current mode
+  const getRandomPlayer = async (mode) => {
+    try {
+      const response = await fetch(`${API_BASE}/random_player`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ mode: mode })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return result.player;
+      } else {
+        throw new Error('Failed to get random player');
+      }
+    } catch (error) {
+      console.error('Could not get random player from API, using fallback:', error);
+      const fallbackPlayers = allPlayers.length > 0 ? allPlayers : modernPlayers;
+      return fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
+    }
+  };
+
+  const startNewGame = async () => {
     resetGameState();
     
+    // Load players for current mode and get random target
+    const players = await loadPlayersForMode(gameMode);
+    const randomPlayer = await getRandomPlayer(gameMode);
+    
+    setTargetPlayer(randomPlayer);
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
 
-  const switchGameMode = (newMode) => {
+  const switchGameMode = async (newMode) => {
     if (newMode === gameMode) return; // Don't switch if it's the same mode
     
     setGameMode(newMode);
-    
-    // Get filtered players for the new mode
-    const playersToUse = getFilteredPlayers(newMode);
-    
-    if (playersToUse.length === 0) {
-      // Fallback if no players match criteria
-      const fallbackPlayers = modernPlayers;
-      const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
-      setTargetPlayer(randomPlayer);
-      setAllPlayers(fallbackPlayers);
-    } else {
-      const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-      setTargetPlayer(randomPlayer);
-      setAllPlayers(playersToUse);
-    }
-    
     resetGameState();
-    console.log('Game mode switched to:', newMode, 'New target:', playersToUse.length > 0 ? playersToUse[Math.floor(Math.random() * playersToUse.length)] : 'fallback');
+    
+    // Load players for new mode
+    const players = await loadPlayersForMode(newMode);
+    const randomPlayer = await getRandomPlayer(newMode);
+    
+    setTargetPlayer(randomPlayer);
+    console.log('Game mode switched to:', newMode, 'New target:', randomPlayer);
   };
 
+  // Initial load
   useEffect(() => {
-    const loadPlayerNames = async () => {
-      try {
-        // Try the correct endpoint first
-        let response = await fetch(`${API_BASE}/players`);
-        if (!response.ok) {
-          // Fallback to the other endpoint name
-          response = await fetch(`${API_BASE}/player_awards`);
-        }
-        
-        if (response.ok) {
-          const playersData = await response.json();
-          
-          // Check if the data is an array of objects with the expected format
-          if (Array.isArray(playersData) && playersData.length > 0 && typeof playersData[0] === 'object') {
-            setAllPlayersData(playersData);
-            
-            // Filter players based on current mode
-            const filteredPlayers = getFilteredPlayers(gameMode);
-            const playerNames = filteredPlayers.sort();
-            setAllPlayers(playerNames);
-            
-            if (playerNames.length > 0) {
-              const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
-              setTargetPlayer(randomPlayer);
-              console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
-            }
-          } else {
-            // Fallback if data format is different (array of strings)
-            const sortedPlayers = Array.isArray(playersData) ? playersData.sort() : [];
-            setAllPlayers(sortedPlayers);
-            if (sortedPlayers.length > 0) {
-              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-              setTargetPlayer(randomPlayer);
-            }
-          }
-        } else {
-          throw new Error('Failed to fetch players');
-        }
-      } catch (error) {
-        console.error('Could not load players from API, using fallback:', error);
-        const fallback = modernPlayers;
-        setAllPlayers(fallback);
-        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
-        setTargetPlayer(randomPlayer);
-      }
-
+    const initializeGame = async () => {
+      const players = await loadPlayersForMode(gameMode);
+      const randomPlayer = await getRandomPlayer(gameMode);
+      setTargetPlayer(randomPlayer);
       resetGameState();
     };
 
-    loadPlayerNames();
-  }, []); // Remove gameMode dependency to prevent infinite loops
-
-  // Separate effect to handle game mode changes after initial load
-  useEffect(() => {
-    if (allPlayersData.length > 0) {
-      const playersToUse = getFilteredPlayers(gameMode);
-      setAllPlayers(playersToUse);
-      
-      // Only set a new target if we don't have one or if the current target isn't in the new mode
-      if (!targetPlayer || !playersToUse.includes(targetPlayer)) {
-        if (playersToUse.length > 0) {
-          const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-          setTargetPlayer(randomPlayer);
-        }
-      }
-    }
-  }, [gameMode, allPlayersData]);
+    initializeGame();
+  }, []); // Only run once on mount
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -182,7 +156,8 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: guess.trim(),
-          target: targetPlayer
+          target: targetPlayer,
+          mode: gameMode // Pass the current game mode
         })
       });
 
@@ -239,7 +214,8 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: targetPlayer,
-          target: targetPlayer
+          target: targetPlayer,
+          mode: gameMode // Pass the current game mode
         })
       });
 
@@ -342,12 +318,14 @@ const NBAGuessGame = () => {
             <button 
               className={`mode-btn ${gameMode === 'all-time' ? 'active' : ''}`}
               onClick={() => switchGameMode('all-time')}
+              disabled={playersLoading}
             >
               🏆 All Time
             </button>
             <button 
               className={`mode-btn ${gameMode === 'classic' ? 'active' : ''}`}
               onClick={() => switchGameMode('classic')}
+              disabled={playersLoading}
             >
               ⭐ Classic (2011+)
             </button>
@@ -356,7 +334,9 @@ const NBAGuessGame = () => {
           <div className="stats">
             <span>⚡ Attempt #{guessCount}</span>
             <span className="mode-indicator">
-              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'}
+              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'} 
+              {playersLoading && ' (Loading...)'}
+              {!playersLoading && ` (${allPlayers.length} players)`}
             </span>
             {!gameWon && !showAnswer && (
               <span className="mystery">Mystery Player: ???</span>
@@ -436,8 +416,8 @@ const NBAGuessGame = () => {
                           setSelectedSuggestionIndex(-1);
                         }, 150);
                       }}
-                      placeholder="Enter NBA player name..."
-                      disabled={loading}
+                      placeholder={playersLoading ? "Loading players..." : "Enter NBA player name..."}
+                      disabled={loading || playersLoading}
                     />
                     
                     {showSuggestions && suggestions.length > 0 && (
@@ -460,10 +440,10 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim()}
-                    className={`submit-btn ${loading || !guess.trim() ? 'disabled' : ''}`}
+                    disabled={loading || !guess.trim() || playersLoading}
+                    className={`submit-btn ${loading || !guess.trim() || playersLoading ? 'disabled' : ''}`}
                   >
-                    {loading ? 'Searching...' : 'Submit Guess'}
+                    {loading ? 'Searching...' : playersLoading ? 'Loading...' : 'Submit Guess'}
                   </button>
                 </div>
               )}
@@ -493,12 +473,20 @@ const NBAGuessGame = () => {
               )}
 
               <div className="button-group">
-                <button className="new-game-btn" onClick={startNewGame}>
+                <button 
+                  className="new-game-btn" 
+                  onClick={startNewGame}
+                  disabled={playersLoading}
+                >
                   🔄 New Game
                 </button>
                 
                 {!gameWon && !showAnswer && (
-                  <button className="reveal-btn" onClick={revealAnswer}>
+                  <button 
+                    className="reveal-btn" 
+                    onClick={revealAnswer}
+                    disabled={playersLoading}
+                  >
                     👁️ Reveal
                   </button>
                 )}
