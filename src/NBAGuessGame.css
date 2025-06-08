@@ -296,8 +296,19 @@ html, body {
   font-size: 1.2rem;
 }
 
-/* Button Group */
-.button-group {
-  display: flex;
-  gap: 0.75rem;
+
+.new-game-btn {
+  background: linear-gradient(45deg, #10b981, #059669);
+}
+
+.new-game-btn:hover {
+  background: linear-gradient(45deg, #059669, #047857);
+}
+
+.reveal-btn {
+  background: linear-gradient(45deg, #f97316, #ef4444);
+}
+
+.reveal-btn:hover {
+  background: linear-gradient(45deg, #ea580c, #dc2626);
 }
