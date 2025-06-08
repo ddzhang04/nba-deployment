@@ -17,7 +17,6 @@ const NBAGuessGame = () => {
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const [gameMode, setGameMode] = useState('all-time'); // 'all-time' or 'classic'
   const [allPlayersData, setAllPlayersData] = useState([]);
-  const [isLoadingPlayers, setIsLoadingPlayers] = useState(true);
 
   // API base URL
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -33,23 +32,27 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const getFilteredPlayers = (mode = gameMode, playersData = allPlayersData) => {
-    if (playersData.length === 0) {
+  const getFilteredPlayers = (mode = gameMode) => {
+    if (allPlayersData.length === 0) {
       return modernPlayers;
     }
 
     if (mode === 'classic') {
       // Filter for players who started in 2011+ with 5+ seasons
-      return playersData
+      return allPlayersData
         .filter(player => player.start_year >= 2011 && player.career_length >= 5)
         .map(player => player.name);
     }
 
     // All time mode - return all players
-    return playersData.map(player => player.name);
+    return allPlayersData.map(player => player.name);
   };
 
-  const resetGameState = () => {
+  const startNewGame = () => {
+    const playersToUse = getFilteredPlayers();
+    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    
+    setTargetPlayer(randomPlayer);
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -60,26 +63,15 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
-  };
-
-  const startNewGame = () => {
-    const playersToUse = getFilteredPlayers();
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-    
-    setTargetPlayer(randomPlayer);
-    resetGameState();
     
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
 
   const switchGameMode = (newMode) => {
-    console.log('Switching to mode:', newMode);
     setGameMode(newMode);
-    resetGameState();
     
-    // Immediately filter players with new mode
-    const playersToUse = getFilteredPlayers(newMode, allPlayersData);
-    setAllPlayers(playersToUse);
+    // Use the new mode to filter players immediately
+    const playersToUse = getFilteredPlayers(newMode);
     
     if (playersToUse.length === 0) {
       // Fallback if no players match criteria
@@ -90,16 +82,27 @@ const NBAGuessGame = () => {
     } else {
       const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
       setTargetPlayer(randomPlayer);
+      setAllPlayers(playersToUse);
     }
+    
+    // Reset game state
+    setGuess('');
+    setGuessHistory([]);
+    setGameWon(false);
+    setGuessCount(0);
+    setError('');
+    setTop5Players([]);
+    setShowAnswer(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
     
     console.log('Switched to mode:', newMode, 'with', playersToUse.length, 'players available');
   };
 
-  // Load initial player data
   useEffect(() => {
     const loadPlayerNames = async () => {
-      console.log('Loading initial player data...');
-      setIsLoadingPlayers(true);
+      console.log('Loading players for mode:', gameMode);
       
       try {
         // Try the correct endpoint first
@@ -119,13 +122,21 @@ const NBAGuessGame = () => {
             console.log('Loaded player data objects:', playersData.length);
             
             // Filter players based on current mode
-            const filteredPlayers = getFilteredPlayers(gameMode, playersData);
-            setAllPlayers(filteredPlayers);
+            const filteredPlayers = gameMode === 'classic' 
+              ? playersData.filter(player => {
+                  const hasValidData = player.start_year >= 2011 && player.career_length >= 5;
+                  console.log(`Player ${player.name}: start_year=${player.start_year}, career_length=${player.career_length}, valid=${hasValidData}`);
+                  return hasValidData;
+                })
+              : playersData;
             
-            console.log(`Filtered ${filteredPlayers.length} players for ${gameMode} mode`);
+            const playerNames = filteredPlayers.map(player => player.name).sort();
+            setAllPlayers(playerNames);
             
-            if (filteredPlayers.length > 0) {
-              const randomPlayer = filteredPlayers[Math.floor(Math.random() * filteredPlayers.length)];
+            console.log(`Filtered ${filteredPlayers.length} players for ${gameMode} mode:`, playerNames.slice(0, 10));
+            
+            if (playerNames.length > 0) {
+              const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
               setTargetPlayer(randomPlayer);
               console.log('Selected random target:', randomPlayer);
             } else {
@@ -156,12 +167,21 @@ const NBAGuessGame = () => {
         setTargetPlayer(randomPlayer);
       }
 
-      setIsLoadingPlayers(false);
-      resetGameState();
+      // Reset game state
+      setGuess('');
+      setGuessHistory([]);
+      setGameWon(false);
+      setGuessCount(0);
+      setError('');
+      setTop5Players([]);
+      setShowAnswer(false);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
     };
 
     loadPlayerNames();
-  }, []); // Only run once on mount
+  }, [gameMode]);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -346,7 +366,6 @@ const NBAGuessGame = () => {
                   : 'bg-white/20 hover:bg-white/30'
               }`}
               onClick={() => switchGameMode('all-time')}
-              disabled={isLoadingPlayers}
             >
               🏆 All Time
             </button>
@@ -357,7 +376,6 @@ const NBAGuessGame = () => {
                   : 'bg-white/20 hover:bg-white/30'
               }`}
               onClick={() => switchGameMode('classic')}
-              disabled={isLoadingPlayers}
             >
               ⭐ Classic (2011+)
             </button>
@@ -378,7 +396,7 @@ const NBAGuessGame = () => {
 
           {/* Debug Info */}
           <div className="text-xs text-center mt-2 text-blue-300">
-            Players available: {allPlayers.length} | Backend data: {allPlayersData.length > 0 ? 'Connected' : 'Fallback'} | Loading: {isLoadingPlayers ? 'Yes' : 'No'}
+            Players available: {allPlayers.length} | Backend data: {allPlayersData.length > 0 ? 'Connected' : 'Fallback'}
           </div>
         </div>
 
@@ -454,7 +472,7 @@ const NBAGuessGame = () => {
                         }, 150);
                       }}
                       placeholder="Enter NBA player name..."
-                      disabled={loading || isLoadingPlayers}
+                      disabled={loading}
                     />
                     
                     {showSuggestions && suggestions.length > 0 && (
@@ -480,14 +498,14 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || isLoadingPlayers}
+                    disabled={loading || !guess.trim()}
                     className={`w-full py-3 rounded-lg font-semibold transition-all ${
-                      loading || !guess.trim() || isLoadingPlayers
+                      loading || !guess.trim()
                         ? 'bg-gray-600 cursor-not-allowed' 
                         : 'bg-blue-600 hover:bg-blue-700 active:scale-95'
                     }`}
                   >
-                    {loading ? 'Searching...' : isLoadingPlayers ? 'Loading Players...' : 'Submit Guess'}
+                    {loading ? 'Searching...' : 'Submit Guess'}
                   </button>
                 </div>
               )}
@@ -520,7 +538,6 @@ const NBAGuessGame = () => {
                 <button 
                   className="flex-1 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-all active:scale-95" 
                   onClick={startNewGame}
-                  disabled={isLoadingPlayers}
                 >
                   🔄 New Game
                 </button>
@@ -529,7 +546,6 @@ const NBAGuessGame = () => {
                   <button 
                     className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold transition-all active:scale-95" 
                     onClick={revealAnswer}
-                    disabled={isLoadingPlayers}
                   >
                     👁️ Reveal
                   </button>
