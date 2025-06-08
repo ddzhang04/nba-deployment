@@ -268,6 +268,9 @@ const NBAGuessGame = () => {
 
   return (
     <div style={{
+      margin: 0,
+      padding: 0,
+      boxSizing: 'border-box',
       minHeight: '100vh',
       background: 'linear-gradient(135deg, #1e3a8a 0%, #3730a3 50%, #581c87 100%)',
       color: 'white',
@@ -341,7 +344,7 @@ const NBAGuessGame = () => {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: window.innerWidth > 1024 ? '400px 1fr' : '1fr',
           gap: '30px',
           alignItems: 'start'
         }}>
@@ -429,13 +432,14 @@ const NBAGuessGame = () => {
                       placeholder="Enter NBA player name..."
                       style={{
                         width: '100%',
-                        padding: '15px',
+                        padding: '12px',
                         fontSize: '1rem',
                         border: '2px solid rgba(255,255,255,0.3)',
                         borderRadius: '12px',
                         background: 'rgba(255,255,255,0.1)',
                         color: 'white',
-                        outline: 'none'
+                        outline: 'none',
+                        boxSizing: 'border-box'
                       }}
                       disabled={loading}
                     />
@@ -466,7 +470,7 @@ const NBAGuessGame = () => {
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
                             style={{
-                              padding: '12px 15px',
+                              padding: '10px 15px',
                               cursor: 'pointer',
                               backgroundColor: index === selectedSuggestionIndex ? 'rgba(59, 130, 246, 0.5)' : 'transparent',
                               borderBottom: index < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none'
@@ -482,7 +486,7 @@ const NBAGuessGame = () => {
                     onClick={makeGuess}
                     disabled={loading || !guess.trim()}
                     style={{
-                      padding: '15px 30px',
+                      padding: '12px 30px',
                       fontSize: '1rem',
                       fontWeight: 'bold',
                       border: 'none',
@@ -554,7 +558,7 @@ const NBAGuessGame = () => {
                   onClick={startNewGame} 
                   style={{
                     flex: 1,
-                    padding: '12px 20px',
+                    padding: '10px 20px',
                     fontSize: '1rem',
                     fontWeight: 'bold',
                     border: 'none',
@@ -573,7 +577,7 @@ const NBAGuessGame = () => {
                     onClick={revealAnswer} 
                     style={{
                       flex: 1,
-                      padding: '12px 20px',
+                      padding: '10px 20px',
                       fontSize: '1rem',
                       fontWeight: 'bold',
                       border: 'none',
