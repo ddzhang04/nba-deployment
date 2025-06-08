@@ -40,20 +40,28 @@ const NBAGuessGame = () => {
     
     // Classic mode: 2011+ debut with 5+ seasons
     if (mode === 'classic') {
+      console.log('Filtering for classic mode...');
       return players.filter(playerName => {
         const player = playerData[playerName];
-        if (!player) return false;
+        if (!player) {
+          console.log(`No data for player: ${playerName}`);
+          return false;
+        }
         
         const startYear = player.start_year || 0;
-        const seasonsCount = player.career_length || 0; // Changed from seasons.length
+        const seasonsCount = player.career_length || 0;
         
-        return startYear >= 2011;
+        const isValid = startYear >= 2011 && seasonsCount >= 5;
+        if (isValid) {
+          console.log(`Including ${playerName}: startYear=${startYear}, seasons=${seasonsCount}`);
+        }
+        
+        return isValid;
       });
     }
     
     return players;
   };
-
   const startNewGame = () => {
     const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
