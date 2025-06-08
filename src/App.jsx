@@ -16,7 +16,7 @@ const NBAGuessGame = () => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
-  // API base URL
+  // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
   // Fallback modern NBA players (only used if API loading fails)
@@ -52,7 +52,13 @@ const NBAGuessGame = () => {
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
-        const response = await fetch(`${API_BASE}/player_awards`);
+        // Try the correct endpoint first
+        let response = await fetch(`${API_BASE}/players`);
+        if (!response.ok) {
+          // Fallback to the other endpoint name
+          response = await fetch(`${API_BASE}/player_awards`);
+        }
+        
         if (response.ok) {
           const playerNames = await response.json();
           const sortedPlayers = playerNames.sort();
@@ -232,16 +238,15 @@ const NBAGuessGame = () => {
       shared_seasons: 'Shared Seasons',
       shared_streak_bonus: 'Streak Bonus',
       teammate_years: 'Teammate Years',
-      franchise_overlap: 'Team Overlap',
-      franchise_tenure_bonus: 'Tenure Bonus',
-      archetype: 'Archetype',
-      position: 'Position',
-      draft_diff: 'Draft Era',
-      era_diff: 'Career Era',
-      career_end_proximity: 'Career End',
-      career_length: 'Career Length'
+      shared_teams: 'Team Overlap',
+      team_tenure: 'Tenure Bonus',
+      position_match: 'Position',
+      start_year_diff: 'Draft Era',
+      shared_all_star: 'All-Star',
+      shared_all_team: 'All-Team',
+      shared_awards: 'Awards'
     };
-    return labels[key] || key;
+    return labels[key] || key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
