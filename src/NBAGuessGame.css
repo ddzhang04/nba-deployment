@@ -447,3 +447,9 @@ html, body {
 .guess-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.5);
 }
+
+/* Button Group */
+.button-group {
+  display: flex;
+  gap: 0.75rem;
+}
