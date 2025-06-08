@@ -61,15 +61,23 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
   };
 
+  const selectRandomPlayer = (playersArray) => {
+    if (playersArray.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * playersArray.length);
+    return playersArray[randomIndex];
+  };
+
   const startNewGame = () => {
     const playersToUse = getFilteredPlayers();
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    const randomPlayer = selectRandomPlayer(playersToUse);
     
-    setTargetPlayer(randomPlayer);
-    setAllPlayers(playersToUse);
-    resetGameState();
-    
-    console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+    if (randomPlayer) {
+      setTargetPlayer(randomPlayer);
+      setAllPlayers(playersToUse);
+      resetGameState();
+      
+      console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+    }
   };
 
   const switchGameMode = (newMode) => {
@@ -80,20 +88,21 @@ const NBAGuessGame = () => {
     // Get filtered players for the new mode
     const playersToUse = getFilteredPlayers(newMode);
     
+    let randomPlayer;
     if (playersToUse.length === 0) {
       // Fallback if no players match criteria
       const fallbackPlayers = modernPlayers;
-      const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
+      randomPlayer = selectRandomPlayer(fallbackPlayers);
       setTargetPlayer(randomPlayer);
       setAllPlayers(fallbackPlayers);
     } else {
-      const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+      randomPlayer = selectRandomPlayer(playersToUse);
       setTargetPlayer(randomPlayer);
       setAllPlayers(playersToUse);
     }
     
     resetGameState();
-    console.log('Game mode switched to:', newMode, 'New target:', playersToUse.length > 0 ? playersToUse[Math.floor(Math.random() * playersToUse.length)] : 'fallback');
+    console.log('Game mode switched to:', newMode, 'New target:', randomPlayer);
   };
 
   useEffect(() => {
@@ -119,16 +128,17 @@ const NBAGuessGame = () => {
             setAllPlayers(playerNames);
             
             if (playerNames.length > 0) {
-              const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
+              const randomPlayer = selectRandomPlayer(playerNames);
               setTargetPlayer(randomPlayer);
               console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
+              console.log('Initial random player:', randomPlayer);
             }
           } else {
             // Fallback if data format is different (array of strings)
             const sortedPlayers = Array.isArray(playersData) ? playersData.sort() : [];
             setAllPlayers(sortedPlayers);
             if (sortedPlayers.length > 0) {
-              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              const randomPlayer = selectRandomPlayer(sortedPlayers);
               setTargetPlayer(randomPlayer);
             }
           }
@@ -139,7 +149,7 @@ const NBAGuessGame = () => {
         console.error('Could not load players from API, using fallback:', error);
         const fallback = modernPlayers;
         setAllPlayers(fallback);
-        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
+        const randomPlayer = selectRandomPlayer(fallback);
         setTargetPlayer(randomPlayer);
       }
 
@@ -151,19 +161,21 @@ const NBAGuessGame = () => {
 
   // Separate effect to handle game mode changes after initial load
   useEffect(() => {
-    if (allPlayersData.length > 0) {
+    if (allPlayersData.length > 0 && targetPlayer) {
       const playersToUse = getFilteredPlayers(gameMode);
       setAllPlayers(playersToUse);
       
-      // Only set a new target if we don't have one or if the current target isn't in the new mode
-      if (!targetPlayer || !playersToUse.includes(targetPlayer)) {
+      // Only set a new target if the current target isn't in the new mode
+      // This prevents unnecessary changes when switching modes
+      if (!playersToUse.includes(targetPlayer)) {
         if (playersToUse.length > 0) {
-          const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+          const randomPlayer = selectRandomPlayer(playersToUse);
           setTargetPlayer(randomPlayer);
+          console.log('Mode change required new player:', randomPlayer);
         }
       }
     }
-  }, [gameMode, allPlayersData]);
+  }, [gameMode, allPlayersData, targetPlayer]);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
