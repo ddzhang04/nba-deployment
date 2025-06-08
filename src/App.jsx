@@ -15,8 +15,6 @@ const NBAGuessGame = () => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-  const [gameMode, setGameMode] = useState('all-time'); // 'all-time' or 'classic'
-  const [allPlayersData, setAllPlayersData] = useState([]);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -32,23 +30,11 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const getFilteredPlayers = (mode = gameMode) => {
-    if (allPlayersData.length === 0) {
-      return modernPlayers;
-    }
-
-    if (mode === 'classic') {
-      // Filter for players who started in 2011+ with 5+ seasons
-      return allPlayersData
-        .filter(player => player.start_year >= 2011 && player.career_length >= 5)
-        .map(player => player.name);
-    }
-
-    // All time mode - return all players
-    return allPlayersData.map(player => player.name);
-  };
-
-  const resetGameState = () => {
+  const startNewGame = () => {
+    const playersToUse = allPlayers.length > 0 ? allPlayers : modernPlayers;
+    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    
+    setTargetPlayer(randomPlayer);
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -59,104 +45,10 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
-  };
-
-  const selectRandomPlayer = (playersArray) => {
-    if (playersArray.length === 0) return null;
-    const randomIndex = Math.floor(Math.random() * playersArray.length);
-    return playersArray[randomIndex];
-  };
-
-  const startNewGame = async () => {
-    try {
-      // Get a random player from the backend for the current game mode
-      const response = await fetch(`${API_BASE}/random_player`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mode: gameMode
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setTargetPlayer(result.player);
-        console.log('New game started with:', result.player, 'Mode:', gameMode);
-        resetGameState();
-      } else {
-        // Fallback to local selection
-        const playersToUse = getFilteredPlayers();
-        const randomPlayer = selectRandomPlayer(playersToUse);
-        if (randomPlayer) {
-          setTargetPlayer(randomPlayer);
-          resetGameState();
-          console.log('Fallback: New game started with:', randomPlayer, 'Mode:', gameMode);
-        }
-      }
-    } catch (error) {
-      console.error('Error starting new game:', error);
-      // Fallback to local selection
-      const playersToUse = getFilteredPlayers();
-      const randomPlayer = selectRandomPlayer(playersToUse);
-      if (randomPlayer) {
-        setTargetPlayer(randomPlayer);
-        resetGameState();
-        console.log('Error fallback: New game started with:', randomPlayer, 'Mode:', gameMode);
-      }
-    }
-  };
-
-  const switchGameMode = async (newMode) => {
-    if (newMode === gameMode) return; // Don't switch if it's the same mode
     
-    setGameMode(newMode);
-    
-    try {
-      // Get a random player from the backend for the new game mode
-      const response = await fetch(`${API_BASE}/random_player`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mode: newMode
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setTargetPlayer(result.player);
-        
-        // Update the available players list for the new mode
-        const playersToUse = getFilteredPlayers(newMode);
-        setAllPlayers(playersToUse);
-        
-        resetGameState();
-        console.log('Game mode switched to:', newMode, 'New target:', result.player);
-      } else {
-        // Fallback to local selection
-        const playersToUse = getFilteredPlayers(newMode);
-        const randomPlayer = selectRandomPlayer(playersToUse);
-        setTargetPlayer(randomPlayer);
-        setAllPlayers(playersToUse);
-        resetGameState();
-        console.log('Fallback mode switch to:', newMode, 'New target:', randomPlayer);
-      }
-    } catch (error) {
-      console.error('Error switching game mode:', error);
-      // Fallback to local selection
-      const playersToUse = getFilteredPlayers(newMode);
-      const randomPlayer = selectRandomPlayer(playersToUse);
-      setTargetPlayer(randomPlayer);
-      setAllPlayers(playersToUse);
-      resetGameState();
-      console.log('Error fallback mode switch to:', newMode, 'New target:', randomPlayer);
-    }
+    console.log('New game started with:', randomPlayer);
   };
 
-  // Load initial player data
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
@@ -168,50 +60,12 @@ const NBAGuessGame = () => {
         }
         
         if (response.ok) {
-          const playersData = await response.json();
-          
-          // Check if the data is an array of objects with the expected format
-          if (Array.isArray(playersData) && playersData.length > 0 && typeof playersData[0] === 'object') {
-            setAllPlayersData(playersData);
-            
-            // Filter players based on current mode
-            const filteredPlayers = getFilteredPlayers(gameMode);
-            const playerNames = filteredPlayers.sort();
-            setAllPlayers(playerNames);
-            
-            if (playerNames.length > 0) {
-              // Use the backend to get a random player
-              const randomResponse = await fetch(`${API_BASE}/random_player`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  mode: gameMode
-                })
-              });
-
-              if (randomResponse.ok) {
-                const randomResult = await randomResponse.json();
-                setTargetPlayer(randomResult.player);
-                console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
-                console.log('Initial random player:', randomResult.player);
-              } else {
-                // Fallback to local random selection
-                const randomPlayer = selectRandomPlayer(playerNames);
-                setTargetPlayer(randomPlayer);
-                console.log('Fallback initial random player:', randomPlayer);
-              }
-            }
-          } else {
-            // Fallback if data format is different (array of strings)
-            const sortedPlayers = Array.isArray(playersData) ? playersData.sort() : [];
-            setAllPlayers(sortedPlayers);
-            if (sortedPlayers.length > 0) {
-              const randomPlayer = selectRandomPlayer(sortedPlayers);
-              setTargetPlayer(randomPlayer);
-            }
-          }
+          const playerNames = await response.json();
+          const sortedPlayers = playerNames.sort();
+          setAllPlayers(sortedPlayers);
+          const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+          setTargetPlayer(randomPlayer);
+          console.log('Loaded', sortedPlayers.length, 'players from API');
         } else {
           throw new Error('Failed to fetch players');
         }
@@ -219,15 +73,24 @@ const NBAGuessGame = () => {
         console.error('Could not load players from API, using fallback:', error);
         const fallback = modernPlayers;
         setAllPlayers(fallback);
-        const randomPlayer = selectRandomPlayer(fallback);
+        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
         setTargetPlayer(randomPlayer);
       }
 
-      resetGameState();
+      setGuess('');
+      setGuessHistory([]);
+      setGameWon(false);
+      setGuessCount(0);
+      setError('');
+      setTop5Players([]);
+      setShowAnswer(false);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
     };
 
     loadPlayerNames();
-  }, []); // Only run once on mount
+  }, []);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -246,8 +109,7 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: guess.trim(),
-          target: targetPlayer,
-          mode: gameMode // Include game mode in the request
+          target: targetPlayer
         })
       });
 
@@ -304,8 +166,7 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: targetPlayer,
-          target: targetPlayer,
-          mode: gameMode // Include game mode in the request
+          target: targetPlayer
         })
       });
 
@@ -402,28 +263,9 @@ const NBAGuessGame = () => {
           <p className="subtitle">
             Guess the mystery NBA player by finding similar players!
           </p>
-
-          {/* Game Mode Selector */}
-          <div className="game-mode-selector">
-            <button 
-              className={`mode-btn ${gameMode === 'all-time' ? 'active' : ''}`}
-              onClick={() => switchGameMode('all-time')}
-            >
-              🏆 All Time
-            </button>
-            <button 
-              className={`mode-btn ${gameMode === 'classic' ? 'active' : ''}`}
-              onClick={() => switchGameMode('classic')}
-            >
-              ⭐ Classic (2011+)
-            </button>
-          </div>
           
           <div className="stats">
             <span>⚡ Attempt #{guessCount}</span>
-            <span className="mode-indicator">
-              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'}
-            </span>
             {!gameWon && !showAnswer && (
               <span className="mystery">Mystery Player: ???</span>
             )}
