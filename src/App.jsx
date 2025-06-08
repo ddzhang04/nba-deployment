@@ -15,24 +15,38 @@ const NBAGuessGame = () => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-  const [gameMode, setGameMode] = useState('all-time');
-  const [playersLoading, setPlayersLoading] = useState(true);
-  const [apiStatus, setApiStatus] = useState('checking'); // 'checking', 'connected', 'failed'
+  const [gameMode, setGameMode] = useState('all-time'); // 'all-time' or 'classic'
+  const [allPlayersData, setAllPlayersData] = useState([]);
 
-  // API base URL
+  // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
-  // Fallback players (only used if API completely fails)
-  const fallbackPlayers = [
+  // Fallback modern NBA players (only used if API loading fails)
+  const modernPlayers = [
     'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
     'Luka Dončić', 'Jayson Tatum', 'Joel Embiid', 'Nikola Jokić', 'Damian Lillard',
     'Jimmy Butler', 'Kawhi Leonard', 'Anthony Davis', 'Russell Westbrook',
     'James Harden', 'Chris Paul', 'Klay Thompson', 'Draymond Green',
     'Paul George', 'Kyrie Irving', 'Bradley Beal', 'Devin Booker',
     'Donovan Mitchell', 'Ja Morant', 'Trae Young', 'Zion Williamson',
-    'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro',
-    'Karl-Anthony Towns', 'Rudy Gobert', 'Ben Simmons', 'CJ McCollum'
+    'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
+
+  const getFilteredPlayers = (mode = gameMode) => {
+    if (allPlayersData.length === 0) {
+      return modernPlayers;
+    }
+
+    if (mode === 'classic') {
+      // Filter for players who started in 2011+ with 5+ seasons
+      return allPlayersData
+        .filter(player => player.start_year >= 2011 && player.career_length >= 5)
+        .map(player => player.name);
+    }
+
+    // All time mode - return all players
+    return allPlayersData.map(player => player.name);
+  };
 
   const resetGameState = () => {
     setGuess('');
@@ -47,194 +61,109 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
   };
 
-  // Test API connection
-  const testApiConnection = async () => {
-    try {
-      setApiStatus('checking');
-      const response = await fetch(`${API_BASE}/health`, {
-        method: 'GET',
-        timeout: 10000, // 10 second timeout
-      });
-      
-      if (response.ok) {
-        setApiStatus('connected');
-        return true;
-      } else {
-        throw new Error(`API responded with status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error('API connection test failed:', error);
-      setApiStatus('failed');
-      return false;
-    }
-  };
-
-  // Load players for current game mode from backend
-  const loadPlayersForMode = async (mode) => {
-    setPlayersLoading(true);
-    
-    try {
-      console.log(`Loading players for mode: ${mode}`);
-      
-      const response = await fetch(`${API_BASE}/player_names`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mode: mode }),
-        timeout: 15000, // 15 second timeout
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('API response:', data);
-      
-      let playerNames = [];
-      
-      // Handle different possible response formats
-      if (Array.isArray(data)) {
-        playerNames = data;
-      } else if (data.players && Array.isArray(data.players)) {
-        playerNames = data.players;
-      } else if (data.player_names && Array.isArray(data.player_names)) {
-        playerNames = data.player_names;
-      } else {
-        throw new Error('Invalid response format - no player array found');
-      }
-
-      if (playerNames.length === 0) {
-        throw new Error('No players returned from API');
-      }
-
-      // Filter out any invalid entries and sort
-      const validPlayers = playerNames
-        .filter(name => name && typeof name === 'string' && name.trim().length > 0)
-        .map(name => name.trim())
-        .sort();
-
-      if (validPlayers.length === 0) {
-        throw new Error('No valid players after filtering');
-      }
-
-      setAllPlayers(validPlayers);
-      console.log(`Successfully loaded ${validPlayers.length} players for ${mode} mode`);
-      return validPlayers;
-
-    } catch (error) {
-      console.error('Failed to load players from API:', error);
-      setError(`Failed to load players: ${error.message}`);
-      
-      // Use fallback players
-      console.log('Using fallback players');
-      setAllPlayers(fallbackPlayers);
-      return fallbackPlayers;
-      
-    } finally {
-      setPlayersLoading(false);
-    }
-  };
-
-  // Get random player from backend for current mode
-  const getRandomPlayer = async (mode) => {
-    try {
-      console.log(`Getting random player for mode: ${mode}`);
-      
-      const response = await fetch(`${API_BASE}/random_player`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ mode: mode }),
-        timeout: 10000,
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('Random player API response:', result);
-      
-      let randomPlayer = '';
-      
-      // Handle different possible response formats
-      if (typeof result === 'string') {
-        randomPlayer = result;
-      } else if (result.player) {
-        randomPlayer = result.player;
-      } else if (result.name) {
-        randomPlayer = result.name;
-      } else {
-        throw new Error('Invalid response format - no player name found');
-      }
-
-      if (!randomPlayer || randomPlayer.trim().length === 0) {
-        throw new Error('Empty player name returned');
-      }
-
-      console.log(`Got random player: ${randomPlayer}`);
-      return randomPlayer.trim();
-
-    } catch (error) {
-      console.error('Failed to get random player from API:', error);
-      
-      // Use fallback from loaded players
-      const availablePlayers = allPlayers.length > 0 ? allPlayers : fallbackPlayers;
-      const randomPlayer = availablePlayers[Math.floor(Math.random() * availablePlayers.length)];
-      
-      console.log(`Using fallback random player: ${randomPlayer}`);
-      return randomPlayer;
-    }
-  };
-
-  const startNewGame = async () => {
-    resetGameState();
-    
-    // Load players for current mode and get random target
-    const players = await loadPlayersForMode(gameMode);
-    const randomPlayer = await getRandomPlayer(gameMode);
+  const startNewGame = () => {
+    const playersToUse = getFilteredPlayers();
+    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
     
     setTargetPlayer(randomPlayer);
-    console.log('New game started - Target:', randomPlayer, 'Mode:', gameMode, 'Total players:', players.length);
+    setAllPlayers(playersToUse);
+    resetGameState();
+    
+    console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
 
-  const switchGameMode = async (newMode) => {
-    if (newMode === gameMode) return;
+  const switchGameMode = (newMode) => {
+    if (newMode === gameMode) return; // Don't switch if it's the same mode
     
     setGameMode(newMode);
+    
+    // Get filtered players for the new mode
+    const playersToUse = getFilteredPlayers(newMode);
+    
+    if (playersToUse.length === 0) {
+      // Fallback if no players match criteria
+      const fallbackPlayers = modernPlayers;
+      const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
+      setTargetPlayer(randomPlayer);
+      setAllPlayers(fallbackPlayers);
+    } else {
+      const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+      setTargetPlayer(randomPlayer);
+      setAllPlayers(playersToUse);
+    }
+    
     resetGameState();
-    
-    // Load players for new mode
-    const players = await loadPlayersForMode(newMode);
-    const randomPlayer = await getRandomPlayer(newMode);
-    
-    setTargetPlayer(randomPlayer);
-    console.log('Game mode switched to:', newMode, 'New target:', randomPlayer, 'Total players:', players.length);
+    console.log('Game mode switched to:', newMode, 'New target:', playersToUse.length > 0 ? playersToUse[Math.floor(Math.random() * playersToUse.length)] : 'fallback');
   };
 
-  // Initial load
   useEffect(() => {
-    const initializeGame = async () => {
-      // Test API connection first
-      const apiConnected = await testApiConnection();
-      
-      if (!apiConnected) {
-        setError('Warning: API connection failed. Using limited player set.');
+    const loadPlayerNames = async () => {
+      try {
+        // Try the correct endpoint first
+        let response = await fetch(`${API_BASE}/players`);
+        if (!response.ok) {
+          // Fallback to the other endpoint name
+          response = await fetch(`${API_BASE}/player_awards`);
+        }
+        
+        if (response.ok) {
+          const playersData = await response.json();
+          
+          // Check if the data is an array of objects with the expected format
+          if (Array.isArray(playersData) && playersData.length > 0 && typeof playersData[0] === 'object') {
+            setAllPlayersData(playersData);
+            
+            // Filter players based on current mode
+            const filteredPlayers = getFilteredPlayers(gameMode);
+            const playerNames = filteredPlayers.sort();
+            setAllPlayers(playerNames);
+            
+            if (playerNames.length > 0) {
+              const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
+              setTargetPlayer(randomPlayer);
+              console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
+            }
+          } else {
+            // Fallback if data format is different (array of strings)
+            const sortedPlayers = Array.isArray(playersData) ? playersData.sort() : [];
+            setAllPlayers(sortedPlayers);
+            if (sortedPlayers.length > 0) {
+              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              setTargetPlayer(randomPlayer);
+            }
+          }
+        } else {
+          throw new Error('Failed to fetch players');
+        }
+      } catch (error) {
+        console.error('Could not load players from API, using fallback:', error);
+        const fallback = modernPlayers;
+        setAllPlayers(fallback);
+        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
+        setTargetPlayer(randomPlayer);
       }
-      
-      // Load players and start game
-      const players = await loadPlayersForMode(gameMode);
-      const randomPlayer = await getRandomPlayer(gameMode);
-      setTargetPlayer(randomPlayer);
-      
-      console.log('Game initialized - Target:', randomPlayer, 'Total players:', players.length);
+
+      resetGameState();
     };
 
-    initializeGame();
-  }, []);
+    loadPlayerNames();
+  }, []); // Remove gameMode dependency to prevent infinite loops
+
+  // Separate effect to handle game mode changes after initial load
+  useEffect(() => {
+    if (allPlayersData.length > 0) {
+      const playersToUse = getFilteredPlayers(gameMode);
+      setAllPlayers(playersToUse);
+      
+      // Only set a new target if we don't have one or if the current target isn't in the new mode
+      if (!targetPlayer || !playersToUse.includes(targetPlayer)) {
+        if (playersToUse.length > 0) {
+          const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+          setTargetPlayer(randomPlayer);
+        }
+      }
+    }
+  }, [gameMode, allPlayersData]);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -246,8 +175,6 @@ const NBAGuessGame = () => {
     setError('');
 
     try {
-      console.log('Making guess:', guess.trim(), 'Target:', targetPlayer, 'Mode:', gameMode);
-      
       const response = await fetch(`${API_BASE}/guess`, {
         method: 'POST',
         headers: {
@@ -255,51 +182,46 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: guess.trim(),
-          target: targetPlayer,
-          mode: gameMode
-        }),
-        timeout: 15000,
+          target: targetPlayer
+        })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
+      if (response.ok) {
+        const result = await response.json();
+        const { score, matched_name, breakdown, top_5 } = result;
 
-      const result = await response.json();
-      console.log('Guess API response:', result);
-      
-      const { score, matched_name, breakdown, top_5 } = result;
+        const newGuess = {
+          name: matched_name || guess.trim(),
+          score: score,
+          breakdown: breakdown || {}
+        };
 
-      const newGuess = {
-        name: matched_name || guess.trim(),
-        score: score || 0,
-        breakdown: breakdown || {}
-      };
+        const alreadyGuessed = guessHistory.some(g => g.name === newGuess.name);
+        
+        if (!alreadyGuessed) {
+          setGuessHistory(prev => {
+            const updated = [...prev, newGuess];
+            return updated.sort((a, b) => b.score - a.score).slice(0, 15);
+          });
 
-      const alreadyGuessed = guessHistory.some(g => g.name === newGuess.name);
-      
-      if (!alreadyGuessed) {
-        setGuessHistory(prev => {
-          const updated = [...prev, newGuess];
-          return updated.sort((a, b) => b.score - a.score).slice(0, 15);
-        });
+          setGuessCount(prev => prev + 1);
 
-        setGuessCount(prev => prev + 1);
-
-        if (score === 100) {
-          setGameWon(true);
-          setTop5Players(top_5 || []);
+          if (score === 100) {
+            setGameWon(true);
+            setTop5Players(top_5 || []);
+          }
+        } else {
+          setError('You have already guessed this player!');
         }
+
+        setGuess('');
       } else {
-        setError('You have already guessed this player!');
+        const errorData = await response.json();
+        setError(errorData.error || 'Unknown error occurred');
       }
-
-      setGuess('');
-
     } catch (err) {
-      console.error('Guess API Error:', err);
-      setError(`Error making guess: ${err.message}`);
+      setError('Connection error. Please check your internet connection and try again.');
+      console.error('API Error:', err);
     }
 
     setLoading(false);
@@ -317,17 +239,13 @@ const NBAGuessGame = () => {
         },
         body: JSON.stringify({
           guess: targetPlayer,
-          target: targetPlayer,
-          mode: gameMode
-        }),
-        timeout: 10000,
+          target: targetPlayer
+        })
       });
 
       if (response.ok) {
         const result = await response.json();
         setTop5Players(result.top_5 || []);
-      } else {
-        console.warn('Could not fetch top 5 players for reveal');
       }
     } catch (err) {
       console.error('Error fetching top 5:', err);
@@ -356,31 +274,30 @@ const NBAGuessGame = () => {
     const color = getScoreColor(score);
     
     return (
-      <div className="flex items-center gap-2 w-full">
-        <div className="flex-1 relative bg-gray-200 rounded-full h-6 overflow-hidden">
+      <div className="score-bar-container">
+        <div className="score-bar-track">
           <div 
-            className="h-full rounded-full transition-all duration-300 ease-out relative"
+            className="score-bar-fill"
             style={{
               width: `${percentage}%`,
               background: `linear-gradient(90deg, ${color}dd, ${color})`,
               boxShadow: `0 0 10px ${color}40`
             }}
-          >
-            {showLabel && (
-              <div 
-                className="absolute inset-0 flex items-center justify-center text-xs font-bold"
-                style={{
-                  color: percentage > 30 ? 'white' : color,
-                  textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none'
-                }}
-              >
-                {score}
-              </div>
-            )}
-          </div>
+          />
+          {showLabel && (
+            <div 
+              className="score-bar-label"
+              style={{
+                color: percentage > 30 ? 'white' : color,
+                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none'
+              }}
+            >
+              {score}
+            </div>
+          )}
         </div>
         <div 
-          className="text-sm font-semibold min-w-[50px] text-right"
+          className="score-bar-value"
           style={{ color: color }}
         >
           {score}/100
@@ -406,93 +323,63 @@ const NBAGuessGame = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="game-container">
+      <div className="game-content">
         {/* Header */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20">
-          <div className="text-center mb-4">
-            <div className="flex items-center justify-center gap-4 mb-2">
-              <span className="text-4xl">🏀</span>
-              <h1 className="text-4xl font-bold text-white">NBA-MANTLE</h1>
-              <span className="text-4xl">🎯</span>
-            </div>
-            <p className="text-white/80 text-lg">
-              Guess the mystery NBA player by finding similar players!
-            </p>
+        <div className="header panel">
+          <div className="title-section">
+            <span>🏀</span>
+            <h1>NBA-MANTLE</h1>
+            <span>🎯</span>
           </div>
-
-          {/* API Status */}
-          <div className="text-center mb-4">
-            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-              apiStatus === 'connected' ? 'bg-green-500/20 text-green-300' :
-              apiStatus === 'failed' ? 'bg-red-500/20 text-red-300' :
-              'bg-yellow-500/20 text-yellow-300'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                apiStatus === 'connected' ? 'bg-green-400' :
-                apiStatus === 'failed' ? 'bg-red-400' :
-                'bg-yellow-400 animate-pulse'
-              }`}></div>
-              API: {apiStatus === 'connected' ? 'Connected' : apiStatus === 'failed' ? 'Offline' : 'Checking...'}
-            </div>
-          </div>
+          
+          <p className="subtitle">
+            Guess the mystery NBA player by finding similar players!
+          </p>
 
           {/* Game Mode Selector */}
-          <div className="flex justify-center gap-4 mb-4">
+          <div className="game-mode-selector">
             <button 
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                gameMode === 'all-time' 
-                  ? 'bg-white text-purple-900 shadow-lg' 
-                  : 'bg-white/20 text-white hover:bg-white/30'
-              }`}
+              className={`mode-btn ${gameMode === 'all-time' ? 'active' : ''}`}
               onClick={() => switchGameMode('all-time')}
-              disabled={playersLoading}
             >
               🏆 All Time
             </button>
             <button 
-              className={`px-6 py-3 rounded-xl font-semibold transition-all ${
-                gameMode === 'classic' 
-                  ? 'bg-white text-purple-900 shadow-lg' 
-                  : 'bg-white/20 text-white hover:bg-white/30'
-              }`}
+              className={`mode-btn ${gameMode === 'classic' ? 'active' : ''}`}
               onClick={() => switchGameMode('classic')}
-              disabled={playersLoading}
             >
               ⭐ Classic (2011+)
             </button>
           </div>
           
-          <div className="flex justify-center gap-8 text-white/80 text-sm">
+          <div className="stats">
             <span>⚡ Attempt #{guessCount}</span>
-            <span>
-              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'} 
-              {playersLoading ? ' (Loading...)' : ` (${allPlayers.length} players)`}
+            <span className="mode-indicator">
+              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'}
             </span>
             {!gameWon && !showAnswer && (
-              <span>Mystery Player: ???</span>
+              <span className="mystery">Mystery Player: ???</span>
             )}
             {(gameWon || showAnswer) && (
-              <span className="text-yellow-300">Answer: {targetPlayer}</span>
+              <span className="answer">Answer: {targetPlayer}</span>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="main-layout">
           {/* Left Panel */}
-          <div className="lg:col-span-1 space-y-6">
+          <div className="left-panel">
             {/* Input Section */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                🔍 Make Your Guess
-              </h3>
+            <div className="panel">
+              <h3>🔍 Make Your Guess</h3>
               
               {!gameWon && !showAnswer && (
-                <div className="space-y-4">
-                  <div className="relative">
+                <div className="input-section">
+                  <div className="input-container">
                     <input
                       type="text"
-                      className="w-full p-4 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/50"
+                      className="player-input"
                       value={guess}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -549,28 +436,23 @@ const NBAGuessGame = () => {
                           setSelectedSuggestionIndex(-1);
                         }, 150);
                       }}
-                      placeholder={playersLoading ? "Loading players..." : "Enter NBA player name..."}
-                      disabled={loading || playersLoading}
+                      placeholder="Enter NBA player name..."
+                      disabled={loading}
                     />
                     
                     {showSuggestions && suggestions.length > 0 && (
-                      <ul className="absolute top-full left-0 right-0 bg-white/95 backdrop-blur-lg border border-white/30 rounded-xl mt-1 max-h-48 overflow-y-auto z-50">
+                      <ul className="suggestions">
                         {suggestions.map((suggestion, index) => (
                           <li
                             key={index}
-                            className={`p-3 cursor-pointer transition-colors ${
-                              index === selectedSuggestionIndex 
-                                ? 'bg-purple-600 text-white' 
-                                : 'text-gray-800 hover:bg-purple-100'
-                            }`}
+                            className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSuggestionSelect(suggestion);
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                          >
-                            {suggestion}
-                          </li>
+                            dangerouslySetInnerHTML={{ __html: suggestion }}
+                          />
                         ))}
                       </ul>
                     )}
@@ -578,57 +460,45 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || playersLoading}
-                    className={`w-full p-4 rounded-xl font-semibold transition-all ${
-                      loading || !guess.trim() || playersLoading
-                        ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:shadow-lg hover:scale-105'
-                    }`}
+                    disabled={loading || !guess.trim()}
+                    className={`submit-btn ${loading || !guess.trim() ? 'disabled' : ''}`}
                   >
-                    {loading ? 'Searching...' : playersLoading ? 'Loading...' : 'Submit Guess'}
+                    {loading ? 'Searching...' : 'Submit Guess'}
                   </button>
                 </div>
               )}
 
               {error && (
-                <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 text-red-300 mt-4">
+                <div className="error">
                   {error}
                 </div>
               )}
 
               {gameWon && (
-                <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-6 text-center">
-                  <div className="text-4xl mb-2">🎉</div>
-                  <p className="text-green-300 text-lg">
+                <div className="win-message panel">
+                  <div className="emoji">🎉</div>
+                  <p>
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
                 </div>
               )}
 
               {showAnswer && !gameWon && (
-                <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-6 text-center">
-                  <div className="text-4xl mb-2">🎯</div>
-                  <p className="text-blue-300 text-lg">
+                <div className="reveal-message panel">
+                  <div className="emoji">🎯</div>
+                  <p>
                     The answer was {targetPlayer}
                   </p>
                 </div>
               )}
 
-              <div className="flex gap-4 mt-6">
-                <button 
-                  className="flex-1 p-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={startNewGame}
-                  disabled={playersLoading}
-                >
+              <div className="button-group">
+                <button className="new-game-btn" onClick={startNewGame}>
                   🔄 New Game
                 </button>
                 
                 {!gameWon && !showAnswer && (
-                  <button 
-                    className="flex-1 p-3 bg-yellow-600 text-white rounded-xl font-semibold hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={revealAnswer}
-                    disabled={playersLoading}
-                  >
+                  <button className="reveal-btn" onClick={revealAnswer}>
                     👁️ Reveal
                   </button>
                 )}
@@ -637,20 +507,14 @@ const NBAGuessGame = () => {
 
             {/* Top 5 Similar Players */}
             {top5Players.length > 0 && (
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                  📈 Top 5 Most Similar
-                </h3>
-                <div className="space-y-4">
+              <div className="panel">
+                <h3>📈 Top 5 Most Similar</h3>
+                <div className="top5-list">
                   {top5Players.map(([name, score], index) => (
-                    <div key={name} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <span className="bg-white/20 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
-                            {index + 1}
-                          </span>
-                          <span className="text-white font-medium">{name}</span>
-                        </div>
+                    <div key={name} className="top5-item">
+                      <div className="top5-header">
+                        <span className="rank">{index + 1}</span>
+                        <span className="name">{name}</span>
                       </div>
                       <ScoreBar score={score} />
                     </div>
@@ -661,54 +525,50 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Right Panel - Guess History */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 h-full">
-              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                👥 Guess History ({guessHistory.length})
-              </h3>
-              
-              {guessHistory.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">🔍</div>
-                  <p className="text-white/60 text-lg">No guesses yet. Start by entering a player name!</p>
-                </div>
-              ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {guessHistory.map((item, index) => (
-                    <div key={index} className="bg-white/10 rounded-xl p-4 border border-white/20">
-                      <div className="mb-3">
-                        <h4 className="text-white font-semibold text-lg">{item.name}</h4>
-                      </div>
-                      
-                      <div className="mb-3">
-                        <ScoreBar score={item.score} />
-                      </div>
-                      
-                      {item.breakdown && Object.keys(item.breakdown).length > 0 && (
-                        <div className="grid grid-cols-2 gap-2">
-                          {Object.entries(item.breakdown)
-                            .filter(([key, value]) => 
-                              key !== 'total' && 
-                              key !== 'shared_seasons_detail' && 
-                              value > 0
-                            )
-                            .map(([key, value]) => (
-                              <div key={key} className="flex justify-between items-center text-sm">
-                                <span className="text-white/70">
-                                  {formatBreakdownKey(key)}
-                                </span>
-                                <span className="text-green-400 font-semibold">
-                                  +{value}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      )}
+          <div className="panel right-panel">
+            <h3>👥 Guess History ({guessHistory.length})</h3>
+            
+            {guessHistory.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🔍</div>
+                <p>No guesses yet. Start by entering a player name!</p>
+              </div>
+            ) : (
+              <div className="guess-list">
+                {guessHistory.map((item, index) => (
+                  <div key={index} className="guess-item">
+                    <div className="guess-header">
+                      <h4>{item.name}</h4>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    
+                    <div className="guess-score">
+                      <ScoreBar score={item.score} />
+                    </div>
+                    
+                    {item.breakdown && Object.keys(item.breakdown).length > 0 && (
+                      <div className="breakdown">
+                        {Object.entries(item.breakdown)
+                          .filter(([key, value]) => 
+                            key !== 'total' && 
+                            key !== 'shared_seasons_detail' && 
+                            value > 0
+                          )
+                          .map(([key, value]) => (
+                            <div key={key} className="breakdown-item">
+                              <span className="breakdown-label">
+                                {formatBreakdownKey(key)}
+                              </span>
+                              <span className="breakdown-value">
+                                +{value}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
