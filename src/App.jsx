@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import './NBAGuessGame.css'; // Import the CSS file
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -12,15 +11,18 @@ const NBAGuessGame = () => {
   const [top5Players, setTop5Players] = useState([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
+  const [modernPlayers, setModernPlayers] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [gameMode, setGameMode] = useState('modern'); // 'all' or 'modern'
+  const [showModeSelector, setShowModeSelector] = useState(true);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
   // Fallback modern NBA players (only used if API loading fails)
-  const modernPlayers = [
+  const fallbackModernPlayers = [
     'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
     'Luka Dončić', 'Jayson Tatum', 'Joel Embiid', 'Nikola Jokić', 'Damian Lillard',
     'Jimmy Butler', 'Kawhi Leonard', 'Anthony Davis', 'Russell Westbrook',
@@ -30,8 +32,43 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
+  const getCurrentPlayerSet = () => {
+    if (gameMode === 'modern') {
+      return modernPlayers.length > 0 ? modernPlayers : fallbackModernPlayers;
+    } else {
+      return allPlayers.length > 0 ? allPlayers : fallbackModernPlayers;
+    }
+  };
+
   const startNewGame = () => {
-    const playersToUse = allPlayers.length > 0 ? allPlayers : modernPlayers;
+    const playersToUse = getCurrentPlayerSet();
+    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    
+    setTargetPlayer(randomPlayer);
+    setGuess('');
+    setGuessHistory([]);
+    setGameWon(false);
+    setGuessCount(0);
+    setError('');
+    setTop5Players([]);
+    setShowAnswer(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    setShowModeSelector(false);
+    
+    console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+  };
+
+  const changeGameMode = (newMode) => {
+    setGameMode(newMode);
+    setShowModeSelector(false);
+    
+    // Start a new game with the selected mode
+    const playersToUse = newMode === 'modern' ? 
+      (modernPlayers.length > 0 ? modernPlayers : fallbackModernPlayers) :
+      (allPlayers.length > 0 ? allPlayers : fallbackModernPlayers);
+    
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
     
     setTargetPlayer(randomPlayer);
@@ -46,7 +83,11 @@ const NBAGuessGame = () => {
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
     
-    console.log('New game started with:', randomPlayer);
+    console.log('Game mode changed to:', newMode, 'New player:', randomPlayer);
+  };
+
+  const showModeSelection = () => {
+    setShowModeSelector(true);
   };
 
   useEffect(() => {
@@ -63,30 +104,22 @@ const NBAGuessGame = () => {
           const playerNames = await response.json();
           const sortedPlayers = playerNames.sort();
           setAllPlayers(sortedPlayers);
-          const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-          setTargetPlayer(randomPlayer);
-          console.log('Loaded', sortedPlayers.length, 'players from API');
+          
+          // Filter modern players (you might need to adjust this logic based on your API data structure)
+          // For now, using the fallback list, but you could filter by debut year if that data is available
+          setModernPlayers(fallbackModernPlayers.filter(player => 
+            sortedPlayers.includes(player)
+          ));
+          
+          console.log('Loaded', sortedPlayers.length, 'total players from API');
         } else {
           throw new Error('Failed to fetch players');
         }
       } catch (error) {
         console.error('Could not load players from API, using fallback:', error);
-        const fallback = modernPlayers;
-        setAllPlayers(fallback);
-        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
-        setTargetPlayer(randomPlayer);
+        setAllPlayers(fallbackModernPlayers);
+        setModernPlayers(fallbackModernPlayers);
       }
-
-      setGuess('');
-      setGuessHistory([]);
-      setGameWon(false);
-      setGuessCount(0);
-      setError('');
-      setTop5Players([]);
-      setShowAnswer(false);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
     };
 
     loadPlayerNames();
@@ -201,21 +234,36 @@ const NBAGuessGame = () => {
     const color = getScoreColor(score);
     
     return (
-      <div className="score-bar-container">
-        <div className="score-bar-track">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+        <div style={{ 
+          position: 'relative',
+          flex: 1,
+          height: '24px',
+          backgroundColor: '#374151',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          border: '1px solid #4b5563'
+        }}>
           <div 
-            className="score-bar-fill"
             style={{
               width: `${percentage}%`,
+              height: '100%',
               background: `linear-gradient(90deg, ${color}dd, ${color})`,
+              borderRadius: '12px',
+              transition: 'width 0.5s ease',
               boxShadow: `0 0 10px ${color}40`
             }}
           />
           {showLabel && (
             <div 
-              className="score-bar-label"
               style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
                 color: percentage > 30 ? 'white' : color,
+                fontSize: '12px',
+                fontWeight: 'bold',
                 textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none'
               }}
             >
@@ -224,8 +272,12 @@ const NBAGuessGame = () => {
           )}
         </div>
         <div 
-          className="score-bar-value"
-          style={{ color: color }}
+          style={{ 
+            color: color,
+            fontSize: '14px',
+            fontWeight: 'bold',
+            minWidth: '45px'
+          }}
         >
           {score}/100
         </div>
@@ -249,45 +301,214 @@ const NBAGuessGame = () => {
     return labels[key] || key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  // Game Mode Selection Screen
+  if (showModeSelector) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #1e40af 0%, #7c3aed 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      }}>
+        <div style={{
+          backgroundColor: '#1f2937',
+          borderRadius: '20px',
+          padding: '40px',
+          maxWidth: '500px',
+          width: '100%',
+          textAlign: 'center',
+          border: '2px solid #374151',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+        }}>
+          <div style={{ marginBottom: '30px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏀</div>
+            <h1 style={{ 
+              color: 'white', 
+              fontSize: '32px', 
+              fontWeight: 'bold',
+              marginBottom: '8px'
+            }}>
+              NBA-MANTLE
+            </h1>
+            <p style={{ color: '#9ca3af', fontSize: '16px' }}>
+              Choose your game mode
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <button
+              onClick={() => changeGameMode('modern')}
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '20px',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = '#2563eb';
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = '#3b82f6';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>⚡</span>
+              <div>
+                <div>Modern Era (2011+)</div>
+                <div style={{ fontSize: '14px', opacity: '0.8' }}>
+                  Focus on current and recent players
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => changeGameMode('all')}
+              style={{
+                backgroundColor: '#7c3aed',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '20px',
+                fontSize: '18px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = '#6d28d9';
+                e.target.style.transform = 'translateY(-2px)';
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = '#7c3aed';
+                e.target.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>🏆</span>
+              <div>
+                <div>All Time Greats</div>
+                <div style={{ fontSize: '14px', opacity: '0.8' }}>
+                  Including legends from all eras
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="game-container">
-      <div className="game-content">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #1e40af 0%, #7c3aed 100%)',
+      padding: '20px'
+    }}>
+      <div style={{
+        maxWidth: '1200px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
         {/* Header */}
-        <div className="header panel">
-          <div className="title-section">
-            <span>🏀</span>
-            <h1>NBA-MANTLE</h1>
-            <span>🎯</span>
+        <div style={{
+          backgroundColor: '#1f2937',
+          borderRadius: '16px',
+          padding: '24px',
+          textAlign: 'center',
+          border: '2px solid #374151',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '12px',
+            marginBottom: '12px'
+          }}>
+            <span style={{ fontSize: '32px' }}>🏀</span>
+            <h1 style={{ 
+              color: 'white', 
+              fontSize: '32px', 
+              fontWeight: 'bold',
+              margin: 0
+            }}>
+              NBA-MANTLE
+            </h1>
+            <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
-          <p className="subtitle">
+          <p style={{ color: '#9ca3af', margin: '0 0 16px 0' }}>
             Guess the mystery NBA player by finding similar players!
           </p>
-          
-          <div className="stats">
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '24px',
+            fontSize: '14px',
+            color: '#d1d5db'
+          }}>
+            <span style={{
+              backgroundColor: gameMode === 'modern' ? '#3b82f6' : '#7c3aed',
+              padding: '4px 12px',
+              borderRadius: '12px',
+              fontWeight: 'bold'
+            }}>
+              {gameMode === 'modern' ? '⚡ Modern Era' : '🏆 All Time'}
+            </span>
             <span>⚡ Attempt #{guessCount}</span>
             {!gameWon && !showAnswer && (
-              <span className="mystery">Mystery Player: ???</span>
+              <span>Mystery Player: ???</span>
             )}
             {(gameWon || showAnswer) && (
-              <span className="answer">Answer: {targetPlayer}</span>
+              <span style={{ color: '#10b981' }}>Answer: {targetPlayer}</span>
             )}
           </div>
         </div>
 
-        <div className="main-layout">
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '20px',
+          alignItems: 'start'
+        }}>
           {/* Left Panel */}
-          <div className="left-panel">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Input Section */}
-            <div className="panel">
-              <h3>🔍 Make Your Guess</h3>
+            <div style={{
+              backgroundColor: '#1f2937',
+              borderRadius: '16px',
+              padding: '24px',
+              border: '2px solid #374151',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+            }}>
+              <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
+                🔍 Make Your Guess
+              </h3>
               
               {!gameWon && !showAnswer && (
-                <div className="input-section">
-                  <div className="input-container">
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ position: 'relative', marginBottom: '12px' }}>
                     <input
                       type="text"
-                      className="player-input"
                       value={guess}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -295,7 +516,8 @@ const NBAGuessGame = () => {
                         setSelectedSuggestionIndex(-1);
                         
                         if (value.length > 0) {
-                          const filtered = allPlayers.filter(name =>
+                          const currentPlayerSet = getCurrentPlayerSet();
+                          const filtered = currentPlayerSet.filter(name =>
                             name.toLowerCase().includes(value.toLowerCase()) &&
                             !name.includes('?')
                           ).slice(0, 8);
@@ -346,21 +568,52 @@ const NBAGuessGame = () => {
                       }}
                       placeholder="Enter NBA player name..."
                       disabled={loading}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        borderRadius: '8px',
+                        border: '2px solid #4b5563',
+                        backgroundColor: '#374151',
+                        color: 'white',
+                        fontSize: '16px',
+                        outline: 'none'
+                      }}
                     />
                     
                     {showSuggestions && suggestions.length > 0 && (
-                      <ul className="suggestions">
+                      <ul style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        backgroundColor: '#374151',
+                        border: '2px solid #4b5563',
+                        borderTop: 'none',
+                        borderRadius: '0 0 8px 8px',
+                        zIndex: 10,
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        margin: 0,
+                        padding: 0,
+                        listStyle: 'none'
+                      }}>
                         {suggestions.map((suggestion, index) => (
                           <li
                             key={index}
-                            className={`suggestion-item ${index === selectedSuggestionIndex ? 'selected' : ''}`}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSuggestionSelect(suggestion);
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                            dangerouslySetInnerHTML={{ __html: suggestion }}
-                          />
+                            style={{
+                              padding: '8px 16px',
+                              cursor: 'pointer',
+                              backgroundColor: index === selectedSuggestionIndex ? '#4b5563' : 'transparent',
+                              color: 'white'
+                            }}
+                          >
+                            {suggestion}
+                          </li>
                         ))}
                       </ul>
                     )}
@@ -369,7 +622,18 @@ const NBAGuessGame = () => {
                   <button
                     onClick={makeGuess}
                     disabled={loading || !guess.trim()}
-                    className={`submit-btn ${loading || !guess.trim() ? 'disabled' : ''}`}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: loading || !guess.trim() ? '#6b7280' : '#3b82f6',
+                      color: 'white',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      cursor: loading || !guess.trim() ? 'not-allowed' : 'pointer',
+                      transition: 'background-color 0.2s'
+                    }}
                   >
                     {loading ? 'Searching...' : 'Submit Guess'}
                   </button>
@@ -377,36 +641,100 @@ const NBAGuessGame = () => {
               )}
 
               {error && (
-                <div className="error">
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#dc2626',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  marginBottom: '16px'
+                }}>
                   {error}
                 </div>
               )}
 
               {gameWon && (
-                <div className="win-message panel">
-                  <div className="emoji">🎉</div>
-                  <p>
+                <div style={{
+                  backgroundColor: '#f0fdf4',
+                  border: '2px solid #bbf7d0',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  textAlign: 'center',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎉</div>
+                  <p style={{ color: '#166534', margin: 0, fontWeight: 'bold' }}>
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
                 </div>
               )}
 
               {showAnswer && !gameWon && (
-                <div className="reveal-message panel">
-                  <div className="emoji">🎯</div>
-                  <p>
+                <div style={{
+                  backgroundColor: '#fef3c7',
+                  border: '2px solid #fde68a',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  textAlign: 'center',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎯</div>
+                  <p style={{ color: '#92400e', margin: 0, fontWeight: 'bold' }}>
                     The answer was {targetPlayer}
                   </p>
                 </div>
               )}
 
-              <div className="button-group">
-                <button className="new-game-btn" onClick={startNewGame}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button 
+                  onClick={startNewGame}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
                   🔄 New Game
                 </button>
                 
+                <button 
+                  onClick={showModeSelection}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#6b7280',
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🎮 Change Mode
+                </button>
+                
                 {!gameWon && !showAnswer && (
-                  <button className="reveal-btn" onClick={revealAnswer}>
+                  <button 
+                    onClick={revealAnswer}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#f59e0b',
+                      color: 'white',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
                     👁️ Reveal
                   </button>
                 )}
@@ -415,14 +743,45 @@ const NBAGuessGame = () => {
 
             {/* Top 5 Similar Players */}
             {top5Players.length > 0 && (
-              <div className="panel">
-                <h3>📈 Top 5 Most Similar</h3>
-                <div className="top5-list">
+              <div style={{
+                backgroundColor: '#1f2937',
+                borderRadius: '16px',
+                padding: '24px',
+                border: '2px solid #374151',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+              }}>
+                <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
+                  📈 Top 5 Most Similar
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {top5Players.map(([name, score], index) => (
-                    <div key={name} className="top5-item">
-                      <div className="top5-header">
-                        <span className="rank">{index + 1}</span>
-                        <span className="name">{name}</span>
+                    <div key={name} style={{
+                      padding: '12px',
+                      backgroundColor: '#374151',
+                      borderRadius: '8px',
+                      border: '1px solid #4b5563'
+                    }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        marginBottom: '8px'
+                      }}>
+                        <span style={{
+                          backgroundColor: '#4b5563',
+                          color: 'white',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '12px',
+                          fontWeight: 'bold'
+                        }}>
+                          {index + 1}
+                        </span>
+                        <span style={{ color: 'white', fontWeight: 'bold' }}>{name}</span>
                       </div>
                       <ScoreBar score={score} />
                     </div>
@@ -433,28 +792,61 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Right Panel - Guess History */}
-          <div className="panel right-panel">
-            <h3>👥 Guess History ({guessHistory.length})</h3>
+          <div style={{
+            backgroundColor: '#1f2937',
+            borderRadius: '16px',
+            padding: '24px',
+            border: '2px solid #374151',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+            height: 'fit-content'
+          }}>
+            <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
+              👥 Guess History ({guessHistory.length})
+            </h3>
             
             {guessHistory.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-icon">🔍</div>
+              <div style={{
+                textAlign: 'center',
+                padding: '40px 20px',
+                color: '#9ca3af'
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
                 <p>No guesses yet. Start by entering a player name!</p>
               </div>
             ) : (
-              <div className="guess-list">
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                maxHeight: '600px',
+                overflowY: 'auto'
+              }}>
                 {guessHistory.map((item, index) => (
-                  <div key={index} className="guess-item">
-                    <div className="guess-header">
-                      <h4>{item.name}</h4>
-                    </div>
+                  <div key={index} style={{
+                    padding: '16px',
+                    backgroundColor: '#374151',
+                    borderRadius: '12px',
+                    border: '1px solid #4b5563'
+                  }}>
+                    <h4 style={{
+                      color: 'white',
+                      margin: '0 0 12px 0',
+                      fontSize: '16px',
+                      fontWeight: 'bold'
+                    }}>
+                      {item.name}
+                    </h4>
                     
-                    <div className="guess-score">
+                    <div style={{ marginBottom: '12px' }}>
                       <ScoreBar score={item.score} />
                     </div>
                     
                     {item.breakdown && Object.keys(item.breakdown).length > 0 && (
-                      <div className="breakdown">
+                      <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '8px'
+                      }}>
                         {Object.entries(item.breakdown)
                           .filter(([key, value]) => 
                             key !== 'total' && 
@@ -462,11 +854,19 @@ const NBAGuessGame = () => {
                             value > 0
                           )
                           .map(([key, value]) => (
-                            <div key={key} className="breakdown-item">
-                              <span className="breakdown-label">
+                            <div key={key} style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              backgroundColor: '#4b5563',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              fontSize: '12px'
+                            }}>
+                              <span style={{ color: '#d1d5db', marginRight: '8px' }}>
                                 {formatBreakdownKey(key)}
                               </span>
-                              <span className="breakdown-value">
+                              <span style={{ color: '#10b981', fontWeight: 'bold' }}>
                                 +{value}
                               </span>
                             </div>
