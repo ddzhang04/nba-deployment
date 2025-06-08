@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import './styles.css'; // Import the CSS file
+import './NBAGuessGame.css'; // Import the CSS file
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
