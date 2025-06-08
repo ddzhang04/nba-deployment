@@ -15,6 +15,8 @@ const NBAGuessGame = () => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [gameMode, setGameMode] = useState('all-time'); // 'all-time' or 'classic'
+  const [allPlayersData, setAllPlayersData] = useState([]);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -30,8 +32,24 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
+  const getFilteredPlayers = () => {
+    if (allPlayersData.length === 0) {
+      return modernPlayers;
+    }
+
+    if (gameMode === 'classic') {
+      // Filter for players who started in 2011+ with 5+ seasons
+      return allPlayersData
+        .filter(player => player.start_year >= 2011 && player.career_length >= 5)
+        .map(player => player.name);
+    }
+
+    // All time mode - return all players
+    return allPlayersData.map(player => player.name);
+  };
+
   const startNewGame = () => {
-    const playersToUse = allPlayers.length > 0 ? allPlayers : modernPlayers;
+    const playersToUse = getFilteredPlayers();
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
     
     setTargetPlayer(randomPlayer);
@@ -46,7 +64,40 @@ const NBAGuessGame = () => {
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
     
-    console.log('New game started with:', randomPlayer);
+    console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+  };
+
+  const switchGameMode = (newMode) => {
+    setGameMode(newMode);
+    // Reset the game when switching modes
+    setTimeout(() => {
+      const playersToUse = gameMode === 'classic' 
+        ? allPlayersData.filter(player => player.start_year >= 2011 && player.career_length >= 5).map(player => player.name)
+        : allPlayersData.map(player => player.name);
+      
+      if (playersToUse.length === 0) {
+        // Fallback if no players match criteria
+        const fallbackPlayers = modernPlayers;
+        const randomPlayer = fallbackPlayers[Math.floor(Math.random() * fallbackPlayers.length)];
+        setTargetPlayer(randomPlayer);
+        setAllPlayers(fallbackPlayers);
+      } else {
+        const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+        setTargetPlayer(randomPlayer);
+        setAllPlayers(playersToUse);
+      }
+      
+      setGuess('');
+      setGuessHistory([]);
+      setGameWon(false);
+      setGuessCount(0);
+      setError('');
+      setTop5Players([]);
+      setShowAnswer(false);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    }, 100);
   };
 
   useEffect(() => {
@@ -60,12 +111,34 @@ const NBAGuessGame = () => {
         }
         
         if (response.ok) {
-          const playerNames = await response.json();
-          const sortedPlayers = playerNames.sort();
-          setAllPlayers(sortedPlayers);
-          const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-          setTargetPlayer(randomPlayer);
-          console.log('Loaded', sortedPlayers.length, 'players from API');
+          const playersData = await response.json();
+          
+          // Check if the data is an array of objects with the expected format
+          if (Array.isArray(playersData) && playersData.length > 0 && typeof playersData[0] === 'object') {
+            setAllPlayersData(playersData);
+            
+            // Filter players based on current mode
+            const filteredPlayers = gameMode === 'classic' 
+              ? playersData.filter(player => player.start_year >= 2011 && player.career_length >= 5)
+              : playersData;
+            
+            const playerNames = filteredPlayers.map(player => player.name).sort();
+            setAllPlayers(playerNames);
+            
+            if (playerNames.length > 0) {
+              const randomPlayer = playerNames[Math.floor(Math.random() * playerNames.length)];
+              setTargetPlayer(randomPlayer);
+              console.log('Loaded', playerNames.length, 'players from API for', gameMode, 'mode');
+            }
+          } else {
+            // Fallback if data format is different (array of strings)
+            const sortedPlayers = Array.isArray(playersData) ? playersData.sort() : [];
+            setAllPlayers(sortedPlayers);
+            if (sortedPlayers.length > 0) {
+              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              setTargetPlayer(randomPlayer);
+            }
+          }
         } else {
           throw new Error('Failed to fetch players');
         }
@@ -90,7 +163,7 @@ const NBAGuessGame = () => {
     };
 
     loadPlayerNames();
-  }, []);
+  }, [gameMode]);
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -263,9 +336,28 @@ const NBAGuessGame = () => {
           <p className="subtitle">
             Guess the mystery NBA player by finding similar players!
           </p>
+
+          {/* Game Mode Selector */}
+          <div className="game-mode-selector">
+            <button 
+              className={`mode-btn ${gameMode === 'all-time' ? 'active' : ''}`}
+              onClick={() => switchGameMode('all-time')}
+            >
+              🏆 All Time
+            </button>
+            <button 
+              className={`mode-btn ${gameMode === 'classic' ? 'active' : ''}`}
+              onClick={() => switchGameMode('classic')}
+            >
+              ⭐ Classic (2011+)
+            </button>
+          </div>
           
           <div className="stats">
             <span>⚡ Attempt #{guessCount}</span>
+            <span className="mode-indicator">
+              Mode: {gameMode === 'all-time' ? 'All Time' : 'Classic (2011+, 5+ seasons)'}
+            </span>
             {!gameWon && !showAnswer && (
               <span className="mystery">Mystery Player: ???</span>
             )}
