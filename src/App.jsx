@@ -11,18 +11,18 @@ const NBAGuessGame = () => {
   const [top5Players, setTop5Players] = useState([]);
   const [showAnswer, setShowAnswer] = useState(false);
   const [allPlayers, setAllPlayers] = useState([]);
-  const [modernPlayers, setModernPlayers] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-  const [gameMode, setGameMode] = useState('modern'); // 'all' or 'modern'
-  const [showModeSelector, setShowModeSelector] = useState(true);
+  const [gameMode, setGameMode] = useState('classic');
+  const [filteredPlayers, setFilteredPlayers] = useState([]);
+  const [playersData, setPlayersData] = useState({});
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
   // Fallback modern NBA players (only used if API loading fails)
-  const fallbackModernPlayers = [
+  const modernPlayers = [
     'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
     'Luka Dončić', 'Jayson Tatum', 'Joel Embiid', 'Nikola Jokić', 'Damian Lillard',
     'Jimmy Butler', 'Kawhi Leonard', 'Anthony Davis', 'Russell Westbrook',
@@ -32,16 +32,29 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const getCurrentPlayerSet = () => {
-    if (gameMode === 'modern') {
-      return modernPlayers.length > 0 ? modernPlayers : fallbackModernPlayers;
-    } else {
-      return allPlayers.length > 0 ? allPlayers : fallbackModernPlayers;
+  const filterPlayersForMode = (players, playerData, mode) => {
+    if (mode === 'all') {
+      return players;
     }
+    
+    // Classic mode: 2011+ debut with 5+ seasons
+    if (mode === 'classic') {
+      return players.filter(playerName => {
+        const player = playerData[playerName];
+        if (!player) return false;
+        
+        const startYear = player.start_year || 0;
+        const seasons = player.seasons || [];
+        
+        return startYear >= 2011 && seasons.length >= 5;
+      });
+    }
+    
+    return players;
   };
 
   const startNewGame = () => {
-    const playersToUse = getCurrentPlayerSet();
+    const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
     
     setTargetPlayer(randomPlayer);
@@ -55,23 +68,24 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
-    setShowModeSelector(false);
     
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
   };
 
-  const changeGameMode = (newMode) => {
+  const handleModeChange = (newMode) => {
     setGameMode(newMode);
-    setShowModeSelector(false);
     
-    // Start a new game with the selected mode
-    const playersToUse = newMode === 'modern' ? 
-      (modernPlayers.length > 0 ? modernPlayers : fallbackModernPlayers) :
-      (allPlayers.length > 0 ? allPlayers : fallbackModernPlayers);
+    // Filter players based on new mode
+    const filtered = filterPlayersForMode(allPlayers, playersData, newMode);
+    setFilteredPlayers(filtered);
     
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+    // Start a new game with the new mode
+    if (filtered.length > 0) {
+      const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
+      setTargetPlayer(randomPlayer);
+    }
     
-    setTargetPlayer(randomPlayer);
+    // Reset game state
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -83,20 +97,15 @@ const NBAGuessGame = () => {
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
     
-    console.log('Game mode changed to:', newMode, 'New player:', randomPlayer);
-  };
-
-  const showModeSelection = () => {
-    setShowModeSelector(true);
+    console.log('Mode changed to:', newMode, 'Players available:', filtered.length);
   };
 
   useEffect(() => {
     const loadPlayerNames = async () => {
       try {
-        // Try the correct endpoint first
+        // Load player names
         let response = await fetch(`${API_BASE}/players`);
         if (!response.ok) {
-          // Fallback to the other endpoint name
           response = await fetch(`${API_BASE}/player_awards`);
         }
         
@@ -105,21 +114,58 @@ const NBAGuessGame = () => {
           const sortedPlayers = playerNames.sort();
           setAllPlayers(sortedPlayers);
           
-          // Filter modern players (you might need to adjust this logic based on your API data structure)
-          // For now, using the fallback list, but you could filter by debut year if that data is available
-          setModernPlayers(fallbackModernPlayers.filter(player => 
-            sortedPlayers.includes(player)
-          ));
-          
-          console.log('Loaded', sortedPlayers.length, 'total players from API');
+          // Try to load full player data for filtering
+          try {
+            const fullDataResponse = await fetch(`${API_BASE}/players_data`);
+            if (fullDataResponse.ok) {
+              const fullData = await fullDataResponse.json();
+              setPlayersData(fullData);
+              
+              // Filter players based on current mode
+              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
+              setFilteredPlayers(filtered);
+              
+              if (filtered.length > 0) {
+                const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
+                setTargetPlayer(randomPlayer);
+              }
+              console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
+            } else {
+              // Fallback: use all players if we can't get detailed data
+              setFilteredPlayers(sortedPlayers);
+              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              setTargetPlayer(randomPlayer);
+              console.log('Using all players (no filtering data available)');
+            }
+          } catch (err) {
+            // Fallback: use all players
+            setFilteredPlayers(sortedPlayers);
+            const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+            setTargetPlayer(randomPlayer);
+            console.log('Using all players (filtering failed)');
+          }
         } else {
           throw new Error('Failed to fetch players');
         }
       } catch (error) {
         console.error('Could not load players from API, using fallback:', error);
-        setAllPlayers(fallbackModernPlayers);
-        setModernPlayers(fallbackModernPlayers);
+        const fallback = modernPlayers;
+        setAllPlayers(fallback);
+        setFilteredPlayers(fallback);
+        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
+        setTargetPlayer(randomPlayer);
       }
+
+      setGuess('');
+      setGuessHistory([]);
+      setGameWon(false);
+      setGuessCount(0);
+      setError('');
+      setTop5Players([]);
+      setShowAnswer(false);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
     };
 
     loadPlayerNames();
@@ -234,24 +280,22 @@ const NBAGuessGame = () => {
     const color = getScoreColor(score);
     
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
         <div style={{ 
           position: 'relative',
-          flex: 1,
+          width: '100%',
           height: '24px',
-          backgroundColor: '#374151',
+          backgroundColor: '#f3f4f6',
           borderRadius: '12px',
-          overflow: 'hidden',
-          border: '1px solid #4b5563'
+          overflow: 'hidden'
         }}>
           <div 
             style={{
               width: `${percentage}%`,
               height: '100%',
               background: `linear-gradient(90deg, ${color}dd, ${color})`,
-              borderRadius: '12px',
-              transition: 'width 0.5s ease',
-              boxShadow: `0 0 10px ${color}40`
+              boxShadow: `0 0 10px ${color}40`,
+              transition: 'width 0.3s ease'
             }}
           />
           {showLabel && (
@@ -262,23 +306,21 @@ const NBAGuessGame = () => {
                 left: '50%',
                 transform: 'translate(-50%, -50%)',
                 color: percentage > 30 ? 'white' : color,
-                fontSize: '12px',
+                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none',
                 fontWeight: 'bold',
-                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none'
+                fontSize: '12px'
               }}
             >
               {score}
             </div>
           )}
         </div>
-        <div 
-          style={{ 
-            color: color,
-            fontSize: '14px',
-            fontWeight: 'bold',
-            minWidth: '45px'
-          }}
-        >
+        <div style={{ 
+          color: color, 
+          fontWeight: 'bold', 
+          fontSize: '12px',
+          minWidth: '40px'
+        }}>
           {score}/100
         </div>
       </div>
@@ -301,182 +343,79 @@ const NBAGuessGame = () => {
     return labels[key] || key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  // Game Mode Selection Screen
-  if (showModeSelector) {
-    return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1e40af 0%, #7c3aed 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px'
-      }}>
-        <div style={{
-          backgroundColor: '#1f2937',
-          borderRadius: '20px',
-          padding: '40px',
-          maxWidth: '500px',
-          width: '100%',
-          textAlign: 'center',
-          border: '2px solid #374151',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
-        }}>
-          <div style={{ marginBottom: '30px' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏀</div>
-            <h1 style={{ 
-              color: 'white', 
-              fontSize: '32px', 
-              fontWeight: 'bold',
-              marginBottom: '8px'
-            }}>
-              NBA-MANTLE
-            </h1>
-            <p style={{ color: '#9ca3af', fontSize: '16px' }}>
-              Choose your game mode
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <button
-              onClick={() => changeGameMode('modern')}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '20px',
-                fontSize: '18px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#2563eb';
-                e.target.style.transform = 'translateY(-2px)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#3b82f6';
-                e.target.style.transform = 'translateY(0)';
-              }}
-            >
-              <span>⚡</span>
-              <div>
-                <div>Modern Era (2011+)</div>
-                <div style={{ fontSize: '14px', opacity: '0.8' }}>
-                  Focus on current and recent players
-                </div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => changeGameMode('all')}
-              style={{
-                backgroundColor: '#7c3aed',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '20px',
-                fontSize: '18px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#6d28d9';
-                e.target.style.transform = 'translateY(-2px)';
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#7c3aed';
-                e.target.style.transform = 'translateY(0)';
-              }}
-            >
-              <span>🏆</span>
-              <div>
-                <div>All Time Greats</div>
-                <div style={{ fontSize: '14px', opacity: '0.8' }}>
-                  Including legends from all eras
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1e40af 0%, #7c3aed 100%)',
-      padding: '20px'
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#0f172a', 
+      color: 'white', 
+      fontFamily: 'system-ui, -apple-system, sans-serif' 
     }}>
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px'
-      }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         {/* Header */}
-        <div style={{
-          backgroundColor: '#1f2937',
+        <div style={{ 
+          background: 'linear-gradient(135deg, #1e293b, #334155)',
           borderRadius: '16px',
           padding: '24px',
+          marginBottom: '24px',
           textAlign: 'center',
-          border: '2px solid #374151',
-          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+          border: '1px solid #334155'
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '12px',
-            marginBottom: '12px'
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ 
-              color: 'white', 
-              fontSize: '32px', 
-              fontWeight: 'bold',
-              margin: 0
-            }}>
-              NBA-MANTLE
-            </h1>
+            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA-MANTLE</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
-          <p style={{ color: '#9ca3af', margin: '0 0 16px 0' }}>
+          <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players!
           </p>
 
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '24px',
-            fontSize: '14px',
-            color: '#d1d5db'
-          }}>
-            <span style={{
-              backgroundColor: gameMode === 'modern' ? '#3b82f6' : '#7c3aed',
-              padding: '4px 12px',
-              borderRadius: '12px',
-              fontWeight: 'bold'
-            }}>
-              {gameMode === 'modern' ? '⚡ Modern Era' : '🏆 All Time'}
-            </span>
-            <span>⚡ Attempt #{guessCount}</span>
+          {/* Game Mode Selection */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => handleModeChange('classic')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'classic' ? '#3b82f6' : '#475569',
+                  color: 'white'
+                }}
+              >
+                🏆 Classic Mode
+              </button>
+              <button
+                onClick={() => handleModeChange('all')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'all' ? '#3b82f6' : '#475569',
+                  color: 'white'
+                }}
+              >
+                🌟 All Players
+              </button>
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
+              {gameMode === 'classic' ? 
+                `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)` : 
+                `All Players: Complete database (${filteredPlayers.length} players)`
+              }
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem' }}>
+            <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
             {!gameWon && !showAnswer && (
-              <span>Mystery Player: ???</span>
+              <span style={{ color: '#94a3b8' }}>Mystery Player: ???</span>
             )}
             {(gameWon || showAnswer) && (
               <span style={{ color: '#10b981' }}>Answer: {targetPlayer}</span>
@@ -484,29 +423,22 @@ const NBAGuessGame = () => {
           </div>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '20px',
-          alignItems: 'start'
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
           {/* Left Panel */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
             {/* Input Section */}
-            <div style={{
-              backgroundColor: '#1f2937',
+            <div style={{ 
+              background: 'linear-gradient(135deg, #1e293b, #334155)',
               borderRadius: '16px',
               padding: '24px',
-              border: '2px solid #374151',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+              marginBottom: '24px',
+              border: '1px solid #334155'
             }}>
-              <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
-                🔍 Make Your Guess
-              </h3>
+              <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
               
               {!gameWon && !showAnswer && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ position: 'relative', marginBottom: '12px' }}>
+                <div>
+                  <div style={{ position: 'relative', marginBottom: '16px' }}>
                     <input
                       type="text"
                       value={guess}
@@ -516,8 +448,7 @@ const NBAGuessGame = () => {
                         setSelectedSuggestionIndex(-1);
                         
                         if (value.length > 0) {
-                          const currentPlayerSet = getCurrentPlayerSet();
-                          const filtered = currentPlayerSet.filter(name =>
+                          const filtered = allPlayers.filter(name =>
                             name.toLowerCase().includes(value.toLowerCase()) &&
                             !name.includes('?')
                           ).slice(0, 8);
@@ -572,11 +503,10 @@ const NBAGuessGame = () => {
                         width: '100%',
                         padding: '12px 16px',
                         borderRadius: '8px',
-                        border: '2px solid #4b5563',
-                        backgroundColor: '#374151',
+                        border: '2px solid #475569',
+                        backgroundColor: '#0f172a',
                         color: 'white',
-                        fontSize: '16px',
-                        outline: 'none'
+                        fontSize: '16px'
                       }}
                     />
                     
@@ -586,31 +516,30 @@ const NBAGuessGame = () => {
                         top: '100%',
                         left: 0,
                         right: 0,
-                        backgroundColor: '#374151',
-                        border: '2px solid #4b5563',
-                        borderTop: 'none',
-                        borderRadius: '0 0 8px 8px',
-                        zIndex: 10,
+                        backgroundColor: '#1e293b',
+                        border: '1px solid #475569',
+                        borderRadius: '8px',
                         maxHeight: '200px',
                         overflowY: 'auto',
-                        margin: 0,
+                        zIndex: 1000,
+                        listStyle: 'none',
                         padding: 0,
-                        listStyle: 'none'
+                        margin: 0
                       }}>
                         {suggestions.map((suggestion, index) => (
                           <li
                             key={index}
+                            style={{
+                              padding: '12px 16px',
+                              cursor: 'pointer',
+                              backgroundColor: index === selectedSuggestionIndex ? '#334155' : 'transparent',
+                              borderBottom: index < suggestions.length - 1 ? '1px solid #334155' : 'none'
+                            }}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               handleSuggestionSelect(suggestion);
                             }}
                             onMouseEnter={() => setSelectedSuggestionIndex(index)}
-                            style={{
-                              padding: '8px 16px',
-                              cursor: 'pointer',
-                              backgroundColor: index === selectedSuggestionIndex ? '#4b5563' : 'transparent',
-                              color: 'white'
-                            }}
                           >
                             {suggestion}
                           </li>
@@ -624,15 +553,14 @@ const NBAGuessGame = () => {
                     disabled={loading || !guess.trim()}
                     style={{
                       width: '100%',
-                      padding: '12px',
+                      padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() ? '#6b7280' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() ? '#475569' : '#3b82f6',
                       color: 'white',
-                      fontSize: '16px',
                       fontWeight: 'bold',
                       cursor: loading || !guess.trim() ? 'not-allowed' : 'pointer',
-                      transition: 'background-color 0.2s'
+                      fontSize: '16px'
                     }}
                   >
                     {loading ? 'Searching...' : 'Submit Guess'}
@@ -641,83 +569,65 @@ const NBAGuessGame = () => {
               )}
 
               {error && (
-                <div style={{
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  color: '#dc2626',
-                  padding: '12px',
-                  borderRadius: '8px',
-                  marginBottom: '16px'
+                <div style={{ 
+                  backgroundColor: '#fecaca', 
+                  color: '#dc2626', 
+                  padding: '12px', 
+                  borderRadius: '8px', 
+                  marginTop: '16px' 
                 }}>
                   {error}
                 </div>
               )}
 
               {gameWon && (
-                <div style={{
-                  backgroundColor: '#f0fdf4',
-                  border: '2px solid #bbf7d0',
-                  borderRadius: '12px',
-                  padding: '20px',
-                  textAlign: 'center',
-                  marginBottom: '16px'
+                <div style={{ 
+                  textAlign: 'center', 
+                  backgroundColor: '#22c55e', 
+                  color: 'white', 
+                  padding: '20px', 
+                  borderRadius: '12px', 
+                  margin: '16px 0' 
                 }}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎉</div>
-                  <p style={{ color: '#166534', margin: 0, fontWeight: 'bold' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
                 </div>
               )}
 
               {showAnswer && !gameWon && (
-                <div style={{
-                  backgroundColor: '#fef3c7',
-                  border: '2px solid #fde68a',
-                  borderRadius: '12px',
-                  padding: '20px',
-                  textAlign: 'center',
-                  marginBottom: '16px'
+                <div style={{ 
+                  textAlign: 'center', 
+                  backgroundColor: '#f59e0b', 
+                  color: 'white', 
+                  padding: '20px', 
+                  borderRadius: '12px', 
+                  margin: '16px 0' 
                 }}>
-                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>🎯</div>
-                  <p style={{ color: '#92400e', margin: 0, fontWeight: 'bold' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
+                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
                     The answer was {targetPlayer}
                   </p>
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 <button 
                   onClick={startNewGame}
                   style={{
                     flex: 1,
-                    padding: '12px',
+                    padding: '12px 20px',
                     borderRadius: '8px',
                     border: 'none',
                     backgroundColor: '#10b981',
                     color: 'white',
-                    fontSize: '14px',
                     fontWeight: 'bold',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    fontSize: '16px'
                   }}
                 >
                   🔄 New Game
-                </button>
-                
-                <button 
-                  onClick={showModeSelection}
-                  style={{
-                    flex: 1,
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#6b7280',
-                    color: 'white',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                >
-                  🎮 Change Mode
                 </button>
                 
                 {!gameWon && !showAnswer && (
@@ -725,14 +635,14 @@ const NBAGuessGame = () => {
                     onClick={revealAnswer}
                     style={{
                       flex: 1,
-                      padding: '12px',
+                      padding: '12px 20px',
                       borderRadius: '8px',
                       border: 'none',
                       backgroundColor: '#f59e0b',
                       color: 'white',
-                      fontSize: '14px',
                       fontWeight: 'bold',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      fontSize: '16px'
                     }}
                   >
                     👁️ Reveal
@@ -743,45 +653,32 @@ const NBAGuessGame = () => {
 
             {/* Top 5 Similar Players */}
             {top5Players.length > 0 && (
-              <div style={{
-                backgroundColor: '#1f2937',
+              <div style={{ 
+                background: 'linear-gradient(135deg, #1e293b, #334155)',
                 borderRadius: '16px',
                 padding: '24px',
-                border: '2px solid #374151',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+                border: '1px solid #334155'
               }}>
-                <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
-                  📈 Top 5 Most Similar
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
+                <div>
                   {top5Players.map(([name, score], index) => (
-                    <div key={name} style={{
-                      padding: '12px',
-                      backgroundColor: '#374151',
-                      borderRadius: '8px',
-                      border: '1px solid #4b5563'
-                    }}>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        marginBottom: '8px'
-                      }}>
-                        <span style={{
-                          backgroundColor: '#4b5563',
-                          color: 'white',
-                          width: '24px',
-                          height: '24px',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '12px',
-                          fontWeight: 'bold'
+                    <div key={name} style={{ marginBottom: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                        <span style={{ 
+                          backgroundColor: '#3b82f6', 
+                          color: 'white', 
+                          width: '24px', 
+                          height: '24px', 
+                          borderRadius: '50%', 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          fontSize: '12px', 
+                          fontWeight: 'bold' 
                         }}>
                           {index + 1}
                         </span>
-                        <span style={{ color: 'white', fontWeight: 'bold' }}>{name}</span>
+                        <span style={{ fontWeight: 'bold', color: '#f1f5f9' }}>{name}</span>
                       </div>
                       <ScoreBar score={score} />
                     </div>
@@ -792,61 +689,37 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Right Panel - Guess History */}
-          <div style={{
-            backgroundColor: '#1f2937',
+          <div style={{ 
+            background: 'linear-gradient(135deg, #1e293b, #334155)',
             borderRadius: '16px',
             padding: '24px',
-            border: '2px solid #374151',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-            height: 'fit-content'
+            border: '1px solid #334155'
           }}>
-            <h3 style={{ color: 'white', marginBottom: '16px', fontSize: '18px' }}>
-              👥 Guess History ({guessHistory.length})
-            </h3>
+            <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>👥 Guess History ({guessHistory.length})</h3>
             
             {guessHistory.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                padding: '40px 20px',
-                color: '#9ca3af'
-              }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+              <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px' }}>
+                <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🔍</div>
                 <p>No guesses yet. Start by entering a player name!</p>
               </div>
             ) : (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                maxHeight: '600px',
-                overflowY: 'auto'
-              }}>
+              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
                 {guessHistory.map((item, index) => (
-                  <div key={index} style={{
-                    padding: '16px',
-                    backgroundColor: '#374151',
-                    borderRadius: '12px',
-                    border: '1px solid #4b5563'
+                  <div key={index} style={{ 
+                    backgroundColor: '#0f172a', 
+                    borderRadius: '12px', 
+                    padding: '16px', 
+                    marginBottom: '12px',
+                    border: '1px solid #334155'
                   }}>
-                    <h4 style={{
-                      color: 'white',
-                      margin: '0 0 12px 0',
-                      fontSize: '16px',
-                      fontWeight: 'bold'
-                    }}>
-                      {item.name}
-                    </h4>
-                    
                     <div style={{ marginBottom: '12px' }}>
-                      <ScoreBar score={item.score} />
+                      <h4 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{item.name}</h4>
                     </div>
                     
+                    <ScoreBar score={item.score} />
+                    
                     {item.breakdown && Object.keys(item.breakdown).length > 0 && (
-                      <div style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '8px'
-                      }}>
+                      <div style={{ marginTop: '12px' }}>
                         {Object.entries(item.breakdown)
                           .filter(([key, value]) => 
                             key !== 'total' && 
@@ -854,21 +727,15 @@ const NBAGuessGame = () => {
                             value > 0
                           )
                           .map(([key, value]) => (
-                            <div key={key} style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              backgroundColor: '#4b5563',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              fontSize: '12px'
+                            <div key={key} style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              fontSize: '12px', 
+                              color: '#94a3b8', 
+                              marginBottom: '4px' 
                             }}>
-                              <span style={{ color: '#d1d5db', marginRight: '8px' }}>
-                                {formatBreakdownKey(key)}
-                              </span>
-                              <span style={{ color: '#10b981', fontWeight: 'bold' }}>
-                                +{value}
-                              </span>
+                              <span>{formatBreakdownKey(key)}</span>
+                              <span style={{ color: '#10b981', fontWeight: 'bold' }}>+{value}</span>
                             </div>
                           ))}
                       </div>
