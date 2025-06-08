@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 
+
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
   const [guessHistory, setGuessHistory] = useState([]);
   const [gameWon, setGameWon] = useState(false);
-  const [guessCount, setGuessCount] = useState(0);
+  const [guessCount, setGuessCount] = useState(s0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [top5Players, setTop5Players] = useState([]);
