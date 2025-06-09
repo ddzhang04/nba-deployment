@@ -111,11 +111,7 @@ const NBAGuessGame = () => {
 
   useEffect(() => {
 
-    const script = document.createElement('script');
-    script.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7430051034208796';
-    script.async = true;
-    script.crossOrigin = 'anonymous';
-    document.head.appendChild(script);
+
 
     const loadPlayerNames = async () => {
       try {
@@ -763,7 +759,9 @@ const NBAGuessGame = () => {
           </div>
         </div>
       </div>
+        <Analytics />
     </div>
+
   );
 };
 
