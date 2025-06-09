@@ -62,7 +62,6 @@ const NBAGuessGame = () => {
     
     return players;
   };
-
   const startNewGame = () => {
     const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
