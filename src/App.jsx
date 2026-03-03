@@ -39,31 +39,32 @@ const NBAGuessGame = () => {
     if (mode === 'all') {
       return players;
     }
-    
-    // Classic mode: 2011+ debut with 5+ seasons
-    if (mode === 'classic') {
-      console.log('Filtering for classic mode...');
-      return players.filter(playerName => {
-        const player = playerData[playerName];
-        if (!player) {
-          console.log(`No data for player: ${playerName}`);
-          return false;
+
+    return players.filter(playerName => {
+      const player = playerData[playerName];
+      if (!player) {
+        return false;
+      }
+
+      const startYear = player.start_year || 0;
+      const seasonsCount = player.seasons_count || player.career_length || 0;
+
+      if (mode === 'classic') {
+        // Classic mode: 2011+ debut with 5+ seasons
+        return startYear >= 2011 && seasonsCount >= 5;
+      }
+
+      if (mode === 'easy') {
+        // Easy mode: made at least one All-Star team in 2000 or later
+        if (player.modern_all_star === true) {
+          return true;
         }
-        
-        const startYear = player.start_year || 0;
-        // Prefer actual seasons played; fall back to career_length if needed
-        const seasonsCount = player.seasons_count || player.career_length || 0;
-        
-        const isValid = startYear >= 2011 && seasonsCount >= 5;
-        if (isValid) {
-          console.log(`Including ${playerName}: startYear=${startYear}, seasons=${seasonsCount}`);
-        }
-        
-        return isValid;
-      });
-    }
-    
-    return players;
+        const allStarSeasons = player.all_star_seasons || [];
+        return allStarSeasons.some(year => year >= 2000);
+      }
+
+      return true;
+    });
   };
   const startNewGame = () => {
     const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
@@ -287,7 +288,12 @@ const NBAGuessGame = () => {
   const handleShare = () => {
     if (!targetPlayer || !gameWon) return;
 
-    const modeLabel = gameMode === 'classic' ? 'Classic' : 'All Players';
+    const modeLabel =
+      gameMode === 'classic'
+        ? 'Classic'
+        : gameMode === 'easy'
+        ? 'Easy'
+        : 'All Players';
     const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
 
     const copyPromise =
@@ -456,6 +462,21 @@ const NBAGuessGame = () => {
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
+                onClick={() => handleModeChange('easy')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'easy' ? '#22c55e' : '#475569',
+                  color: 'white'
+                }}
+              >
+                😊 Easy Mode
+              </button>
+              <button
                 onClick={() => handleModeChange('classic')}
                 style={{
                   padding: '10px 20px',
@@ -487,10 +508,12 @@ const NBAGuessGame = () => {
               </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
-              {gameMode === 'classic' ? 
-                `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)` : 
-                `All Players: Complete database (${filteredPlayers.length} players)`
-              }
+              {gameMode === 'easy' && 
+                `Easy: 21st century All-Stars (made an All-Star team in 2000 or later) (${filteredPlayers.length} players)`}
+              {gameMode === 'classic' && 
+                `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
+              {gameMode === 'all' && 
+                `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
           </div>
           
@@ -576,6 +599,9 @@ const NBAGuessGame = () => {
                   <span style={{ fontWeight: 'bold', color: '#e5e7eb' }}>Modes:</span>
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                  <li style={{ marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 'bold' }}>Easy</span>: Players who made at least one All-Star team in the 21st century (2000 or later).
+                  </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
                   </li>
