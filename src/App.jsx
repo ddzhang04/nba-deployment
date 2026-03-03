@@ -514,11 +514,12 @@ const NBAGuessGame = () => {
             style={{
               position: 'fixed',
               inset: 0,
-              backgroundColor: 'rgba(15,23,42,0.8)',
+              backgroundColor: 'rgba(15,23,42,0.85)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 50,
+              padding: '16px',
             }}
           >
             <div
@@ -526,11 +527,13 @@ const NBAGuessGame = () => {
               style={{
                 width: '100%',
                 maxWidth: '540px',
+                maxHeight: '100%',
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 borderRadius: '16px',
-                padding: '24px',
+                padding: '20px',
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
                 border: '1px solid #334155',
+                overflowY: 'auto',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -601,22 +604,24 @@ const NBAGuessGame = () => {
                 You can also reveal the answer at any time with the <span style={{ fontWeight: 'bold' }}>Reveal</span> button, and see the top 5 most similar players to the mystery player.
               </p>
 
-              <button
-                onClick={() => setShowHowToPlay(false)}
-                style={{
-                  width: '100%',
-                  padding: '10px 18px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  fontSize: '0.95rem',
-                }}
-              >
-                Got it, let&apos;s play
-              </button>
+              <div style={{ position: 'sticky', bottom: 0, marginTop: '12px' }}>
+                <button
+                  onClick={() => setShowHowToPlay(false)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 18px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: '#3b82f6',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  Got it, let&apos;s play
+                </button>
+              </div>
             </div>
           </div>
         )}
