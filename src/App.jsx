@@ -548,11 +548,11 @@ const NBAGuessGame = () => {
                 After each guess, you&apos;ll see a breakdown explaining why that player was similar:
               </p>
               <ul style={{ paddingLeft: '20px', marginTop: 0, marginBottom: '16px', color: '#d1d5db', fontSize: '0.9rem' }}>
-                <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: how many years they actually played together.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Years as Teammates</span>: total seasons as teammates across any teams.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: specific seasons they were on the exact same roster.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Years as Teammates</span>: total seasons they were teammates (including multiple teams or stints).</li>
                 <li><span style={{ fontWeight: 'bold' }}>Shared Franchises</span>: if they both played for the same organizations.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or similar position.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their career start years are.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their <span style={{ fontWeight: 'bold' }}>start year</span> is (earliest unique season in the league).</li>
                 <li><span style={{ fontWeight: 'bold' }}>Career Length Similarity</span>: similar number of seasons in the league.</li>
                 <li><span style={{ fontWeight: 'bold' }}>All-Star / All-NBA / Awards</span>: overlap in star-level honors.</li>
               </ul>
