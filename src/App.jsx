@@ -283,6 +283,31 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
   };
 
+  const handleShare = () => {
+    if (!targetPlayer) return;
+
+    const modeLabel = gameMode === 'classic' ? 'Classic' : 'All Players';
+    const shareText = `I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode). Test your ball knowledge: https://nba-mantle-6-5.onrender.com/`;
+
+    if (navigator.share) {
+      navigator
+        .share({
+          title: 'NBA-MANTLE',
+          text: shareText,
+          url: 'https://nba-mantle-6-5.onrender.com/',
+        })
+        .catch(() => {
+          // Ignore share cancellation/errors and fall back silently
+        });
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareText).then(() => {
+        alert('Share message copied to clipboard!');
+      });
+    } else {
+      alert(shareText);
+    }
+  };
+
   const getScoreColor = (score) => {
     if (score >= 80) return '#10b981';
     if (score >= 60) return '#f59e0b';
@@ -768,6 +793,26 @@ const NBAGuessGame = () => {
                     The answer was {targetPlayer}
                   </p>
                 </div>
+              )}
+
+              {(gameWon || showAnswer) && targetPlayer && (
+                <button
+                  onClick={handleShare}
+                  style={{
+                    marginTop: '8px',
+                    width: '100%',
+                    padding: '10px 18px',
+                    borderRadius: '10px',
+                    border: '1px solid #4b5563',
+                    background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  📤 Share your result
+                </button>
               )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
