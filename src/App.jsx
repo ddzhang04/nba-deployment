@@ -55,12 +55,8 @@ const NBAGuessGame = () => {
       }
 
       if (mode === 'easy') {
-        // Easy mode: made at least one All-Star team in 2000 or later
-        if (player.modern_all_star === true) {
-          return true;
-        }
-        const allStarSeasons = player.all_star_seasons || [];
-        return allStarSeasons.some(year => year >= 2000);
+        // Easy mode: recognizable modern players (debut 2000+ with 5+ seasons)
+        return startYear >= 2000 && seasonsCount >= 5;
       }
 
       return true;
@@ -509,7 +505,7 @@ const NBAGuessGame = () => {
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'easy' && 
-                `Easy: 21st century All-Stars (made an All-Star team in 2000 or later) (${filteredPlayers.length} players)`}
+                `Easy: Modern stars (debut 2000+) with 5+ seasons (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
                 `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
               {gameMode === 'all' && 
@@ -600,7 +596,7 @@ const NBAGuessGame = () => {
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Easy</span>: Players who made at least one All-Star team in the 21st century (2000 or later).
+                    <span style={{ fontWeight: 'bold' }}>Easy</span>: Modern stars who debuted in 2000 or later and have at least 5 seasons.
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
