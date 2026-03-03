@@ -284,28 +284,30 @@ const NBAGuessGame = () => {
   };
 
   const handleShare = () => {
-    if (!targetPlayer) return;
+    if (!targetPlayer || !gameWon) return;
 
     const modeLabel = gameMode === 'classic' ? 'Classic' : 'All Players';
     const shareText = `I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode). Test your ball knowledge: https://nba-mantle-6-5.onrender.com/`;
 
-    if (navigator.share) {
-      navigator
-        .share({
-          title: 'NBA-MANTLE',
-          text: shareText,
-          url: 'https://nba-mantle-6-5.onrender.com/',
-        })
-        .catch(() => {
-          // Ignore share cancellation/errors and fall back silently
-        });
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(shareText).then(() => {
-        alert('Share message copied to clipboard!');
-      });
-    } else {
-      alert(shareText);
-    }
+    const copyPromise =
+      navigator.clipboard && navigator.clipboard.writeText
+        ? navigator.clipboard.writeText(shareText)
+        : Promise.resolve();
+
+    copyPromise.finally(() => {
+      if (navigator.share) {
+        navigator
+          .share({
+            title: 'NBA-MANTLE',
+            text: shareText,
+            url: 'https://nba-mantle-6-5.onrender.com/',
+          })
+          .catch(() => {
+            // Ignore share cancellation/errors
+          });
+      }
+      alert('Copied share message to clipboard!');
+    });
   };
 
   const getScoreColor = (score) => {
@@ -795,7 +797,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
 
-              {(gameWon || showAnswer) && targetPlayer && (
+              {gameWon && targetPlayer && (
                 <button
                   onClick={handleShare}
                   style={{
