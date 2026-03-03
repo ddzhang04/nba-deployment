@@ -130,7 +130,8 @@ const NBAGuessGame = () => {
           
           // Try to load full player data for filtering
           try {
-            const fullDataResponse = await fetch(`${API_BASE}/players_data`);
+            // Add a version param to bust any stale caching on the backend route
+            const fullDataResponse = await fetch(`${API_BASE}/players_data?v=2`);
             if (fullDataResponse.ok) {
               const fullData = await fullDataResponse.json();
               setPlayersData(fullData);
