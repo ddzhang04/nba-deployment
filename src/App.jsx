@@ -19,6 +19,7 @@ const NBAGuessGame = () => {
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showCopyToast, setShowCopyToast] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -287,7 +288,7 @@ const NBAGuessGame = () => {
     if (!targetPlayer || !gameWon) return;
 
     const modeLabel = gameMode === 'classic' ? 'Classic' : 'All Players';
-    const shareText = `I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode). Test your ball knowledge: https://nba-mantle-6-5.onrender.com/`;
+    const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-mantle-6-5.onrender.com/`;
 
     const copyPromise =
       navigator.clipboard && navigator.clipboard.writeText
@@ -306,7 +307,8 @@ const NBAGuessGame = () => {
             // Ignore share cancellation/errors
           });
       }
-      alert('Copied share message to clipboard!');
+      setShowCopyToast(true);
+      setTimeout(() => setShowCopyToast(false), 2500);
     });
   };
 
@@ -398,6 +400,28 @@ const NBAGuessGame = () => {
       color: 'white', 
       fontFamily: 'system-ui, -apple-system, sans-serif' 
     }}>
+      {/* Copy-to-clipboard toast */}
+      {showCopyToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#16a34a',
+            color: 'white',
+            padding: '10px 18px',
+            borderRadius: '999px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
+            fontSize: '0.9rem',
+            fontWeight: 'bold',
+            zIndex: 60,
+          }}
+        >
+          ✅ Share message copied to clipboard
+        </div>
+      )}
+
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         {/* Header */}
         <div style={{ 
