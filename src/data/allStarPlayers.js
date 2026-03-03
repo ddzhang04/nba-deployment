@@ -82,10 +82,7 @@ export const ALL_STAR_PLAYER_NAMES = new Set([
   "Kevin Love",
   "Kemba Walker",
   "Victor Oladipo",
-  "Myles Turner",
-  "Malcolm Brogdon",
   "Brook Lopez",
-  "Eric Bledsoe",
   "Mike Conley",
   "Marc Gasol",
   "Pau Gasol",
@@ -198,5 +195,10 @@ export const ALL_STAR_PLAYER_NAMES = new Set([
   "Scott Wedman",
   "Jerry Sichting",
   "Alperen Şengün",
-  "Jalen Williams"
+  "Jalen Williams",
+  "Jamal Murray",
+  "Jalen Johnson",
+  "Jalen Duren",
+  "Deni Avdija",
+  "Norman Powell"
 ]);
