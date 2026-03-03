@@ -430,10 +430,8 @@ const NBAGuessGame = () => {
           
           <button
             onClick={() => setShowHowToPlay(true)}
+            className="how-to-play-btn"
             style={{
-              position: 'absolute',
-              top: '20px',
-              right: '20px',
               padding: '8px 14px',
               borderRadius: '999px',
               border: '1px solid #4b5563',

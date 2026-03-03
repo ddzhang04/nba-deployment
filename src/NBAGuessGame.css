@@ -78,6 +78,21 @@ html, body {
   font-weight: bold;
 }
 
+/* How to Play button positioning */
+.how-to-play-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+@media (max-width: 640px) {
+  .how-to-play-btn {
+    position: static;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+}
+
 /* Layout */
 .main-layout {
   display: grid;
