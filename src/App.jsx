@@ -18,6 +18,7 @@ const NBAGuessGame = () => {
   const [gameMode, setGameMode] = useState('classic');
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
+  const [allStarPlayerNames, setAllStarPlayerNames] = useState(new Set());
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
 
@@ -35,13 +36,21 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const filterPlayersForMode = (players, playerData, mode) => {
+  const filterPlayersForMode = (players, playerData, mode, allStarNames = null) => {
     if (mode === 'all') {
       return players;
     }
 
     return players.filter(playerName => {
       const player = playerData[playerName];
+
+      if (mode === 'easy') {
+        // All Stars Only: use is_all_star from API when present, else fall back to player_awards list
+        if (player && player.is_all_star === true) return true;
+        if (allStarNames && allStarNames.has(playerName)) return true;
+        return false;
+      }
+
       if (!player) {
         return false;
       }
@@ -52,11 +61,6 @@ const NBAGuessGame = () => {
       if (mode === 'classic') {
         // Classic mode: 2011+ debut with 5+ seasons
         return startYear >= 2011 && seasonsCount >= 5;
-      }
-
-      if (mode === 'easy') {
-        // Easy mode: only players who made at least one All-Star team
-        return player.is_all_star === true;
       }
 
       return true;
@@ -85,7 +89,7 @@ const NBAGuessGame = () => {
     setGameMode(newMode);
     
     // Filter players based on new mode
-    const filtered = filterPlayersForMode(allPlayers, playersData, newMode);
+    const filtered = filterPlayersForMode(allPlayers, playersData, newMode, allStarPlayerNames);
     setFilteredPlayers(filtered);
     
     // Start a new game with the new mode
@@ -126,16 +130,22 @@ const NBAGuessGame = () => {
           const sortedPlayers = playerNames.sort();
           setAllPlayers(sortedPlayers);
           
-          // Try to load full player data for filtering
+          // Try to load full player data and all-star list for filtering
           try {
-            // Add a version param to bust any stale caching on the backend route
-            const fullDataResponse = await fetch(`${API_BASE}/players_data?v=2`);
+            const [fullDataResponse, awardsResponse] = await Promise.all([
+              fetch(`${API_BASE}/players_data?v=2`),
+              fetch(`${API_BASE}/player_awards`)
+            ]);
+            const awardNames = awardsResponse.ok ? await awardsResponse.json() : [];
+            const allStarSet = new Set(Array.isArray(awardNames) ? awardNames : []);
+            setAllStarPlayerNames(allStarSet);
+
             if (fullDataResponse.ok) {
               const fullData = await fullDataResponse.json();
               setPlayersData(fullData);
               
-              // Filter players based on current mode
-              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
+              // Filter players based on current mode (allStarSet used for "All Stars Only" when API has no is_all_star)
+              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode, allStarSet);
               setFilteredPlayers(filtered);
               
               if (filtered.length > 0) {
@@ -144,11 +154,14 @@ const NBAGuessGame = () => {
               }
               console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
             } else {
-              // Fallback: use all players if we can't get detailed data
-              setFilteredPlayers(sortedPlayers);
-              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              // No players_data: still filter All Stars Only by award list when available
+              const filtered = gameMode === 'easy' && allStarSet.size > 0
+                ? sortedPlayers.filter(n => allStarSet.has(n))
+                : sortedPlayers;
+              setFilteredPlayers(filtered);
+              const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
               setTargetPlayer(randomPlayer);
-              console.log('Using all players (no filtering data available)');
+              console.log('Using', filtered.length, 'players (no players_data; All Stars from awards list)');
             }
           } catch (err) {
             // Fallback: use all players
