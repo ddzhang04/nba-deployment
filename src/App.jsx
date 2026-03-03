@@ -288,7 +288,7 @@ const NBAGuessGame = () => {
     if (!targetPlayer || !gameWon) return;
 
     const modeLabel = gameMode === 'classic' ? 'Classic' : 'All Players';
-    const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-mantle-6-5.onrender.com/`;
+    const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
 
     const copyPromise =
       navigator.clipboard && navigator.clipboard.writeText
@@ -296,17 +296,6 @@ const NBAGuessGame = () => {
         : Promise.resolve();
 
     copyPromise.finally(() => {
-      if (navigator.share) {
-        navigator
-          .share({
-            title: 'NBA-MANTLE',
-            text: shareText,
-            url: 'https://nba-mantle-6-5.onrender.com/',
-          })
-          .catch(() => {
-            // Ignore share cancellation/errors
-          });
-      }
       setShowCopyToast(true);
       setTimeout(() => setShowCopyToast(false), 2500);
     });
