@@ -102,7 +102,8 @@ This creates a `build` folder with optimized production files.
 The frontend expects these backend endpoints:
 
 - `GET /api/players` - Get list of all players
-- `GET /api/player_awards` - Alternative endpoint for player list
+- `GET /api/players_data` - Per-player fields (e.g. `start_year`, `seasons_count`). **All Stars Only** mode requires each player object to include `is_all_star: true` for players who have made an All-Star team.
+- `GET /api/player_awards` - Alternative endpoint for player list (fallback when `/players` fails)
 - `POST /api/guess` - Submit a guess and get similarity score
 - `GET /api/health` - Health check
 

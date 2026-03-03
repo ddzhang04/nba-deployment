@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
+import { ALL_STAR_PLAYER_NAMES } from './data/allStarPlayers';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -18,7 +19,6 @@ const NBAGuessGame = () => {
   const [gameMode, setGameMode] = useState('classic');
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
-  const [allStarPlayerNames, setAllStarPlayerNames] = useState(new Set());
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
 
@@ -36,7 +36,7 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  const filterPlayersForMode = (players, playerData, mode, allStarNames = null) => {
+  const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all') {
       return players;
     }
@@ -45,10 +45,9 @@ const NBAGuessGame = () => {
       const player = playerData[playerName];
 
       if (mode === 'easy') {
-        // All Stars Only: use is_all_star from API when present, else fall back to player_awards list
+        // All Stars Only: use is_all_star from API when present, else static curated list
         if (player && player.is_all_star === true) return true;
-        if (allStarNames && allStarNames.has(playerName)) return true;
-        return false;
+        return ALL_STAR_PLAYER_NAMES.has(playerName);
       }
 
       if (!player) {
@@ -67,7 +66,13 @@ const NBAGuessGame = () => {
     });
   };
   const startNewGame = () => {
-    const playersToUse = filteredPlayers.length > 0 ? filteredPlayers : modernPlayers;
+    // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
+    const playersToUse = filteredPlayers.length > 0
+      ? filteredPlayers
+      : gameMode === 'easy'
+        ? []
+        : modernPlayers;
+    if (playersToUse.length === 0) return;
     const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
     
     setTargetPlayer(randomPlayer);
@@ -89,13 +94,15 @@ const NBAGuessGame = () => {
     setGameMode(newMode);
     
     // Filter players based on new mode
-    const filtered = filterPlayersForMode(allPlayers, playersData, newMode, allStarPlayerNames);
+    const filtered = filterPlayersForMode(allPlayers, playersData, newMode);
     setFilteredPlayers(filtered);
     
-    // Start a new game with the new mode
+    // Start a new game with the new mode (or clear target if no players for this mode)
     if (filtered.length > 0) {
       const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
       setTargetPlayer(randomPlayer);
+    } else {
+      setTargetPlayer('');
     }
     
     // Reset game state
@@ -130,22 +137,14 @@ const NBAGuessGame = () => {
           const sortedPlayers = playerNames.sort();
           setAllPlayers(sortedPlayers);
           
-          // Try to load full player data and all-star list for filtering
+          // Try to load full player data for filtering
           try {
-            const [fullDataResponse, awardsResponse] = await Promise.all([
-              fetch(`${API_BASE}/players_data?v=2`),
-              fetch(`${API_BASE}/player_awards`)
-            ]);
-            const awardNames = awardsResponse.ok ? await awardsResponse.json() : [];
-            const allStarSet = new Set(Array.isArray(awardNames) ? awardNames : []);
-            setAllStarPlayerNames(allStarSet);
-
+            const fullDataResponse = await fetch(`${API_BASE}/players_data?v=2`);
             if (fullDataResponse.ok) {
               const fullData = await fullDataResponse.json();
               setPlayersData(fullData);
               
-              // Filter players based on current mode (allStarSet used for "All Stars Only" when API has no is_all_star)
-              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode, allStarSet);
+              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
               setFilteredPlayers(filtered);
               
               if (filtered.length > 0) {
@@ -154,14 +153,11 @@ const NBAGuessGame = () => {
               }
               console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
             } else {
-              // No players_data: still filter All Stars Only by award list when available
-              const filtered = gameMode === 'easy' && allStarSet.size > 0
-                ? sortedPlayers.filter(n => allStarSet.has(n))
-                : sortedPlayers;
-              setFilteredPlayers(filtered);
-              const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
+              // No players_data: no filtering (classic/easy need players_data)
+              setFilteredPlayers(sortedPlayers);
+              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
               setTargetPlayer(randomPlayer);
-              console.log('Using', filtered.length, 'players (no players_data; All Stars from awards list)');
+              console.log('Using all players (no players_data available)');
             }
           } catch (err) {
             // Fallback: use all players
@@ -517,7 +513,7 @@ const NBAGuessGame = () => {
               </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
-{gameMode === 'easy' &&
+              {gameMode === 'easy' &&
                 `All Stars Only (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
                 `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
@@ -786,16 +782,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim()}
+                    disabled={loading || !guess.trim() || !targetPlayer}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || !targetPlayer ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || !targetPlayer ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
