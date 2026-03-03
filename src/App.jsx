@@ -345,7 +345,6 @@ const NBAGuessGame = () => {
   const formatBreakdownKey = (key) => {
     const labels = {
       shared_seasons: 'Shared Seasons on Same Team',
-      teammate_years: 'Years as Teammates',
       shared_teams: 'Shared Franchises',
       position_match: 'Position Similarity',
       era_similarity: 'Era Overlap',
@@ -549,7 +548,6 @@ const NBAGuessGame = () => {
               </p>
               <ul style={{ paddingLeft: '20px', marginTop: 0, marginBottom: '16px', color: '#d1d5db', fontSize: '0.9rem' }}>
                 <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: specific seasons they were on the exact same roster.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Years as Teammates</span>: total seasons they were teammates (including multiple teams or stints).</li>
                 <li><span style={{ fontWeight: 'bold' }}>Shared Franchises</span>: if they both played for the same organizations.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or similar position.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their <span style={{ fontWeight: 'bold' }}>start year</span> is (earliest unique season in the league).</li>
