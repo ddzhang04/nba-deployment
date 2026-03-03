@@ -18,6 +18,7 @@ const NBAGuessGame = () => {
   const [gameMode, setGameMode] = useState('classic');
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -370,7 +371,8 @@ const NBAGuessGame = () => {
           padding: '24px',
           marginBottom: '24px',
           textAlign: 'center',
-          border: '1px solid #334155'
+          border: '1px solid #334155',
+          position: 'relative'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
@@ -378,6 +380,28 @@ const NBAGuessGame = () => {
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
+          <button
+            onClick={() => setShowHowToPlay(true)}
+            style={{
+              position: 'absolute',
+              top: '20px',
+              right: '20px',
+              padding: '8px 14px',
+              borderRadius: '999px',
+              border: '1px solid #4b5563',
+              backgroundColor: '#111827',
+              color: '#e5e7eb',
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>❓</span>
+            <span>How to Play</span>
+          </button>
+
           <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players!
           </p>
@@ -434,6 +458,107 @@ const NBAGuessGame = () => {
             )}
           </div>
         </div>
+
+        {/* How to Play Modal */}
+        {showHowToPlay && (
+          <div
+            onClick={() => setShowHowToPlay(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15,23,42,0.8)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '540px',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                borderRadius: '16px',
+                padding: '24px',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+                border: '1px solid #334155',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h2 style={{ fontSize: '1.4rem', margin: 0, color: '#e5e7eb' }}>How to Play NBA‑MANTLE</h2>
+                <button
+                  onClick={() => setShowHowToPlay(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px 8px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <p style={{ color: '#9ca3af', marginBottom: '12px', fontSize: '0.95rem' }}>
+                There is a secret NBA player. Your goal is to find them by guessing other players and using the similarity scores as hints.
+              </p>
+
+              <ol style={{ paddingLeft: '20px', color: '#e5e7eb', fontSize: '0.95rem', marginBottom: '14px' }}>
+                <li style={{ marginBottom: '6px' }}>
+                  Type any NBA player&apos;s name in the box and press <span style={{ fontWeight: 'bold' }}>Submit Guess</span>.
+                </li>
+                <li style={{ marginBottom: '6px' }}>
+                  Each guess gets a score from <span style={{ fontWeight: 'bold' }}>0–100</span>. Higher scores mean the player is more similar to the mystery player.
+                </li>
+                <li style={{ marginBottom: '6px' }}>
+                  Check the <span style={{ fontWeight: 'bold' }}>breakdown tags</span> (team overlap, era, awards, etc.) to see why a guess was close.
+                </li>
+                <li style={{ marginBottom: '6px' }}>
+                  Use those clues to adjust your next guess and climb toward a score of <span style={{ fontWeight: 'bold' }}>100</span>.
+                </li>
+              </ol>
+
+              <div style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '0.9rem' }}>
+                <p style={{ marginBottom: '4px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#e5e7eb' }}>Modes:</span>
+                </p>
+                <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                  <li style={{ marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
+                  </li>
+                  <li>
+                    <span style={{ fontWeight: 'bold' }}>All Players</span>: Any player in the full database.
+                  </li>
+                </ul>
+              </div>
+
+              <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '16px' }}>
+                You can also reveal the answer at any time with the <span style={{ fontWeight: 'bold' }}>Reveal</span> button, and see the top 5 most similar players to the mystery player.
+              </p>
+
+              <button
+                onClick={() => setShowHowToPlay(false)}
+                style={{
+                  width: '100%',
+                  padding: '10px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                }}
+              >
+                Got it, let&apos;s play
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
           {/* Left Panel */}
