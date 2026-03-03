@@ -55,8 +55,8 @@ const NBAGuessGame = () => {
       }
 
       if (mode === 'easy') {
-        // Easy mode: recognizable modern players (debut 2000+ with 5+ seasons)
-        return startYear >= 2000 && seasonsCount >= 5;
+        // Easy mode: only players who made at least one All-Star team
+        return player.is_all_star === true;
       }
 
       return true;
@@ -288,7 +288,7 @@ const NBAGuessGame = () => {
       gameMode === 'classic'
         ? 'Classic'
         : gameMode === 'easy'
-        ? 'Easy'
+        ? 'All Stars Only'
         : 'All Players';
     const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
 
@@ -470,7 +470,7 @@ const NBAGuessGame = () => {
                   color: 'white'
                 }}
               >
-                😊 Easy Mode
+                😊 All Stars Only
               </button>
               <button
                 onClick={() => handleModeChange('classic')}
@@ -504,8 +504,8 @@ const NBAGuessGame = () => {
               </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
-              {gameMode === 'easy' && 
-                `Easy: Modern stars (debut 2000+) with 5+ seasons (${filteredPlayers.length} players)`}
+{gameMode === 'easy' &&
+                `All Stars Only (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
                 `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
               {gameMode === 'all' && 
@@ -596,7 +596,7 @@ const NBAGuessGame = () => {
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Easy</span>: Modern stars who debuted in 2000 or later and have at least 5 seasons.
+                    <span style={{ fontWeight: 'bold' }}>All Stars Only</span>: Players who have made at least one All-Star team.
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
