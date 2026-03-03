@@ -50,7 +50,8 @@ const NBAGuessGame = () => {
         }
         
         const startYear = player.start_year || 0;
-        const seasonsCount = player.career_length || 0;
+        // Prefer actual seasons played; fall back to career_length if needed
+        const seasonsCount = player.seasons_count || player.career_length || 0;
         
         const isValid = startYear >= 2011 && seasonsCount >= 5;
         if (isValid) {
@@ -342,12 +343,18 @@ const NBAGuessGame = () => {
 
   const formatBreakdownKey = (key) => {
     const labels = {
-      shared_seasons: 'Shared Seasons',
-      shared_streak_bonus: 'Streak Bonus',
-      teammate_years: 'Teammate Years',
-      shared_teams: 'Team Overlap',
+      shared_seasons: 'Shared Seasons on Same Team',
+      teammate_years: 'Years as Teammates',
+      shared_teams: 'Shared Franchises',
+      position_match: 'Position Similarity',
+      era_similarity: 'Era Overlap',
+      career_length_similarity: 'Career Length Similarity',
+      all_star_overlap: 'All-Star Overlap',
+      all_team_overlap: 'All-NBA / All-Defense Overlap',
+      award_overlap: 'Award Overlap',
+      // Legacy keys kept for backwards compatibility
+      shared_streak_bonus: 'Consecutive Seasons Bonus',
       team_tenure: 'Tenure Bonus',
-      position_match: 'Position',
       start_year_diff: 'Draft Era',
       shared_all_star: 'All-Star',
       shared_all_team: 'All-Team',
@@ -535,6 +542,19 @@ const NBAGuessGame = () => {
                   </li>
                 </ul>
               </div>
+
+              <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '8px' }}>
+                After each guess, you&apos;ll see a breakdown explaining why that player was similar:
+              </p>
+              <ul style={{ paddingLeft: '20px', marginTop: 0, marginBottom: '16px', color: '#d1d5db', fontSize: '0.9rem' }}>
+                <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: how many years they actually played together.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Years as Teammates</span>: total seasons as teammates across any teams.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Shared Franchises</span>: if they both played for the same organizations.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or similar position.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their career start years are.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Career Length Similarity</span>: similar number of seasons in the league.</li>
+                <li><span style={{ fontWeight: 'bold' }}>All-Star / All-NBA / Awards</span>: overlap in star-level honors.</li>
+              </ul>
 
               <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '16px' }}>
                 You can also reveal the answer at any time with the <span style={{ fontWeight: 'bold' }}>Reveal</span> button, and see the top 5 most similar players to the mystery player.
