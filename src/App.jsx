@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
-import { isAllStarPlayerName } from './data/allStarPlayers';
+import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -21,6 +21,7 @@ const NBAGuessGame = () => {
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
+  const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -193,6 +194,31 @@ const NBAGuessGame = () => {
     loadPlayerNames();
   }, []);
 
+  // Load player headshots (from public/player-images.json, built by scripts/fetch-nba-player-images.js)
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/player-images.json')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const byNormalized = {};
+        for (const [name, entry] of Object.entries(data)) {
+          if (!entry || !entry.imageUrl) continue;
+          byNormalized[name] = entry;
+          byNormalized[normalizePlayerName(name)] = entry;
+        }
+        setPlayerImagesMap(byNormalized);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const getPlayerImage = (name) => {
+    if (!name || !playerImagesMap) return null;
+    const entry = playerImagesMap[name] ?? playerImagesMap[normalizePlayerName(name)];
+    return entry?.imageUrl ?? null;
+  };
+
   const makeGuess = async () => {
     if (!guess.trim()) return;
     
@@ -297,7 +323,7 @@ const NBAGuessGame = () => {
       gameMode === 'classic'
         ? 'Classic'
         : gameMode === 'easy'
-        ? 'All Stars Only'
+        ? 'All Stars 1986 or Later'
         : 'All Players';
     const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
 
@@ -479,7 +505,7 @@ const NBAGuessGame = () => {
                   color: 'white'
                 }}
               >
-                😊 All Stars Only
+                😊 All Stars 1986 or Later
               </button>
               <button
                 onClick={() => handleModeChange('classic')}
@@ -514,7 +540,7 @@ const NBAGuessGame = () => {
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'easy' &&
-                `All Stars Only (${filteredPlayers.length} players)`}
+                `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
                 `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
               {gameMode === 'all' && 
@@ -605,7 +631,7 @@ const NBAGuessGame = () => {
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>All Stars Only</span>: Players who have made at least one All-Star team.
+                    <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
@@ -822,6 +848,9 @@ const NBAGuessGame = () => {
                   margin: '16px 0' 
                 }}>
                   <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+                  {getPlayerImage(targetPlayer) && (
+                    <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
+                  )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
@@ -838,6 +867,9 @@ const NBAGuessGame = () => {
                   margin: '16px 0' 
                 }}>
                   <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
+                  {getPlayerImage(targetPlayer) && (
+                    <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
+                  )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
                     The answer was {targetPlayer}
                   </p>
@@ -930,6 +962,13 @@ const NBAGuessGame = () => {
                         }}>
                           {index + 1}
                         </span>
+                        {getPlayerImage(name) && (
+                          <img
+                            src={getPlayerImage(name)}
+                            alt=""
+                            style={{ width: 36, height: 36, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        )}
                         <span style={{ fontWeight: 'bold', color: '#f1f5f9' }}>{name}</span>
                       </div>
                       <ScoreBar score={score} />
@@ -964,7 +1003,14 @@ const NBAGuessGame = () => {
                     marginBottom: '12px',
                     border: '1px solid #334155'
                   }}>
-                    <div style={{ marginBottom: '12px' }}>
+                    <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      {getPlayerImage(item.name) && (
+                        <img
+                          src={getPlayerImage(item.name)}
+                          alt=""
+                          style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }}
+                        />
+                      )}
                       <h4 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{item.name}</h4>
                     </div>
                     
