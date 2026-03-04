@@ -13,11 +13,11 @@ Names in the JSON come from NBA.com URL slugs (e.g. `bam-adebayo` → `Bam Adeba
 
 ### How to regenerate
 
-1. **First page only (no browser)**  
+1. **Recommended: main page + all 30 team rosters (~530+ players, no browser)**  
    ```bash
    node scripts/fetch-nba-player-images.js
    ```  
-   Fetches the NBA.com players page HTML and parses ~50 players from the first page. Fast and reliable.
+   Fetches the NBA.com players page plus each team’s roster page and merges by player ID. Takes ~30 seconds.
 
 2. **Full roster (~570 players, needs browser)**  
    ```bash
