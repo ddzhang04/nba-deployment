@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
-import { ALL_STAR_PLAYER_NAMES } from './data/allStarPlayers';
+import { isAllStarPlayerName } from './data/allStarPlayers';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -47,7 +47,7 @@ const NBAGuessGame = () => {
       if (mode === 'easy') {
         // All Stars Only: use is_all_star from API when present, else static curated list
         if (player && player.is_all_star === true) return true;
-        return ALL_STAR_PLAYER_NAMES.has(playerName);
+        return isAllStarPlayerName(playerName);
       }
 
       if (!player) {
