@@ -1,5 +1,6 @@
 // NBA All-Stars list derived from the dataset you provided.
 // IMPORTANT: We exclude ABA-only selections by keeping players with NBA > 0.
+// We also exclude players whose last All-Star was before 1986 (only 1986+ All-Stars).
 //
 // Names in the API can include accents (e.g. Dončić), so we normalize names when matching.
 
@@ -10,6 +11,23 @@ export function normalizePlayerName(name) {
     .replace(/[^a-zA-Z]/g, '')
     .toLowerCase();
 }
+
+// Players whose last NBA All-Star was in 1985 or earlier (excluded so only 1986+ All-Stars).
+const LAST_ALL_STAR_BEFORE_1986_KEYS = new Set([
+  'Paul Arizin', 'Elgin Baylor', 'Walt Bellamy', 'Zelmo Beaty', 'Dave Bing', 'Otis Birdsong',
+  'Carl Braun', 'Frankie Brian', 'Bob Cousy', 'Dave Cowens', 'Doug Collins', 'Bob Dandridge',
+  'Bob Davies', 'Dave DeBusschere', 'Wayne Embry', 'Dick Garmaker', 'Harry Gallatin', 'Tom Gola',
+  'Gail Goodrich', 'Hal Greer', 'Richie Guerin', 'Cliff Hagan', 'Tom Heinsohn', 'Bailey Howell',
+  'Lou Hudson', 'Mel Hutchins', 'Gus Johnson', 'Neil Johnston', 'Sam Jones', 'Rudy LaRusso',
+  'Clyde Lovellette', 'Bob Lanier', 'Pete Maravich', 'Bob McAdoo', 'Slater Martin', 'Dick McGuire',
+  'Vern Mikkelsen', 'George Mikan', 'Earl Monroe', 'Willie Naulls', 'Don Ohl', 'Andy Phillip',
+  'Jim Pollard', 'Arnie Risen', 'Oscar Robertson', 'Guy Rodgers', 'Bill Russell', 'Dolph Schayes',
+  'Jack Sikma', 'Gene Shue', 'Nate Thurmond', 'Rudy Tomjanovich', 'Wes Unseld', 'Chet Walker',
+  'Bobby Wanzer', 'Jerry West', 'Jo Jo White', 'Paul Westphal', 'Wilt Chamberlain', 'Larry Foust',
+  'Ed Macauley', 'Bob Pettit', 'John Havlicek', 'Dennis Johnson', 'Marques Johnson', 'Charlie Scott',
+  'David Thompson', 'Billy Cunningham', 'Connie Hawkins', 'Spencer Haywood', 'Dan Issel',
+  'Larry Kenon', 'Maurice Lucas', 'George McGinnis', 'Rick Barry'
+].map(normalizePlayerName));
 
 const ALL_STAR_DATASET = `
 Rk\tPlayer\tTot\tNBA\tABA
@@ -579,7 +597,11 @@ function parseAllStarDataset(text) {
   return names;
 }
 
-export const NBA_ALL_STAR_NAMES = parseAllStarDataset(ALL_STAR_DATASET);
+const _allParsed = parseAllStarDataset(ALL_STAR_DATASET);
+// Only 1986+ All-Stars: exclude anyone whose last All-Star was before 1986
+export const NBA_ALL_STAR_NAMES = _allParsed.filter(
+  (name) => !LAST_ALL_STAR_BEFORE_1986_KEYS.has(normalizePlayerName(name))
+);
 export const NBA_ALL_STAR_NAME_KEYS = new Set(NBA_ALL_STAR_NAMES.map(normalizePlayerName));
 
 export function isAllStarPlayerName(playerName) {
