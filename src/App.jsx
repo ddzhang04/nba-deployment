@@ -197,7 +197,8 @@ const NBAGuessGame = () => {
   // Load player headshots (from public/player-images.json, built by scripts/fetch-nba-player-images.js)
   useEffect(() => {
     let cancelled = false;
-    fetch('/player-images.json')
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '';
+    fetch((base ? base + '/' : '/') + 'player-images.json')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
