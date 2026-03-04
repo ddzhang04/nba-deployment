@@ -41,7 +41,20 @@ const LAST_ALL_STAR_BEFORE_1986_KEYS = new Set([
   'Mike Bantom', 'Brian Winters', 'Scott Wedman', 'Campy Russell', 'John Drew',
   'Lionel Hollins', 'Truck Robinson', 'Calvin Murphy', 'Billy Knight',
   'George Gervin', 'Michael Ray Richardson', 'Sidney Wicks',
-  'Gus Williams', 'Joe Caldwell', 'Fred Schaus'
+  'Gus Williams', 'Joe Caldwell', 'Fred Schaus',
+  'Jack George', 'Geoff Petrie', 'Butch Beard', 'Don Kojis',
+  'Max Zaslofsky', 'Kermit Washington', 'Paul Walther', 'Don Sunderlage', 'Adrian Smith',
+  'Lonnie Shelton', 'Woody Sauldsberry', 'Lee Shaffer', 'Bob Rule', 'Curtis Rowe',
+  'Flynn Robinson', 'Richie Regan', 'Jim Price', 'Chuck Noble', 'Jack Molinas',
+  'Steve Mix', 'Mike Mitchell', 'Eddie Miles', 'Jon McGlocklin', 'Tom Meschery',
+  'Clyde Lee', 'Sam Lacey', 'Jim King', 'Luke Jackson', 'Darrall Imhoff',
+  'Walt Hazzard', 'Bob Harrison', 'Alex Groza', 'Bill Gabor', 'World B Free',
+  'Ray Felix', 'Nat Clifton', 'Len Chappell', 'Fred Brown', 'Vince Boryla',
+  'Ralph Beard', 'John Block', 'Don Barksdale', 'Dick Barnett', 'Alvan Adams',
+  'Reggie Theus', 'Phil Smith', 'Jerry Sloan', 'Paul Silas', 'Frank Selvy',
+  'Kenny Sears', 'Fred Scolari', 'Red Rocha', 'John Johnson', 'Eddie Johnson',
+  'Hot Rod Hundley', 'Joe Fulks', 'Dike Eddleman', 'Walter Dukes', 'Don Buse',
+  'Leo Barnhorst', 'Jamaal Wilkes', 'Maurice Stokes', 'Bob Love'
 ].map(normalizePlayerName));
 
 const ALL_STAR_DATASET = `
