@@ -13,6 +13,7 @@ export function normalizePlayerName(name) {
 }
 
 // Players whose last NBA All-Star was in 1985 or earlier (excluded so only 1986+ All-Stars).
+// Do NOT include Jack Sikma or Marques Johnson (both were All-Stars in 1986+).
 const LAST_ALL_STAR_BEFORE_1986_KEYS = new Set([
   'Paul Arizin', 'Elgin Baylor', 'Walt Bellamy', 'Zelmo Beaty', 'Dave Bing', 'Otis Birdsong',
   'Carl Braun', 'Frankie Brian', 'Bob Cousy', 'Dave Cowens', 'Doug Collins', 'Bob Dandridge',
@@ -22,11 +23,21 @@ const LAST_ALL_STAR_BEFORE_1986_KEYS = new Set([
   'Clyde Lovellette', 'Bob Lanier', 'Pete Maravich', 'Bob McAdoo', 'Slater Martin', 'Dick McGuire',
   'Vern Mikkelsen', 'George Mikan', 'Earl Monroe', 'Willie Naulls', 'Don Ohl', 'Andy Phillip',
   'Jim Pollard', 'Arnie Risen', 'Oscar Robertson', 'Guy Rodgers', 'Bill Russell', 'Dolph Schayes',
-  'Jack Sikma', 'Gene Shue', 'Nate Thurmond', 'Rudy Tomjanovich', 'Wes Unseld', 'Chet Walker',
+  'Gene Shue', 'Nate Thurmond', 'Rudy Tomjanovich', 'Wes Unseld', 'Chet Walker',
   'Bobby Wanzer', 'Jerry West', 'Jo Jo White', 'Paul Westphal', 'Wilt Chamberlain', 'Larry Foust',
-  'Ed Macauley', 'Bob Pettit', 'John Havlicek', 'Dennis Johnson', 'Marques Johnson', 'Charlie Scott',
+  'Ed Macauley', 'Bob Pettit', 'John Havlicek', 'Dennis Johnson', 'Charlie Scott',
   'David Thompson', 'Billy Cunningham', 'Connie Hawkins', 'Spencer Haywood', 'Dan Issel',
-  'Larry Kenon', 'Maurice Lucas', 'George McGinnis', 'Rick Barry'
+  'Larry Kenon', 'Maurice Lucas', 'George McGinnis', 'Rick Barry',
+  // Additional pre-1986 (last All-Star 1985 or earlier)
+  'Lenny Wilkens', 'Bill Sharman', 'Jack Twyman', 'George Yardley', 'Larry Costello',
+  'Walt Frazier', 'Jerry Lucas', 'Willis Reed', 'Tiny Archibald', 'Walter Davis',
+  'Elvin Hayes', 'Cazzie Russell', 'Randy Smith', 'Jack Marin', 'Phil Chenier',
+  'Dan Roundfield', 'Johnny Green', 'Dick Van Arsdale', 'Tom Van Arsdale', 'Norm Van Lier',
+  'Paul Seymour', 'Red Kerr', 'Bob Kauffman', 'Jeff Mullins', 'Bill Bridges',
+  'Archie Clark', 'Terry Dischinger', 'Austin Carr', 'Jimmy Walker',
+  'Mike Bantom', 'Brian Winters', 'Scott Wedman', 'Campy Russell', 'John Drew',
+  'Lionel Hollins', 'Truck Robinson', 'Calvin Murphy', 'Billy Knight',
+  'George Gervin', 'Michael Ray Richardson', 'Sidney Wicks'
 ].map(normalizePlayerName));
 
 const ALL_STAR_DATASET = `
