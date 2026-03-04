@@ -622,3 +622,15 @@ export const NBA_ALL_STAR_NAME_KEYS = new Set(NBA_ALL_STAR_NAMES.map(normalizePl
 export function isAllStarPlayerName(playerName) {
   return NBA_ALL_STAR_NAME_KEYS.has(normalizePlayerName(playerName));
 }
+
+// Helper for debugging: in dev, log the non-excluded All-Stars (1986 or later) to the browser console.
+if (typeof window !== 'undefined' && import.meta.env?.MODE === 'development') {
+  // This is the list used for the \"All Stars 1986 or Later\" easy mode filter.
+  // It is derived from the full dataset minus everyone in LAST_ALL_STAR_BEFORE_1986_KEYS.
+  console.log(
+    'NBA_ALL_STAR_NAMES (1986+ non-exclusion list,',
+    NBA_ALL_STAR_NAMES.length,
+    'players):',
+    NBA_ALL_STAR_NAMES
+  );
+}
