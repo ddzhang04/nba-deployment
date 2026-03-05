@@ -467,7 +467,7 @@ const NBAGuessGame = () => {
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <button
               onClick={() => setShowHowToPlay(true)}
               className="how-to-play-btn"
