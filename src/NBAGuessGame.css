@@ -78,19 +78,36 @@ html, body {
   font-weight: bold;
 }
 
-/* How to Play button positioning */
-.how-to-play-btn {
-  position: absolute;
-  top: 20px;
-  right: 20px;
+/* Header: need relative so absolute buttons position correctly */
+.game-header {
+  position: relative;
+}
+
+/* Header buttons: How to Play + More games — stacked, top-right on desktop */
+.header-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (min-width: 769px) {
+  .game-header .header-buttons {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    align-items: flex-end;
+  }
 }
 
 @media (max-width: 640px) {
-  .how-to-play-btn {
-    position: static;
+  .header-buttons {
     margin-top: 8px;
-    margin-bottom: 4px;
   }
+}
+
+.how-to-play-btn {
+  /* positioning comes from .header-buttons on desktop */
 }
 
 /* Layout */

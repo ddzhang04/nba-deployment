@@ -452,14 +452,13 @@ const NBAGuessGame = () => {
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         {/* Header */}
-        <div style={{ 
+        <div className="game-header" style={{ 
           background: 'linear-gradient(135deg, #1e293b, #334155)',
           borderRadius: '16px',
           padding: '24px',
           marginBottom: '24px',
           textAlign: 'center',
-          border: '1px solid #334155',
-          position: 'relative'
+          border: '1px solid #334155'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
@@ -467,7 +466,7 @@ const NBAGuessGame = () => {
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+          <div className="header-buttons">
             <button
               onClick={() => setShowHowToPlay(true)}
               className="how-to-play-btn"
@@ -805,9 +804,10 @@ const NBAGuessGame = () => {
                         setSelectedSuggestionIndex(-1);
                         
                         if (value.length > 0) {
+                          const normQuery = normalizePlayerName(value);
                           const filtered = allPlayers.filter(name =>
-                            name.toLowerCase().includes(value.toLowerCase()) &&
-                            !name.includes('?')
+                            !name.includes('?') &&
+                            normalizePlayerName(name).includes(normQuery)
                           ).slice(0, 8);
                           setSuggestions(filtered);
                           setShowSuggestions(true);
