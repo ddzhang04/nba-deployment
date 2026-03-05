@@ -20,6 +20,7 @@ const NBAGuessGame = () => {
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showMoreGames, setShowMoreGames] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
 
@@ -466,25 +467,45 @@ const NBAGuessGame = () => {
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
-          <button
-            onClick={() => setShowHowToPlay(true)}
-            className="how-to-play-btn"
-            style={{
-              padding: '8px 14px',
-              borderRadius: '999px',
-              border: '1px solid #4b5563',
-              backgroundColor: '#111827',
-              color: '#e5e7eb',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <span>❓</span>
-            <span>How to Play</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowHowToPlay(true)}
+              className="how-to-play-btn"
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#e5e7eb',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>❓</span>
+              <span>How to Play</span>
+            </button>
+            <button
+              onClick={() => setShowMoreGames(true)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#e5e7eb',
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span>🎮</span>
+              <span>More games</span>
+            </button>
+          </div>
 
           <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players!
@@ -678,6 +699,83 @@ const NBAGuessGame = () => {
                   Got it, let&apos;s play
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* More games / About modal */}
+        {showMoreGames && (
+          <div
+            onClick={() => setShowMoreGames(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15,23,42,0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50,
+              padding: '16px',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '480px',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                borderRadius: '16px',
+                padding: '24px',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+                border: '1px solid #334155',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '1.3rem', margin: 0, color: '#e5e7eb' }}>More basketball games</h2>
+                <button
+                  onClick={() => setShowMoreGames(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px 8px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '16px', lineHeight: 1.5 }}>
+                If you like NBA‑MANTLE, try this other hoops project: build a roster under the salary cap and run a full season simulation.
+              </p>
+              <a
+                href="https://nba-budget-ball.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 20px',
+                  borderRadius: '10px',
+                  backgroundColor: '#22c55e',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  textDecoration: 'none',
+                  fontSize: '1rem',
+                  transition: 'opacity 0.2s',
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.opacity = '0.9'; }}
+                onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
+              >
+                <span>🏀</span>
+                NBA Budget Ball – Build a champion on a budget
+              </a>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '12px', marginBottom: 0 }}>
+                Salary cap roster builder and season sim · React, Supabase, Vercel
+              </p>
             </div>
           </div>
         )}
