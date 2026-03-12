@@ -23,6 +23,7 @@ const NBAGuessGame = () => {
   const [showMoreGames, setShowMoreGames] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
+  const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -67,6 +68,42 @@ const NBAGuessGame = () => {
       return true;
     });
   };
+
+  const fetchTargetMaxSimilarity = async (playerName) => {
+    if (!playerName) {
+      setTargetMaxSimilar(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/guess`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({
+          guess: playerName,
+          target: playerName
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const top5 = result.top_5 || [];
+        if (Array.isArray(top5) && top5.length > 0) {
+          const [, score] = top5[0];
+          setTargetMaxSimilar(typeof score === 'number' ? score : null);
+        } else {
+          setTargetMaxSimilar(null);
+        }
+      } else {
+        setTargetMaxSimilar(null);
+      }
+    } catch (e) {
+      setTargetMaxSimilar(null);
+    }
+  };
+
   const startNewGame = () => {
     // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
     const playersToUse = filteredPlayers.length > 0
@@ -90,6 +127,9 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
     
     console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
+
+    // Pre-compute "best possible" similarity for this mystery player
+    fetchTargetMaxSimilarity(randomPlayer);
   };
 
   const handleModeChange = (newMode) => {
@@ -103,8 +143,10 @@ const NBAGuessGame = () => {
     if (filtered.length > 0) {
       const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
       setTargetPlayer(randomPlayer);
+      fetchTargetMaxSimilarity(randomPlayer);
     } else {
       setTargetPlayer('');
+      setTargetMaxSimilar(null);
     }
     
     // Reset game state
@@ -152,6 +194,9 @@ const NBAGuessGame = () => {
               if (filtered.length > 0) {
                 const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
                 setTargetPlayer(randomPlayer);
+                fetchTargetMaxSimilarity(randomPlayer);
+              } else {
+                setTargetMaxSimilar(null);
               }
               console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
             } else {
@@ -159,6 +204,7 @@ const NBAGuessGame = () => {
               setFilteredPlayers(sortedPlayers);
               const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
               setTargetPlayer(randomPlayer);
+              fetchTargetMaxSimilarity(randomPlayer);
               console.log('Using all players (no players_data available)');
             }
           } catch (err) {
@@ -166,6 +212,7 @@ const NBAGuessGame = () => {
             setFilteredPlayers(sortedPlayers);
             const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
             setTargetPlayer(randomPlayer);
+            fetchTargetMaxSimilarity(randomPlayer);
             console.log('Using all players (filtering failed)');
           }
         } else {
@@ -178,6 +225,7 @@ const NBAGuessGame = () => {
         setFilteredPlayers(fallback);
         const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
         setTargetPlayer(randomPlayer);
+        fetchTargetMaxSimilarity(randomPlayer);
       }
 
       setGuess('');
@@ -509,9 +557,16 @@ const NBAGuessGame = () => {
             </button>
           </div>
 
-          <p style={{ color: '#94a3b8', marginBottom: '20px', fontSize: '1.1rem' }}>
+          <p style={{ color: '#94a3b8', marginBottom: targetMaxSimilar != null ? '8px' : '20px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players!
           </p>
+
+          {targetMaxSimilar != null && (
+            <p style={{ color: '#f97316', marginBottom: '20px', fontSize: '0.95rem' }}>
+              The closest any other player gets to this mystery player is about{' '}
+              <span style={{ fontWeight: 'bold' }}>{targetMaxSimilar}/100</span>.
+            </p>
+          )}
 
           {/* Game Mode Selection */}
           <div style={{ marginBottom: '20px' }}>
