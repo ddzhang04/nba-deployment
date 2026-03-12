@@ -408,7 +408,9 @@ const NBAGuessGame = () => {
       era_similarity: 'Era Overlap',
       career_length_similarity: 'Career Length Similarity',
       all_star_overlap: 'All-Star Overlap',
-      all_team_overlap: 'All-NBA / All-Defense Overlap',
+      all_nba_overlap: 'All-NBA Overlap',
+      all_defense_overlap: 'All-Defense Overlap',
+      all_rookie_overlap: 'All-Rookie Overlap',
       award_overlap: 'Award Overlap',
       // Legacy keys kept for backwards compatibility
       shared_streak_bonus: 'Consecutive Seasons Bonus',
@@ -416,6 +418,7 @@ const NBAGuessGame = () => {
       start_year_diff: 'Draft Era',
       shared_all_star: 'All-Star',
       shared_all_team: 'All-Team',
+      all_team_overlap: 'All-Team Overlap',
       shared_awards: 'Awards'
     };
     return labels[key] || key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -670,10 +673,14 @@ const NBAGuessGame = () => {
                 <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: specific seasons they were on the exact same roster.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Shared Teammates</span>: how many other players they&apos;ve both played with.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Shared Franchises</span>: if they both played for the same organizations.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or similar position.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or an adjacent position.</li>
                 <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their <span style={{ fontWeight: 'bold' }}>start year</span> is (earliest unique season in the league).</li>
                 <li><span style={{ fontWeight: 'bold' }}>Career Length Similarity</span>: similar number of seasons in the league.</li>
-                <li><span style={{ fontWeight: 'bold' }}>All-Star / All-NBA / Awards</span>: overlap in star-level honors.</li>
+                <li><span style={{ fontWeight: 'bold' }}>All-Star Overlap</span>: same All-Star games.</li>
+                <li><span style={{ fontWeight: 'bold' }}>All-NBA Overlap</span>: same All-NBA teams in the same season.</li>
+                <li><span style={{ fontWeight: 'bold' }}>All-Defense Overlap</span>: same All-Defensive teams in the same season.</li>
+                <li><span style={{ fontWeight: 'bold' }}>All-Rookie Overlap</span>: same All-Rookie team in the same season.</li>
+                <li><span style={{ fontWeight: 'bold' }}>Awards</span>: overlap in other major awards.</li>
               </ul>
 
               <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '16px' }}>
