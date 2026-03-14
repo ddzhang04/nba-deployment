@@ -61,8 +61,8 @@ const NBAGuessGame = () => {
       const seasonsCount = player.seasons_count || player.career_length || 0;
 
       if (mode === 'classic') {
-        // Classic mode: 2011+ debut with 5+ seasons
-        return startYear >= 2011 && seasonsCount >= 5;
+        // Classic mode: 2011+ debut with 6+ seasons
+        return startYear >= 2011 && seasonsCount >= 6;
       }
 
       return true;
@@ -621,7 +621,7 @@ const NBAGuessGame = () => {
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
-                `Classic: Modern era players (2011+) with 5+ seasons (${filteredPlayers.length} players)`}
+                `Classic: Modern era players (2011+) with 6+ seasons (${filteredPlayers.length} players)`}
               {gameMode === 'all' && 
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
@@ -713,7 +713,7 @@ const NBAGuessGame = () => {
                     <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
                   </li>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 5 seasons.
+                    <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 6 seasons.
                   </li>
                   <li>
                     <span style={{ fontWeight: 'bold' }}>All Players</span>: Any player in the full database.
