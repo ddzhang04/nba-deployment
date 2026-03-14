@@ -39,8 +39,20 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
+  // Daily mode: one puzzle per day, 8 guesses max. First daily = LeBron James.
+  const DAILY_PUZZLE_EPOCH = '2025-03-13';
+  const DAILY_PLAYERS = ['LeBron James'];
+  const getDailyPuzzleIndex = () => {
+    const epoch = new Date(DAILY_PUZZLE_EPOCH).setHours(0, 0, 0, 0);
+    const now = new Date().setHours(0, 0, 0, 0);
+    return Math.max(0, Math.floor((now - epoch) / 86400000));
+  };
+  const getDailyPlayerForIndex = (index) =>
+    DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
+  const getDailyNumber = () => getDailyPuzzleIndex() + 1;
+
   const filterPlayersForMode = (players, playerData, mode) => {
-    if (mode === 'all') {
+    if (mode === 'all' || mode === 'daily') {
       return players;
     }
 
@@ -105,16 +117,23 @@ const NBAGuessGame = () => {
   };
 
   const startNewGame = () => {
-    // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
-    const playersToUse = filteredPlayers.length > 0
-      ? filteredPlayers
-      : gameMode === 'easy'
-        ? []
-        : modernPlayers;
-    if (playersToUse.length === 0) return;
-    const randomPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
-    
-    setTargetPlayer(randomPlayer);
+    let chosenPlayer;
+    if (gameMode === 'daily') {
+      chosenPlayer = getDailyPlayerForIndex(getDailyPuzzleIndex());
+      setTargetPlayer(chosenPlayer);
+      fetchTargetMaxSimilarity(chosenPlayer);
+    } else {
+      // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
+      const playersToUse = filteredPlayers.length > 0
+        ? filteredPlayers
+        : gameMode === 'easy'
+          ? []
+          : modernPlayers;
+      if (playersToUse.length === 0) return;
+      chosenPlayer = playersToUse[Math.floor(Math.random() * playersToUse.length)];
+      setTargetPlayer(chosenPlayer);
+      fetchTargetMaxSimilarity(chosenPlayer);
+    }
     setGuess('');
     setGuessHistory([]);
     setGameWon(false);
@@ -125,11 +144,7 @@ const NBAGuessGame = () => {
     setSuggestions([]);
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
-    
-    console.log('New game started with:', randomPlayer, 'Mode:', gameMode);
-
-    // Pre-compute "best possible" similarity for this mystery player
-    fetchTargetMaxSimilarity(randomPlayer);
+    console.log('New game started with:', chosenPlayer, 'Mode:', gameMode);
   };
 
   const handleModeChange = (newMode) => {
@@ -141,9 +156,12 @@ const NBAGuessGame = () => {
     
     // Start a new game with the new mode (or clear target if no players for this mode)
     if (filtered.length > 0) {
-      const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
-      setTargetPlayer(randomPlayer);
-      fetchTargetMaxSimilarity(randomPlayer);
+      const target =
+        newMode === 'daily'
+          ? getDailyPlayerForIndex(getDailyPuzzleIndex())
+          : filtered[Math.floor(Math.random() * filtered.length)];
+      setTargetPlayer(target);
+      fetchTargetMaxSimilarity(target);
     } else {
       setTargetPlayer('');
       setTargetMaxSimilar(null);
@@ -271,7 +289,10 @@ const NBAGuessGame = () => {
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
-    
+    if (gameMode === 'daily' && guessCount >= 8 && !gameWon) {
+      setError('No guesses left! Daily puzzle limit is 8 guesses.');
+      return;
+    }
     setShowSuggestions(false);
     setSuggestions([]);
     setSelectedSuggestionIndex(-1);
@@ -308,11 +329,22 @@ const NBAGuessGame = () => {
             return updated.sort((a, b) => b.score - a.score).slice(0, 15);
           });
 
+          const newCount = guessCount + 1;
           setGuessCount(prev => prev + 1);
 
           if (score === 100) {
             setGameWon(true);
             setTop5Players(top_5 || []);
+          } else if (gameMode === 'daily' && newCount >= 8) {
+            setShowAnswer(true);
+            fetch(`${API_BASE}/guess`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({ guess: targetPlayer, target: targetPlayer })
+            })
+              .then(r => r.ok ? r.json() : null)
+              .then(result => { if (result?.top_5) setTop5Players(result.top_5); })
+              .catch(() => {});
           }
         } else {
           setError('You have already guessed this player!');
@@ -369,13 +401,18 @@ const NBAGuessGame = () => {
   const handleShare = () => {
     if (!targetPlayer || !gameWon) return;
 
-    const modeLabel =
-      gameMode === 'classic'
-        ? 'Classic'
-        : gameMode === 'easy'
-        ? 'All Stars 1986 or Later'
-        : 'All Players';
-    const shareText = `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
+    const shareText =
+      gameMode === 'daily'
+        ? `🏀 I got the daily NBA Mantle #${getDailyNumber()} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+        : (() => {
+            const modeLabel =
+              gameMode === 'classic'
+                ? 'Classic'
+                : gameMode === 'easy'
+                ? 'All Stars 1986 or Later'
+                : 'All Players';
+            return `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
+          })();
 
     const copyPromise =
       navigator.clipboard && navigator.clipboard.writeText
@@ -572,6 +609,21 @@ const NBAGuessGame = () => {
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
+                onClick={() => handleModeChange('daily')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'daily' ? '#8b5cf6' : '#475569',
+                  color: 'white'
+                }}
+              >
+                📅 Daily
+              </button>
+              <button
                 onClick={() => handleModeChange('easy')}
                 style={{
                   padding: '10px 20px',
@@ -618,6 +670,8 @@ const NBAGuessGame = () => {
               </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
+              {gameMode === 'daily' &&
+                `Daily #${getDailyNumber()} — 8 guesses • Same puzzle for everyone`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -628,7 +682,9 @@ const NBAGuessGame = () => {
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem' }}>
-            <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
+            <span style={{ color: '#fbbf24' }}>
+              {gameMode === 'daily' ? `⚡ Guess ${guessCount}/8` : `⚡ Attempt #${guessCount}`}
+            </span>
             {!gameWon && !showAnswer && (
               <span style={{ color: '#94a3b8' }}>Mystery Player: ???</span>
             )}
@@ -709,6 +765,9 @@ const NBAGuessGame = () => {
                   <span style={{ fontWeight: 'bold', color: '#e5e7eb' }}>Modes:</span>
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                  <li style={{ marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. All players in the database. You get 8 guesses — same puzzle for everyone!
+                  </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
                   </li>
@@ -854,7 +913,7 @@ const NBAGuessGame = () => {
             }}>
               <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
               
-              {!gameWon && !showAnswer && (
+              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 8) && (
                 <div>
                   <div style={{ position: 'relative', marginBottom: '16px' }}>
                     <input
@@ -969,16 +1028,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || !targetPlayer}
+                    disabled={loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8)}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() || !targetPlayer ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8) ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() || !targetPlayer ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8) ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
@@ -1019,20 +1078,20 @@ const NBAGuessGame = () => {
               )}
 
               {showAnswer && !gameWon && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  backgroundColor: '#f59e0b', 
-                  color: 'white', 
-                  padding: '20px', 
-                  borderRadius: '12px', 
-                  margin: '16px 0' 
+                <div style={{
+                  textAlign: 'center',
+                  backgroundColor: '#f59e0b',
+                  color: 'white',
+                  padding: '20px',
+                  borderRadius: '12px',
+                  margin: '16px 0'
                 }}>
                   <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
                   {getPlayerImage(targetPlayer) && (
                     <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
                   )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    The answer was {targetPlayer}
+                    {gameMode === 'daily' && guessCount >= 8 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
                   </p>
                 </div>
               )}
