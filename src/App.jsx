@@ -119,7 +119,7 @@ const NBAGuessGame = () => {
   const startNewGame = () => {
     let chosenPlayer;
     if (gameMode === 'daily') {
-      chosenPlayer = getDailyPlayerForIndex(getDailyPuzzleIndex());
+      chosenPlayer = getDailyPlayerForIndex(0);
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
     } else {
@@ -158,7 +158,7 @@ const NBAGuessGame = () => {
     if (filtered.length > 0) {
       const target =
         newMode === 'daily'
-          ? getDailyPlayerForIndex(getDailyPuzzleIndex())
+          ? getDailyPlayerForIndex(0)
           : filtered[Math.floor(Math.random() * filtered.length)];
       setTargetPlayer(target);
       fetchTargetMaxSimilarity(target);
@@ -403,7 +403,7 @@ const NBAGuessGame = () => {
 
     const shareText =
       gameMode === 'daily'
-        ? `🏀 I got the daily NBA Mantle #${getDailyNumber()} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+        ? `🏀 I got the daily NBA Mantle #1 in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
         : (() => {
             const modeLabel =
               gameMode === 'classic'
@@ -671,7 +671,7 @@ const NBAGuessGame = () => {
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
-                `Daily #${getDailyNumber()} — 8 guesses • Same puzzle for everyone`}
+                `Daily 1 — 8 guesses • Same puzzle for everyone`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
