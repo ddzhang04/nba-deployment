@@ -609,21 +609,6 @@ const NBAGuessGame = () => {
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => handleModeChange('daily')}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'daily' ? '#8b5cf6' : '#475569',
-                  color: 'white'
-                }}
-              >
-                📅 Daily
-              </button>
-              <button
                 onClick={() => handleModeChange('easy')}
                 style={{
                   padding: '10px 20px',
@@ -669,9 +654,28 @@ const NBAGuessGame = () => {
                 🌟 All Players
               </button>
             </div>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={() => handleModeChange('daily')}
+                style={{
+                  padding: '14px 32px',
+                  borderRadius: '12px',
+                  border: gameMode === 'daily' ? '2px solid #a78bfa' : '2px solid #475569',
+                  fontWeight: 'bold',
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'daily' ? '#8b5cf6' : '#475569',
+                  color: 'white',
+                  boxShadow: gameMode === 'daily' ? '0 4px 14px rgba(139, 92, 246, 0.4)' : 'none'
+                }}
+              >
+                📅 Daily #1
+              </button>
+            </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
-                `Daily 1 — 8 guesses • Same puzzle for everyone`}
+                `Daily #1 — 8 guesses • Same puzzle for everyone`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -681,10 +685,42 @@ const NBAGuessGame = () => {
             </div>
           </div>
           
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem' }}>
-            <span style={{ color: '#fbbf24' }}>
-              {gameMode === 'daily' ? `⚡ Guess ${guessCount}/8` : `⚡ Attempt #${guessCount}`}
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem', alignItems: 'center' }}>
+            {gameMode === 'daily' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Guesses</span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                    const used = n <= guessCount;
+                    const isWinGuess = gameWon && n === guessCount;
+                    return (
+                      <div
+                        key={n}
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '6px',
+                          backgroundColor: used ? (isWinGuess ? '#10b981' : '#8b5cf6') : 'transparent',
+                          border: `2px solid ${used ? (isWinGuess ? '#10b981' : '#8b5cf6') : '#475569'}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          color: '#fff'
+                        }}
+                      >
+                        {isWinGuess ? '✓' : ''}
+                      </div>
+                    );
+                  })}
+                </div>
+                <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{guessCount}/8</span>
+              </div>
+            )}
+            {gameMode !== 'daily' && (
+              <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
+            )}
             {!gameWon && !showAnswer && (
               <span style={{ color: '#94a3b8' }}>Mystery Player: ???</span>
             )}
