@@ -60,8 +60,7 @@ const NBAGuessGame = () => {
       const player = playerData[playerName];
 
       if (mode === 'easy') {
-        // All Stars Only: use is_all_star from API when present, else static curated list
-        if (player && player.is_all_star === true) return true;
+        // All Stars 1986 or Later: use cleaned list from allStarPlayers.js only
         return isAllStarPlayerName(playerName);
       }
 
