@@ -614,7 +614,7 @@ const NBAGuessGame = () => {
               onClick={() => setShowHowToPlay(true)}
               className="how-to-play-btn"
               style={{
-                padding: '8px 14px',
+                padding: '10px 18px',
                 borderRadius: '999px',
                 border: '1px solid #4b5563',
                 backgroundColor: '#111827',
@@ -623,7 +623,7 @@ const NBAGuessGame = () => {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px'
               }}
             >
               <span>❓</span>
@@ -632,7 +632,7 @@ const NBAGuessGame = () => {
             <button
               onClick={() => setShowMoreGames(true)}
               style={{
-                padding: '8px 14px',
+                padding: '10px 18px',
                 borderRadius: '999px',
                 border: '1px solid #4b5563',
                 backgroundColor: '#111827',
@@ -641,7 +641,7 @@ const NBAGuessGame = () => {
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px'
               }}
             >
               <span>🎮</span>
