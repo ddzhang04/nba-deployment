@@ -41,10 +41,12 @@ const NBAGuessGame = () => {
   ];
 
   // Daily mode: one puzzle per day (seeded by calendar). Same puzzle for everyone globally.
+  // Use UTC so the day index is the same for everyone regardless of timezone.
   const getDailyPuzzleIndex = () => {
-    const epoch = new Date(DAILY_PUZZLE_EPOCH).setHours(0, 0, 0, 0);
-    const now = new Date().setHours(0, 0, 0, 0);
-    return Math.max(0, Math.floor((now - epoch) / 86400000));
+    const epoch = new Date(DAILY_PUZZLE_EPOCH + 'T00:00:00.000Z').getTime();
+    const now = new Date();
+    const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000));
   };
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
