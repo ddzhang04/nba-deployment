@@ -51,29 +51,32 @@ const NBAGuessGame = () => {
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getDailyNumber = () => getDailyPuzzleIndex() + 1;
 
-  // Past daily mantles: save when user wins daily; keyed by daily number, value = { date, guesses }
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions';
+  // Past daily mantles: save when user wins daily; keyed by daily number, value = { date, guesses, guessHistory }
+  // v2 key clears previous data and adds guessHistory per completion
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v2';
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) return {};
-      // Normalize: legacy entries may be date strings → { date, guesses: null }
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
-        out[num] = typeof val === 'string'
-          ? { date: val, guesses: null }
-          : { date: val?.date ?? '', guesses: val?.guesses ?? null };
+        if (typeof val === 'string') {
+          out[num] = { date: val, guesses: null, guessHistory: [] };
+        } else {
+          const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
+          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr };
+        }
       }
       return out;
     } catch {
       return {};
     }
   };
-  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null) => {
+  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = []) => {
     const prev = getDailyCompletionsFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory } };
     try {
       localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -81,6 +84,7 @@ const NBAGuessGame = () => {
   };
 
   const [dailyCompletions, setDailyCompletions] = useState({});
+  const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
   useEffect(() => {
     setDailyCompletions(getDailyCompletionsFromStorage());
   }, []);
@@ -371,7 +375,8 @@ const NBAGuessGame = () => {
             if (gameMode === 'daily') {
               const dailyNum = 1;
               const dateStr = new Date().toISOString().slice(0, 10);
-              const next = saveDailyCompletionToStorage(dailyNum, dateStr, newCount);
+              const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
+              const next = saveDailyCompletionToStorage(dailyNum, dateStr, newCount, fullHistory);
               setDailyCompletions(next);
             }
           } else if (gameMode === 'daily' && newCount >= 8) {
@@ -760,8 +765,10 @@ const NBAGuessGame = () => {
                         }
                       } catch {}
                       return (
-                        <div
+                        <button
                           key={num}
+                          type="button"
+                          onClick={() => setSelectedDailyDetail(num)}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -771,7 +778,9 @@ const NBAGuessGame = () => {
                             backgroundColor: 'rgba(139, 92, 246, 0.2)',
                             border: '1px solid rgba(139, 92, 246, 0.4)',
                             fontSize: '13px',
-                            color: '#e9d5ff'
+                            color: '#e9d5ff',
+                            cursor: 'pointer',
+                            font: 'inherit'
                           }}
                         >
                           <span style={{ color: '#a78bfa', fontWeight: '600' }}>Daily #{num}</span>
@@ -784,9 +793,95 @@ const NBAGuessGame = () => {
                             </>
                           )}
                           <span style={{ color: '#10b981', marginLeft: '2px' }}>✓</span>
-                        </div>
+                        </button>
                       );
                     })}
+                </div>
+              </div>
+            )}
+
+            {/* Daily detail modal: tap a completed daily to see guesses */}
+            {selectedDailyDetail != null && dailyCompletions[selectedDailyDetail] && (
+              <div
+                onClick={() => setSelectedDailyDetail(null)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  backgroundColor: 'rgba(15,23,42,0.85)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 50,
+                  padding: '16px'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '100%',
+                    maxWidth: '420px',
+                    maxHeight: '85vh',
+                    background: 'linear-gradient(135deg, #1e293b, #334155)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                    border: '1px solid rgba(139, 92, 246, 0.4)',
+                    overflowY: 'auto'
+                  }}
+                >
+                  {(() => {
+                    const entry = dailyCompletions[selectedDailyDetail];
+                    const dateStr = entry?.date ?? '';
+                    let displayDate = dateStr;
+                    try {
+                      const d = new Date(dateStr + 'T12:00:00');
+                      if (!isNaN(d.getTime())) {
+                        displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      }
+                    } catch {}
+                    const history = Array.isArray(entry?.guessHistory) ? entry.guessHistory : [];
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <div>
+                            <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#e5e7eb' }}>Daily #{selectedDailyDetail}</h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>{displayDate}{entry?.guesses != null ? ` · ${entry.guesses} guess${entry.guesses !== 1 ? 'es' : ''}` : ''}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDailyDetail(null)}
+                            style={{ border: 'none', background: 'transparent', color: '#9ca3af', cursor: 'pointer', fontSize: '20px', padding: '4px 8px', borderRadius: '4px' }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Your guesses</div>
+                        {history.length === 0 ? (
+                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guess history saved for this daily.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {history.map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  padding: '10px 12px',
+                                  borderRadius: '8px',
+                                  backgroundColor: 'rgba(15, 23, 42, 0.5)',
+                                  border: '1px solid #334155'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                  <span style={{ fontWeight: '600', color: '#f1f5f9' }}>{idx + 1}. {item.name}</span>
+                                  <span style={{ color: getScoreColor(item.score), fontWeight: 'bold', fontSize: '14px' }}>{item.score}/100</span>
+                                </div>
+                                <ScoreBar score={item.score} showLabel={false} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
