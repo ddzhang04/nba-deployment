@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
 import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
+import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -51,6 +52,8 @@ const NBAGuessGame = () => {
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getDailyNumber = () => getDailyPuzzleIndex() + 1;
+  const getBallKnowledgeDailyPlayer = (index) =>
+    BALL_KNOWLEDGE_DAILY_PLAYERS[index % BALL_KNOWLEDGE_DAILY_PLAYERS.length] ?? BALL_KNOWLEDGE_DAILY_PLAYERS[0];
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
@@ -87,12 +90,46 @@ const NBAGuessGame = () => {
   const [dailyCompletions, setDailyCompletions] = useState({});
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
   const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(getDailyNumber())] != null;
+
+  const BALL_KNOWLEDGE_DAILY_KEY = 'nba-mantle-ball-knowledge-daily-v1';
+  const getBallKnowledgeDailyFromStorage = () => {
+    try {
+      const raw = localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null) return {};
+      const out = {};
+      for (const [num, val] of Object.entries(parsed)) {
+        if (typeof val === 'string') {
+          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '' };
+        } else {
+          const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
+          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '' };
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  };
+  const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '') => {
+    const prev = getBallKnowledgeDailyFromStorage();
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer } };
+    try {
+      localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
+    } catch {}
+    return next;
+  };
+  const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState({});
+  const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
+  const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(getDailyNumber())] != null;
   useEffect(() => {
     setDailyCompletions(getDailyCompletionsFromStorage());
+    setBallKnowledgeDailyCompletions(getBallKnowledgeDailyFromStorage());
   }, []);
 
   const filterPlayersForMode = (players, playerData, mode) => {
-    if (mode === 'all' || mode === 'daily') {
+    if (mode === 'all' || mode === 'daily' || mode === 'ballKnowledgeDaily') {
       return players;
     }
 
@@ -161,6 +198,10 @@ const NBAGuessGame = () => {
       chosenPlayer = getDailyPlayerForIndex(getDailyPuzzleIndex());
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
+    } else if (gameMode === 'ballKnowledgeDaily') {
+      chosenPlayer = getBallKnowledgeDailyPlayer(getDailyPuzzleIndex());
+      setTargetPlayer(chosenPlayer);
+      fetchTargetMaxSimilarity(chosenPlayer);
     } else {
       // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
       const playersToUse = filteredPlayers.length > 0
@@ -198,6 +239,8 @@ const NBAGuessGame = () => {
       const target =
         newMode === 'daily'
           ? getDailyPlayerForIndex(getDailyPuzzleIndex())
+          : newMode === 'ballKnowledgeDaily'
+          ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex())
           : filtered[Math.floor(Math.random() * filtered.length)];
       setTargetPlayer(target);
       fetchTargetMaxSimilarity(target);
@@ -249,7 +292,7 @@ const NBAGuessGame = () => {
               setFilteredPlayers(filtered);
               
               if (filtered.length > 0) {
-                const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : filtered[Math.floor(Math.random() * filtered.length)];
+                const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : filtered[Math.floor(Math.random() * filtered.length)];
                 setTargetPlayer(target);
                 fetchTargetMaxSimilarity(target);
               } else {
@@ -259,7 +302,7 @@ const NBAGuessGame = () => {
             } else {
               // No players_data: no filtering (classic/easy need players_data)
               setFilteredPlayers(sortedPlayers);
-              const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
               setTargetPlayer(target);
               fetchTargetMaxSimilarity(target);
               console.log('Using all players (no players_data available)');
@@ -267,7 +310,7 @@ const NBAGuessGame = () => {
           } catch (err) {
             // Fallback: use all players
             setFilteredPlayers(sortedPlayers);
-            const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+            const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
             setTargetPlayer(target);
             fetchTargetMaxSimilarity(target);
             console.log('Using all players (filtering failed)');
@@ -280,7 +323,7 @@ const NBAGuessGame = () => {
         const fallback = modernPlayers;
         setAllPlayers(fallback);
         setFilteredPlayers(fallback);
-        const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : fallback[Math.floor(Math.random() * fallback.length)];
+        const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : fallback[Math.floor(Math.random() * fallback.length)];
         setTargetPlayer(target);
         fetchTargetMaxSimilarity(target);
       }
@@ -328,8 +371,8 @@ const NBAGuessGame = () => {
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
-    if (gameMode === 'daily' && guessCount >= 10 && !gameWon) {
-      setError('No guesses left! Daily puzzle limit is 10 guesses.');
+    if ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10 && !gameWon) {
+      setError('No guesses left! Puzzle limit is 10 guesses.');
       return;
     }
     setShowSuggestions(false);
@@ -376,17 +419,26 @@ const NBAGuessGame = () => {
             setTop5Players(top_5 || []);
             if (gameMode === 'daily') {
               const dateStr = new Date().toISOString().slice(0, 10);
-              // Chronological order: existing guesses then this winning guess (never sort)
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, newCount, fullHistory, true, targetPlayer);
               setDailyCompletions(next);
+            } else if (gameMode === 'ballKnowledgeDaily') {
+              const dateStr = new Date().toISOString().slice(0, 10);
+              const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
+              const next = saveBallKnowledgeDailyToStorage(getDailyNumber(), dateStr, newCount, fullHistory, true, targetPlayer);
+              setBallKnowledgeDailyCompletions(next);
             }
-          } else if (gameMode === 'daily' && newCount >= 10) {
+          } else if ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && newCount >= 10) {
             setShowAnswer(true);
             const dateStr = new Date().toISOString().slice(0, 10);
             const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-            const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
-            setDailyCompletions(next);
+            if (gameMode === 'daily') {
+              const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
+              setDailyCompletions(next);
+            } else {
+              const next = saveBallKnowledgeDailyToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
+              setBallKnowledgeDailyCompletions(next);
+            }
             fetch(`${API_BASE}/guess`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -443,6 +495,11 @@ const NBAGuessGame = () => {
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, guessCount, history, false, targetPlayer);
       setDailyCompletions(next);
+    } else if (gameMode === 'ballKnowledgeDaily') {
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
+      const next = saveBallKnowledgeDailyToStorage(getDailyNumber(), dateStr, guessCount, history, false, targetPlayer);
+      setBallKnowledgeDailyCompletions(next);
     }
     setLoading(false);
   };
@@ -460,6 +517,8 @@ const NBAGuessGame = () => {
     const shareText =
       gameMode === 'daily'
         ? `🏀 I got the daily NBA Mantle #${getDailyNumber()} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+        : gameMode === 'ballKnowledgeDaily'
+        ? `🏀 I got Ball Knowledge Daily #${getDailyNumber()} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
         : (() => {
             const modeLabel =
               gameMode === 'classic'
@@ -710,7 +769,7 @@ const NBAGuessGame = () => {
                 🌟 All Players
               </button>
             </div>
-            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleModeChange('daily')}
                 style={{
@@ -728,10 +787,29 @@ const NBAGuessGame = () => {
               >
                 📅 Daily #{getDailyNumber()}
               </button>
+              <button
+                onClick={() => handleModeChange('ballKnowledgeDaily')}
+                style={{
+                  padding: '14px 32px',
+                  borderRadius: '12px',
+                  border: gameMode === 'ballKnowledgeDaily' ? '2px solid #f59e0b' : '2px solid #475569',
+                  fontWeight: 'bold',
+                  fontSize: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  backgroundColor: gameMode === 'ballKnowledgeDaily' ? '#d97706' : '#475569',
+                  color: 'white',
+                  boxShadow: gameMode === 'ballKnowledgeDaily' ? '0 4px 14px rgba(217, 119, 6, 0.4)' : 'none'
+                }}
+              >
+                🧠 Ball Knowledge Daily #{getDailyNumber()}
+              </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
                 `Daily #${getDailyNumber()} — 10 guesses • Same puzzle for everyone`}
+              {gameMode === 'ballKnowledgeDaily' &&
+                `Ball Knowledge Daily #${getDailyNumber()} — 10 guesses • Same puzzle for everyone`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -904,10 +982,176 @@ const NBAGuessGame = () => {
                 </div>
               </div>
             )}
+
+            {/* Past Ball Knowledge Dailies */}
+            {Object.keys(ballKnowledgeDailyCompletions).length > 0 && (
+              <div style={{
+                marginTop: '14px',
+                padding: '14px 16px',
+                background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(217, 119, 6, 0.06))',
+                borderRadius: '12px',
+                border: '1px solid rgba(217, 119, 6, 0.35)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}>
+                <div style={{
+                  fontSize: '13px',
+                  color: '#fcd34d',
+                  fontWeight: '600',
+                  marginBottom: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span style={{ opacity: 0.9 }}>🧠</span>
+                  Your ball knowledge dailies
+                  <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
+                    ({Object.keys(ballKnowledgeDailyCompletions).length} played)
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {Object.entries(ballKnowledgeDailyCompletions)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([num, entry]) => {
+                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
+                      let displayDate = dateStr;
+                      try {
+                        const d = new Date(dateStr + 'T12:00:00');
+                        if (!isNaN(d.getTime())) {
+                          displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        }
+                      } catch {}
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setSelectedBallKnowledgeDetail(num)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(217, 119, 6, 0.2)',
+                            border: '1px solid rgba(217, 119, 6, 0.4)',
+                            fontSize: '13px',
+                            color: '#fef3c7',
+                            cursor: 'pointer',
+                            font: 'inherit'
+                          }}
+                        >
+                          <span style={{ color: '#f59e0b', fontWeight: '600' }}>BKD #{num}</span>
+                          {entry?.answer && (
+                            <>
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                              <span style={{ color: '#fef3c7' }}>{entry.answer}</span>
+                            </>
+                          )}
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                          <span style={{ color: '#fcd34d' }}>{displayDate}</span>
+                          {guesses != null && (
+                            <>
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                              <span style={{ color: '#fbbf24', fontWeight: '600' }}>{guesses} guess{guesses !== 1 ? 'es' : ''}</span>
+                            </>
+                          )}
+                          <span style={{ color: entry?.won !== false ? '#10b981' : '#94a3b8', marginLeft: '2px' }}>{entry?.won !== false ? '✓' : '—'}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Ball Knowledge Daily detail modal */}
+            {selectedBallKnowledgeDetail != null && ballKnowledgeDailyCompletions[selectedBallKnowledgeDetail] && (
+              <div
+                onClick={() => setSelectedBallKnowledgeDetail(null)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  backgroundColor: 'rgba(15,23,42,0.85)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 50,
+                  padding: '16px'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '100%',
+                    maxWidth: '420px',
+                    maxHeight: '85vh',
+                    background: 'linear-gradient(135deg, #1e293b, #334155)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                    border: '1px solid rgba(217, 119, 6, 0.4)',
+                    overflowY: 'auto'
+                  }}
+                >
+                  {(() => {
+                    const entry = ballKnowledgeDailyCompletions[selectedBallKnowledgeDetail];
+                    const dateStr = entry?.date ?? '';
+                    let displayDate = dateStr;
+                    try {
+                      const d = new Date(dateStr + 'T12:00:00');
+                      if (!isNaN(d.getTime())) {
+                        displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                      }
+                    } catch {}
+                    const history = Array.isArray(entry?.guessHistory) ? entry.guessHistory : [];
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                          <div>
+                            <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#e5e7eb' }}>Ball Knowledge Daily #{selectedBallKnowledgeDetail}</h3>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>{entry?.answer ? `Answer: ${entry.answer} · ` : ''}{displayDate}{entry?.guesses != null ? ` · ${entry.guesses} guess${entry.guesses !== 1 ? 'es' : ''}` : ''}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBallKnowledgeDetail(null)}
+                            style={{ border: 'none', background: 'transparent', color: '#9ca3af', cursor: 'pointer', fontSize: '20px', padding: '4px 8px', borderRadius: '4px' }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Each player you guessed (in order)</div>
+                        {history.length === 0 ? (
+                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guesses saved for this daily.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {history.map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  padding: '10px 12px',
+                                  borderRadius: '8px',
+                                  backgroundColor: 'rgba(15, 23, 42, 0.5)',
+                                  border: '1px solid #334155'
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                  <span style={{ fontWeight: '600', color: '#f1f5f9' }}>{idx + 1}. {item.name}</span>
+                                  <span style={{ color: getScoreColor(item.score), fontWeight: 'bold', fontSize: '14px' }}>{item.score}/100</span>
+                                </div>
+                                <ScoreBar score={item.score} showLabel={false} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem', alignItems: 'center' }}>
-            {gameMode === 'daily' && (
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <div className="daily-guesses-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <span style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Guesses</span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -942,7 +1186,7 @@ const NBAGuessGame = () => {
                 <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{guessCount}/10</span>
               </div>
             )}
-            {gameMode !== 'daily' && (
+            {gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && (
               <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
             )}
             {!gameWon && !showAnswer && (
@@ -1027,6 +1271,9 @@ const NBAGuessGame = () => {
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. All players in the database. You get 10 guesses — same puzzle for everyone!
+                  </li>
+                  <li style={{ marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 'bold' }}>Ball Knowledge Daily</span>: Same as Daily but with a separate, harder list of players. 10 guesses, one puzzle per day.
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
@@ -1235,8 +1482,70 @@ const NBAGuessGame = () => {
                   </div>
                 );
               })()}
+              {ballKnowledgeDailyAlreadyPlayed && (() => {
+                const entry = ballKnowledgeDailyCompletions[String(getDailyNumber())];
+                let displayDate = entry?.date ?? '';
+                try {
+                  const d = new Date((entry?.date ?? '') + 'T12:00:00');
+                  if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                } catch {}
+                return (
+                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(217, 119, 6, 0.15)', border: '1px solid rgba(217, 119, 6, 0.35)' }}>
+                    <p style={{ margin: '0 0 12px', color: '#fef3c7', fontSize: '0.95rem' }}>
+                      You already played Ball Knowledge Daily #{getDailyNumber()} on {displayDate}.
+                      {entry?.won ? ` You got it in ${entry?.guesses ?? '?'} guess${entry?.guesses !== 1 ? 'es' : ''}!` : " You didn't get it."}
+                    </p>
+                    {!entry?.won && targetPlayer && (
+                      <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
+                        The answer was <strong>{targetPlayer}</strong>.
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBallKnowledgeDetail(String(getDailyNumber()))}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: '#d97706',
+                          color: 'white',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        View your guesses
+                      </button>
+                      {entry?.won && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const shareText = `🏀 I got Ball Knowledge Daily #${getDailyNumber()} in ${entry?.guesses ?? '?'} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`;
+                            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(shareText);
+                            setShowCopyToast(true);
+                            setTimeout(() => setShowCopyToast(false), 2500);
+                          }}
+                          style={{
+                            padding: '10px 16px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem'
+                          }}
+                        >
+                          📤 Share
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
               
-              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 10) && !dailyAlreadyPlayed && (
+              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 10) && !(gameMode === 'ballKnowledgeDaily' && guessCount >= 10) && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <div>
                   <div style={{ position: 'relative', marginBottom: '16px' }}>
                     <input
@@ -1351,16 +1660,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10)}
+                    disabled={loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10)}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10) ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10) ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10) ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10) ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
@@ -1381,7 +1690,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
 
-              {gameWon && !dailyAlreadyPlayed && (
+              {gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <div style={{ 
                   textAlign: 'center', 
                   backgroundColor: '#22c55e', 
@@ -1400,7 +1709,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
 
-              {showAnswer && !gameWon && !dailyAlreadyPlayed && (
+              {showAnswer && !gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <div style={{
                   textAlign: 'center',
                   backgroundColor: '#f59e0b',
@@ -1414,12 +1723,12 @@ const NBAGuessGame = () => {
                     <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
                   )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    {gameMode === 'daily' && guessCount >= 10 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
+                    {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
                   </p>
                 </div>
               )}
 
-              {gameWon && targetPlayer && !dailyAlreadyPlayed && (
+              {gameWon && targetPlayer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <button
                   onClick={handleShare}
                   style={{
@@ -1440,7 +1749,7 @@ const NBAGuessGame = () => {
               )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                {!dailyAlreadyPlayed && (
+                {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
                     onClick={startNewGame}
                     style={{
@@ -1459,7 +1768,7 @@ const NBAGuessGame = () => {
                   </button>
                 )}
                 
-                {!gameWon && !showAnswer && !dailyAlreadyPlayed && (
+                {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
                     onClick={revealAnswer}
                     style={{
