@@ -12,7 +12,7 @@
  * To change the "start" of the calendar: change DAILY_PUZZLE_EPOCH to the date you want to be Day 0 (Daily #1).
  */
 
-export const DAILY_PUZZLE_EPOCH = '2025-03-15';
+export const DAILY_PUZZLE_EPOCH = '2026-03-15';
 
 export const DAILY_PLAYERS = [
   'Bam Adebayo',   // Day 0 = Daily #1
