@@ -53,7 +53,7 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v6';
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v7';
   const CURRENT_DAILY_NUM = 1;
   const getDailyCompletionsFromStorage = () => {
     try {
