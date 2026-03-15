@@ -343,6 +343,13 @@ const NBAGuessGame = () => {
     loadPlayerNames();
   }, []);
 
+  // When in Ball Knowledge Daily, keep target in sync with the ball-knowledge list (not the main Daily list).
+  useEffect(() => {
+    if (gameMode !== 'ballKnowledgeDaily') return;
+    const correct = getBallKnowledgeDailyPlayer(getDailyPuzzleIndex());
+    setTargetPlayer((prev) => (prev === correct ? prev : correct));
+  }, [gameMode]);
+
   // Load player headshots (from public/player-images.json, built by scripts/fetch-nba-player-images.js)
   useEffect(() => {
     let cancelled = false;
