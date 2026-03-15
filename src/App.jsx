@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
+import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -39,9 +40,7 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  // Daily mode: one puzzle per day, 8 guesses max. First daily = LeBron James.
-  const DAILY_PUZZLE_EPOCH = '2025-03-13';
-  const DAILY_PLAYERS = ['Jabari Smith Jr.'];
+  // Daily mode: one puzzle per day (seeded by calendar). Same puzzle for everyone globally.
   const getDailyPuzzleIndex = () => {
     const epoch = new Date(DAILY_PUZZLE_EPOCH).setHours(0, 0, 0, 0);
     const now = new Date().setHours(0, 0, 0, 0);
@@ -53,8 +52,7 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v9';
-  const CURRENT_DAILY_NUM = 1;
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v10';
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
@@ -86,7 +84,7 @@ const NBAGuessGame = () => {
 
   const [dailyCompletions, setDailyCompletions] = useState({});
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
-  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(CURRENT_DAILY_NUM)] != null;
+  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(getDailyNumber())] != null;
   useEffect(() => {
     setDailyCompletions(getDailyCompletionsFromStorage());
   }, []);
@@ -158,7 +156,7 @@ const NBAGuessGame = () => {
   const startNewGame = () => {
     let chosenPlayer;
     if (gameMode === 'daily') {
-      chosenPlayer = getDailyPlayerForIndex(0);
+      chosenPlayer = getDailyPlayerForIndex(getDailyPuzzleIndex());
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
     } else {
@@ -197,7 +195,7 @@ const NBAGuessGame = () => {
     if (filtered.length > 0) {
       const target =
         newMode === 'daily'
-          ? getDailyPlayerForIndex(0)
+          ? getDailyPlayerForIndex(getDailyPuzzleIndex())
           : filtered[Math.floor(Math.random() * filtered.length)];
       setTargetPlayer(target);
       fetchTargetMaxSimilarity(target);
@@ -249,7 +247,7 @@ const NBAGuessGame = () => {
               setFilteredPlayers(filtered);
               
               if (filtered.length > 0) {
-                const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : filtered[Math.floor(Math.random() * filtered.length)];
+                const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : filtered[Math.floor(Math.random() * filtered.length)];
                 setTargetPlayer(target);
                 fetchTargetMaxSimilarity(target);
               } else {
@@ -259,7 +257,7 @@ const NBAGuessGame = () => {
             } else {
               // No players_data: no filtering (classic/easy need players_data)
               setFilteredPlayers(sortedPlayers);
-              const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
               setTargetPlayer(target);
               fetchTargetMaxSimilarity(target);
               console.log('Using all players (no players_data available)');
@@ -267,7 +265,7 @@ const NBAGuessGame = () => {
           } catch (err) {
             // Fallback: use all players
             setFilteredPlayers(sortedPlayers);
-            const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+            const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
             setTargetPlayer(target);
             fetchTargetMaxSimilarity(target);
             console.log('Using all players (filtering failed)');
@@ -280,7 +278,7 @@ const NBAGuessGame = () => {
         const fallback = modernPlayers;
         setAllPlayers(fallback);
         setFilteredPlayers(fallback);
-        const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : fallback[Math.floor(Math.random() * fallback.length)];
+        const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : fallback[Math.floor(Math.random() * fallback.length)];
         setTargetPlayer(target);
         fetchTargetMaxSimilarity(target);
       }
@@ -328,8 +326,8 @@ const NBAGuessGame = () => {
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
-    if (gameMode === 'daily' && guessCount >= 8 && !gameWon) {
-      setError('No guesses left! Daily puzzle limit is 8 guesses.');
+    if (gameMode === 'daily' && guessCount >= 10 && !gameWon) {
+      setError('No guesses left! Daily puzzle limit is 10 guesses.');
       return;
     }
     setShowSuggestions(false);
@@ -377,14 +375,14 @@ const NBAGuessGame = () => {
             if (gameMode === 'daily') {
               const dateStr = new Date().toISOString().slice(0, 10);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-              const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, newCount, fullHistory, true, targetPlayer);
+              const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, newCount, fullHistory, true, targetPlayer);
               setDailyCompletions(next);
             }
-          } else if (gameMode === 'daily' && newCount >= 8) {
+          } else if (gameMode === 'daily' && newCount >= 10) {
             setShowAnswer(true);
             const dateStr = new Date().toISOString().slice(0, 10);
             const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-            const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, 8, fullHistory, false, targetPlayer);
+            const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
             setDailyCompletions(next);
             fetch(`${API_BASE}/guess`, {
               method: 'POST',
@@ -440,7 +438,7 @@ const NBAGuessGame = () => {
     if (gameMode === 'daily') {
       const dateStr = new Date().toISOString().slice(0, 10);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
-      const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, guessCount, history, false, targetPlayer);
+      const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, guessCount, history, false, targetPlayer);
       setDailyCompletions(next);
     }
     setLoading(false);
@@ -458,7 +456,7 @@ const NBAGuessGame = () => {
 
     const shareText =
       gameMode === 'daily'
-        ? `🏀 I got the daily NBA Mantle #1 in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+        ? `🏀 I got the daily NBA Mantle #${getDailyNumber()} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
         : (() => {
             const modeLabel =
               gameMode === 'classic'
@@ -725,12 +723,12 @@ const NBAGuessGame = () => {
                   boxShadow: gameMode === 'daily' ? '0 4px 14px rgba(139, 92, 246, 0.4)' : 'none'
                 }}
               >
-                📅 Daily #1
+                📅 Daily #{getDailyNumber()}
               </button>
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
-                `Daily #1 — 8 guesses • Same puzzle for everyone`}
+                `Daily #${getDailyNumber()} — 10 guesses • Same puzzle for everyone`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -909,7 +907,7 @@ const NBAGuessGame = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Guesses</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => {
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
                     const used = n <= guessCount;
                     const isWinGuess = gameWon && n === guessCount;
                     return (
@@ -934,7 +932,7 @@ const NBAGuessGame = () => {
                     );
                   })}
                 </div>
-                <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{guessCount}/8</span>
+                <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{guessCount}/10</span>
               </div>
             )}
             {gameMode !== 'daily' && (
@@ -1021,7 +1019,7 @@ const NBAGuessGame = () => {
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. All players in the database. You get 8 guesses — same puzzle for everyone!
+                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. All players in the database. You get 10 guesses — same puzzle for everyone!
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
@@ -1169,7 +1167,7 @@ const NBAGuessGame = () => {
               <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
               
               {dailyAlreadyPlayed && (() => {
-                const entry = dailyCompletions[String(CURRENT_DAILY_NUM)];
+                const entry = dailyCompletions[String(getDailyNumber())];
                 let displayDate = entry?.date ?? '';
                 try {
                   const d = new Date((entry?.date ?? '') + 'T12:00:00');
@@ -1178,7 +1176,7 @@ const NBAGuessGame = () => {
                 return (
                   <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.35)' }}>
                     <p style={{ margin: '0 0 12px', color: '#e9d5ff', fontSize: '0.95rem' }}>
-                      You already played Daily #{CURRENT_DAILY_NUM} on {displayDate}.
+                      You already played Daily #{getDailyNumber()} on {displayDate}.
                       {entry?.won ? ` You got it in ${entry?.guesses ?? '?'} guess${entry?.guesses !== 1 ? 'es' : ''}!` : " You didn't get it."}
                     </p>
                     {!entry?.won && targetPlayer && (
@@ -1189,7 +1187,7 @@ const NBAGuessGame = () => {
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button
                         type="button"
-                        onClick={() => setSelectedDailyDetail(String(CURRENT_DAILY_NUM))}
+                        onClick={() => setSelectedDailyDetail(String(getDailyNumber()))}
                         style={{
                           padding: '10px 16px',
                           borderRadius: '8px',
@@ -1207,7 +1205,7 @@ const NBAGuessGame = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            const shareText = `🏀 I got the daily NBA Mantle #${CURRENT_DAILY_NUM} in ${entry?.guesses ?? '?'} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`;
+                            const shareText = `🏀 I got the daily NBA Mantle #${getDailyNumber()} in ${entry?.guesses ?? '?'} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`;
                             if (navigator.clipboard?.writeText) navigator.clipboard.writeText(shareText);
                             setShowCopyToast(true);
                             setTimeout(() => setShowCopyToast(false), 2500);
@@ -1231,7 +1229,7 @@ const NBAGuessGame = () => {
                 );
               })()}
               
-              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 8) && !dailyAlreadyPlayed && (
+              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 10) && !dailyAlreadyPlayed && (
                 <div>
                   <div style={{ position: 'relative', marginBottom: '16px' }}>
                     <input
@@ -1346,16 +1344,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8)}
+                    disabled={loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10)}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8) ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10) ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 8) ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || !targetPlayer || (gameMode === 'daily' && guessCount >= 10) ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
@@ -1409,7 +1407,7 @@ const NBAGuessGame = () => {
                     <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
                   )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    {gameMode === 'daily' && guessCount >= 8 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
+                    {gameMode === 'daily' && guessCount >= 10 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
                   </p>
                 </div>
               )}

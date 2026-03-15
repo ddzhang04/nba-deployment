@@ -97,6 +97,16 @@ This creates a `build` folder with optimized production files.
 
 ## 🔧 Configuration
 
+### Editing the daily puzzle (who’s the mystery player each day)
+
+The daily uses the **calendar date**: everyone gets the same puzzle on the same day.
+
+- **File to edit:** `src/data/dailyPlayers.js`
+- **What to change:**
+  - **`DAILY_PLAYERS`** — Array of player names in order. Day 0 = first name, Day 1 = second, etc. Add or remove names; the list cycles if there are more days than names.
+  - **`DAILY_PUZZLE_EPOCH`** — The date that counts as “Day 0” (e.g. `'2025-03-13'`). Change this to shift which calendar day is Daily #1.
+- Save the file; the next build or refresh will use the new list.
+
 ### API Endpoints
 
 The frontend expects these backend endpoints:
