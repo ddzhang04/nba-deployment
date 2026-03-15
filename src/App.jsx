@@ -609,46 +609,6 @@ const NBAGuessGame = () => {
             <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
-          
-          <div className="header-buttons">
-            <button
-              onClick={() => setShowHowToPlay(true)}
-              className="how-to-play-btn"
-              style={{
-                padding: '10px 18px',
-                borderRadius: '999px',
-                border: '1px solid #4b5563',
-                backgroundColor: '#111827',
-                color: '#e5e7eb',
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span>❓</span>
-              <span>How to Play</span>
-            </button>
-            <button
-              onClick={() => setShowMoreGames(true)}
-              style={{
-                padding: '10px 18px',
-                borderRadius: '999px',
-                border: '1px solid #4b5563',
-                backgroundColor: '#111827',
-                color: '#e5e7eb',
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <span>🎮</span>
-              <span>More games</span>
-            </button>
-          </div>
 
           <p style={{ color: '#94a3b8', marginBottom: targetMaxSimilar != null ? '8px' : '20px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players. Daily puzzle and unlimited free play modes.
@@ -660,6 +620,46 @@ const NBAGuessGame = () => {
               <span style={{ fontWeight: 'bold' }}>{targetMaxSimilar}/100</span>.
             </p>
           )}
+
+          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '8px' }}>
+            <button
+              onClick={() => setShowHowToPlay(true)}
+              className="how-to-play-btn"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>❓</span>
+              <span>How to Play</span>
+            </button>
+            <button
+              onClick={() => setShowMoreGames(true)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>🎮</span>
+              <span>More games</span>
+            </button>
+          </div>
 
           {/* Game Mode Selection */}
           <div style={{ marginBottom: '20px' }}>

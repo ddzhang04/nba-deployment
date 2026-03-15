@@ -85,33 +85,14 @@ html, body {
   position: relative;
 }
 
-/* Header buttons: How to Play + More games — stacked, top-right on desktop */
+/* Header buttons: How to Play + More games — compact row below description */
 .header-buttons {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 14px;
-}
-
-@media (min-width: 769px) {
-  .game-header .header-buttons {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    align-items: flex-end;
-    gap: 14px;
-  }
-}
-
-@media (max-width: 640px) {
-  .header-buttons {
-    margin-top: 12px;
-    gap: 12px;
-  }
-}
-
-.how-to-play-btn {
-  /* positioning comes from .header-buttons on desktop */
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* Layout */
@@ -553,12 +534,6 @@ html, body {
 
   .game-header > div:first-of-type span {
     font-size: 24px !important;
-  }
-
-  .game-header .header-buttons {
-    position: static;
-    margin-top: 12px;
-    align-items: center;
   }
 
   .main-layout {
