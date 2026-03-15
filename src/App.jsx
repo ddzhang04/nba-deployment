@@ -466,7 +466,7 @@ const NBAGuessGame = () => {
                 : gameMode === 'easy'
                 ? 'All Stars 1986 or Later'
                 : 'All Players';
-            return `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA-MANTLE (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
+            return `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA Mantle (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
           })();
 
     const copyPromise =
@@ -605,7 +605,7 @@ const NBAGuessGame = () => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA-MANTLE</h1>
+            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
           
@@ -650,7 +650,7 @@ const NBAGuessGame = () => {
           </div>
 
           <p style={{ color: '#94a3b8', marginBottom: targetMaxSimilar != null ? '8px' : '20px', fontSize: '1.1rem' }}>
-            Guess the mystery NBA player by finding similar players!
+            Guess the mystery NBA player by finding similar players—like Wordle for basketball. Daily puzzle and free play modes.
           </p>
 
           {targetMaxSimilar != null && (
@@ -979,7 +979,7 @@ const NBAGuessGame = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h2 style={{ fontSize: '1.4rem', margin: 0, color: '#e5e7eb' }}>How to Play NBA‑MANTLE</h2>
+                <h2 style={{ fontSize: '1.4rem', margin: 0, color: '#e5e7eb' }}>How to Play NBA Mantle</h2>
                 <button
                   onClick={() => setShowHowToPlay(false)}
                   style={{
@@ -1123,7 +1123,7 @@ const NBAGuessGame = () => {
                 </button>
               </div>
               <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '16px', lineHeight: 1.5 }}>
-                If you like NBA‑MANTLE, try this other hoops project: build a roster under the salary cap and run a full season simulation.
+                If you like NBA Mantle, try this other hoops project: build a roster under the salary cap and run a full season simulation.
               </p>
               <a
                 href="https://nba-budget-ball.vercel.app/"
