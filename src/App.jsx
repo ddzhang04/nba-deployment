@@ -365,7 +365,7 @@ const NBAGuessGame = () => {
         if (!alreadyGuessed) {
           setGuessHistory(prev => {
             const updated = [...prev, newGuess];
-            return updated.sort((a, b) => b.score - a.score).slice(0, 15);
+            return updated.slice(0, 15);
           });
 
           const newCount = guessCount + 1;
@@ -1535,7 +1535,7 @@ const NBAGuessGame = () => {
               </div>
             ) : (
               <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                {guessHistory.map((item, index) => (
+                {guessHistory.slice().sort((a, b) => b.score - a.score).map((item, index) => (
                   <div key={index} style={{ 
                     backgroundColor: '#0f172a', 
                     borderRadius: '12px', 
