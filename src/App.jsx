@@ -378,10 +378,6 @@ const NBAGuessGame = () => {
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
-    if ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10 && !gameWon) {
-      setError('No guesses left! Puzzle limit is 10 guesses.');
-      return;
-    }
     setShowSuggestions(false);
     setSuggestions([]);
     setSelectedSuggestionIndex(-1);
@@ -435,25 +431,6 @@ const NBAGuessGame = () => {
               const next = saveBallKnowledgeDailyToStorage(getDailyNumber(), dateStr, newCount, fullHistory, true, targetPlayer);
               setBallKnowledgeDailyCompletions(next);
             }
-          } else if ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && newCount >= 10) {
-            setShowAnswer(true);
-            const dateStr = new Date().toISOString().slice(0, 10);
-            const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-            if (gameMode === 'daily') {
-              const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
-              setDailyCompletions(next);
-            } else {
-              const next = saveBallKnowledgeDailyToStorage(getDailyNumber(), dateStr, 10, fullHistory, false, targetPlayer);
-              setBallKnowledgeDailyCompletions(next);
-            }
-            fetch(`${API_BASE}/guess`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json; charset=utf-8' },
-              body: JSON.stringify({ guess: targetPlayer, target: targetPlayer })
-            })
-              .then(r => r.ok ? r.json() : null)
-              .then(result => { if (result?.top_5) setTop5Players(result.top_5); })
-              .catch(() => {});
           }
         } else {
           setError('You have already guessed this player!');
@@ -814,9 +791,9 @@ const NBAGuessGame = () => {
             </div>
             <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
-                `Daily #${getDailyNumber()} — 10 guesses • Same puzzle for everyone`}
+                `Daily #${getDailyNumber()} — Same puzzle for everyone • Reveal anytime`}
               {gameMode === 'ballKnowledgeDaily' &&
-                `Ball Knowledge Daily #${getDailyNumber()} — 10 guesses • Same puzzle for everyone`}
+                `Ball Knowledge Daily #${getDailyNumber()} — Same puzzle for everyone • Reveal anytime`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -1159,39 +1136,7 @@ const NBAGuessGame = () => {
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem', alignItems: 'center' }}>
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div className="daily-guesses-row" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                <span style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Guesses</span>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
-                    const used = n <= guessCount;
-                    const isWinGuess = gameWon && n === guessCount;
-                    return (
-                      <div
-                        key={n}
-                        className="daily-guess-box"
-                        style={{
-                          width: '28px',
-                          height: '28px',
-                          minWidth: '24px',
-                          minHeight: '24px',
-                          borderRadius: '6px',
-                          backgroundColor: used ? (isWinGuess ? '#10b981' : '#8b5cf6') : 'transparent',
-                          border: `2px solid ${used ? (isWinGuess ? '#10b981' : '#8b5cf6') : '#475569'}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          color: '#fff'
-                        }}
-                      >
-                        {isWinGuess ? '✓' : ''}
-                      </div>
-                    );
-                  })}
-                </div>
-                <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>{guessCount}/10</span>
-              </div>
+              <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>Guesses: {guessCount}</span>
             )}
             {gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && (
               <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
@@ -1277,10 +1222,10 @@ const NBAGuessGame = () => {
                 </p>
                 <ul style={{ paddingLeft: '20px', margin: 0 }}>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. All players in the database. You get 10 guesses — same puzzle for everyone!
+                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. Same puzzle for everyone. Take your time — use Reveal when you want to see the answer.
                   </li>
                   <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Ball Knowledge Daily</span>: Same as Daily but with a separate, harder list of players. 10 guesses, one puzzle per day.
+                    <span style={{ fontWeight: 'bold' }}>Ball Knowledge Daily</span>: Same as Daily but with a separate, harder list of players. One puzzle per day; Reveal anytime.
                   </li>
                   <li style={{ marginBottom: '4px' }}>
                     <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
@@ -1552,7 +1497,7 @@ const NBAGuessGame = () => {
                 );
               })()}
               
-              {!gameWon && !showAnswer && !(gameMode === 'daily' && guessCount >= 10) && !(gameMode === 'ballKnowledgeDaily' && guessCount >= 10) && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
+              {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <div>
                   <div style={{ position: 'relative', marginBottom: '16px' }}>
                     <input
@@ -1667,16 +1612,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10)}
+                    disabled={loading || !guess.trim() || !targetPlayer}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10) ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || !targetPlayer ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() || !targetPlayer || ((gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10) ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || !targetPlayer ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
@@ -1730,7 +1675,7 @@ const NBAGuessGame = () => {
                     <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
                   )}
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && guessCount >= 10 ? 'Out of guesses! ' : ''}The answer was {targetPlayer}
+                    The answer was {targetPlayer}
                   </p>
                 </div>
               )}
