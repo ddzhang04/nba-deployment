@@ -53,7 +53,7 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v5';
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v6';
   const CURRENT_DAILY_NUM = 1;
   const getDailyCompletionsFromStorage = () => {
     try {
@@ -1175,6 +1175,11 @@ const NBAGuessGame = () => {
                       You already played Daily #{CURRENT_DAILY_NUM} on {displayDate}.
                       {entry?.won ? ` You got it in ${entry?.guesses ?? '?'} guess${entry?.guesses !== 1 ? 'es' : ''}!` : " You didn't get it."}
                     </p>
+                    {!entry?.won && targetPlayer && (
+                      <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
+                        The answer was <strong>{targetPlayer}</strong>.
+                      </p>
+                    )}
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button
                         type="button"
