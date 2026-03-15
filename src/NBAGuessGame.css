@@ -480,9 +480,6 @@ html, body {
   background: rgba(255, 255, 255, 0.5);
 }
 
-/* Import existing CSS file */
-@import './NBAGuessGame.css';
-
 /* Game Mode Selector Styles */
 .game-mode-selector {
   display: flex;
