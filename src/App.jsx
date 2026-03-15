@@ -83,10 +83,10 @@ const NBAGuessGame = () => {
     } catch {}
     return next;
   };
-  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(CURRENT_DAILY_NUM)] != null;
 
   const [dailyCompletions, setDailyCompletions] = useState({});
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
+  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(CURRENT_DAILY_NUM)] != null;
   useEffect(() => {
     setDailyCompletions(getDailyCompletionsFromStorage());
   }, []);
