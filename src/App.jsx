@@ -51,20 +51,29 @@ const NBAGuessGame = () => {
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getDailyNumber = () => getDailyPuzzleIndex() + 1;
 
-  // Past daily mantles: save when user wins daily; keyed by daily number, value = date (YYYY-MM-DD)
+  // Past daily mantles: save when user wins daily; keyed by daily number, value = { date, guesses }
   const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions';
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
-      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      if (typeof parsed !== 'object' || parsed === null) return {};
+      // Normalize: legacy entries may be date strings → { date, guesses: null }
+      const out = {};
+      for (const [num, val] of Object.entries(parsed)) {
+        out[num] = typeof val === 'string'
+          ? { date: val, guesses: null }
+          : { date: val?.date ?? '', guesses: val?.guesses ?? null };
+      }
+      return out;
     } catch {
       return {};
     }
   };
-  const saveDailyCompletionToStorage = (dailyNumber, dateStr) => {
-    const next = { ...getDailyCompletionsFromStorage(), [String(dailyNumber)]: dateStr };
+  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null) => {
+    const prev = getDailyCompletionsFromStorage();
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses } };
     try {
       localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -362,7 +371,7 @@ const NBAGuessGame = () => {
             if (gameMode === 'daily') {
               const dailyNum = 1;
               const dateStr = new Date().toISOString().slice(0, 10);
-              const next = saveDailyCompletionToStorage(dailyNum, dateStr);
+              const next = saveDailyCompletionToStorage(dailyNum, dateStr, newCount);
               setDailyCompletions(next);
             }
           } else if (gameMode === 'daily' && newCount >= 8) {
@@ -714,12 +723,35 @@ const NBAGuessGame = () => {
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
             {Object.keys(dailyCompletions).length > 0 && (
-              <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: 'rgba(139, 92, 246, 0.15)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
-                <div style={{ fontSize: '12px', color: '#a78bfa', fontWeight: 'bold', marginBottom: '6px' }}>Past daily mantles</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: '#e9d5ff' }}>
+              <div style={{
+                marginTop: '14px',
+                padding: '14px 16px',
+                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(139, 92, 246, 0.06))',
+                borderRadius: '12px',
+                border: '1px solid rgba(139, 92, 246, 0.35)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}>
+                <div style={{
+                  fontSize: '13px',
+                  color: '#c4b5fd',
+                  fontWeight: '600',
+                  marginBottom: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span style={{ opacity: 0.9 }}>🏆</span>
+                  Your daily mantles
+                  <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
+                    ({Object.keys(dailyCompletions).length} completed)
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                   {Object.entries(dailyCompletions)
                     .sort(([a], [b]) => Number(a) - Number(b))
-                    .map(([num, dateStr]) => {
+                    .map(([num, entry]) => {
+                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
                       let displayDate = dateStr;
                       try {
                         const d = new Date(dateStr + 'T12:00:00');
@@ -728,9 +760,31 @@ const NBAGuessGame = () => {
                         }
                       } catch {}
                       return (
-                        <span key={num}>
-                          Daily #{num} — {displayDate}
-                        </span>
+                        <div
+                          key={num}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.4)',
+                            fontSize: '13px',
+                            color: '#e9d5ff'
+                          }}
+                        >
+                          <span style={{ color: '#a78bfa', fontWeight: '600' }}>Daily #{num}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                          <span style={{ color: '#c4b5fd' }}>{displayDate}</span>
+                          {guesses != null && (
+                            <>
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                              <span style={{ color: '#fbbf24', fontWeight: '600' }}>{guesses} guess{guesses !== 1 ? 'es' : ''}</span>
+                            </>
+                          )}
+                          <span style={{ color: '#10b981', marginLeft: '2px' }}>✓</span>
+                        </div>
                       );
                     })}
                 </div>
