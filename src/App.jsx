@@ -16,7 +16,7 @@ const NBAGuessGame = () => {
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-  const [gameMode, setGameMode] = useState('classic');
+  const [gameMode, setGameMode] = useState('daily');
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
@@ -249,9 +249,9 @@ const NBAGuessGame = () => {
               setFilteredPlayers(filtered);
               
               if (filtered.length > 0) {
-                const randomPlayer = filtered[Math.floor(Math.random() * filtered.length)];
-                setTargetPlayer(randomPlayer);
-                fetchTargetMaxSimilarity(randomPlayer);
+                const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : filtered[Math.floor(Math.random() * filtered.length)];
+                setTargetPlayer(target);
+                fetchTargetMaxSimilarity(target);
               } else {
                 setTargetMaxSimilar(null);
               }
@@ -259,17 +259,17 @@ const NBAGuessGame = () => {
             } else {
               // No players_data: no filtering (classic/easy need players_data)
               setFilteredPlayers(sortedPlayers);
-              const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-              setTargetPlayer(randomPlayer);
-              fetchTargetMaxSimilarity(randomPlayer);
+              const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+              setTargetPlayer(target);
+              fetchTargetMaxSimilarity(target);
               console.log('Using all players (no players_data available)');
             }
           } catch (err) {
             // Fallback: use all players
             setFilteredPlayers(sortedPlayers);
-            const randomPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-            setTargetPlayer(randomPlayer);
-            fetchTargetMaxSimilarity(randomPlayer);
+            const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+            setTargetPlayer(target);
+            fetchTargetMaxSimilarity(target);
             console.log('Using all players (filtering failed)');
           }
         } else {
@@ -280,9 +280,9 @@ const NBAGuessGame = () => {
         const fallback = modernPlayers;
         setAllPlayers(fallback);
         setFilteredPlayers(fallback);
-        const randomPlayer = fallback[Math.floor(Math.random() * fallback.length)];
-        setTargetPlayer(randomPlayer);
-        fetchTargetMaxSimilarity(randomPlayer);
+        const target = gameMode === 'daily' ? getDailyPlayerForIndex(0) : fallback[Math.floor(Math.random() * fallback.length)];
+        setTargetPlayer(target);
+        fetchTargetMaxSimilarity(target);
       }
 
       setGuess('');
