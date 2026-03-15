@@ -41,7 +41,7 @@ const NBAGuessGame = () => {
 
   // Daily mode: one puzzle per day, 8 guesses max. First daily = LeBron James.
   const DAILY_PUZZLE_EPOCH = '2025-03-13';
-  const DAILY_PLAYERS = ['LeBron James'];
+  const DAILY_PLAYERS = ['Jabari Smith Jr.'];
   const getDailyPuzzleIndex = () => {
     const epoch = new Date(DAILY_PUZZLE_EPOCH).setHours(0, 0, 0, 0);
     const now = new Date().setHours(0, 0, 0, 0);
@@ -64,10 +64,10 @@ const NBAGuessGame = () => {
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
         if (typeof val === 'string') {
-          out[num] = { date: val, guesses: null, guessHistory: [], won: true };
+          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '' };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
-          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false };
+          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '' };
         }
       }
       return out;
@@ -75,9 +75,9 @@ const NBAGuessGame = () => {
       return {};
     }
   };
-  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true) => {
+  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '') => {
     const prev = getDailyCompletionsFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer } };
     try {
       localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -377,14 +377,14 @@ const NBAGuessGame = () => {
             if (gameMode === 'daily') {
               const dateStr = new Date().toISOString().slice(0, 10);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-              const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, newCount, fullHistory, true);
+              const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, newCount, fullHistory, true, targetPlayer);
               setDailyCompletions(next);
             }
           } else if (gameMode === 'daily' && newCount >= 8) {
             setShowAnswer(true);
             const dateStr = new Date().toISOString().slice(0, 10);
             const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
-            const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, 8, fullHistory, false);
+            const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, 8, fullHistory, false, targetPlayer);
             setDailyCompletions(next);
             fetch(`${API_BASE}/guess`, {
               method: 'POST',
@@ -440,7 +440,7 @@ const NBAGuessGame = () => {
     if (gameMode === 'daily') {
       const dateStr = new Date().toISOString().slice(0, 10);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
-      const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, guessCount, history, false);
+      const next = saveDailyCompletionToStorage(CURRENT_DAILY_NUM, dateStr, guessCount, history, false, targetPlayer);
       setDailyCompletions(next);
     }
     setLoading(false);
@@ -795,6 +795,12 @@ const NBAGuessGame = () => {
                           }}
                         >
                           <span style={{ color: '#a78bfa', fontWeight: '600' }}>Daily #{num}</span>
+                          {entry?.answer && (
+                            <>
+                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
+                              <span style={{ color: '#e9d5ff' }}>{entry.answer}</span>
+                            </>
+                          )}
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
                           <span style={{ color: '#c4b5fd' }}>{displayDate}</span>
                           {guesses != null && (
@@ -856,7 +862,7 @@ const NBAGuessGame = () => {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                           <div>
                             <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#e5e7eb' }}>Daily #{selectedDailyDetail}</h3>
-                            <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>{displayDate}{entry?.guesses != null ? ` · ${entry.guesses} guess${entry.guesses !== 1 ? 'es' : ''}` : ''}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: '#94a3b8' }}>{entry?.answer ? `Answer: ${entry.answer} · ` : ''}{displayDate}{entry?.guesses != null ? ` · ${entry.guesses} guess${entry.guesses !== 1 ? 'es' : ''}` : ''}</p>
                           </div>
                           <button
                             type="button"
