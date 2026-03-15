@@ -52,8 +52,8 @@ const NBAGuessGame = () => {
   const getDailyNumber = () => getDailyPuzzleIndex() + 1;
 
   // Past daily mantles: save when user wins daily; keyed by daily number, value = { date, guesses, guessHistory }
-  // v2 key clears previous data and adds guessHistory per completion
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v2';
+  // v3 = reset for testing; each completion stores every player you guessed (name + score)
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v3';
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
@@ -855,9 +855,9 @@ const NBAGuessGame = () => {
                             ×
                           </button>
                         </div>
-                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Your guesses</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Each player you guessed (in order)</div>
                         {history.length === 0 ? (
-                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guess history saved for this daily.</p>
+                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guesses saved for this daily.</p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {history.map((item, idx) => (
