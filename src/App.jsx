@@ -51,6 +51,31 @@ const NBAGuessGame = () => {
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getDailyNumber = () => getDailyPuzzleIndex() + 1;
 
+  // Past daily mantles: save when user wins daily; keyed by daily number, value = date (YYYY-MM-DD)
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions';
+  const getDailyCompletionsFromStorage = () => {
+    try {
+      const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const saveDailyCompletionToStorage = (dailyNumber, dateStr) => {
+    const next = { ...getDailyCompletionsFromStorage(), [String(dailyNumber)]: dateStr };
+    try {
+      localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
+    } catch {}
+    return next;
+  };
+
+  const [dailyCompletions, setDailyCompletions] = useState({});
+  useEffect(() => {
+    setDailyCompletions(getDailyCompletionsFromStorage());
+  }, []);
+
   const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all' || mode === 'daily') {
       return players;
@@ -334,6 +359,12 @@ const NBAGuessGame = () => {
           if (score === 100) {
             setGameWon(true);
             setTop5Players(top_5 || []);
+            if (gameMode === 'daily') {
+              const dailyNum = 1;
+              const dateStr = new Date().toISOString().slice(0, 10);
+              const next = saveDailyCompletionToStorage(dailyNum, dateStr);
+              setDailyCompletions(next);
+            }
           } else if (gameMode === 'daily' && newCount >= 8) {
             setShowAnswer(true);
             fetch(`${API_BASE}/guess`, {
@@ -682,6 +713,29 @@ const NBAGuessGame = () => {
               {gameMode === 'all' && 
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
+            {Object.keys(dailyCompletions).length > 0 && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: 'rgba(139, 92, 246, 0.15)', borderRadius: '8px', border: '1px solid rgba(139, 92, 246, 0.3)' }}>
+                <div style={{ fontSize: '12px', color: '#a78bfa', fontWeight: 'bold', marginBottom: '6px' }}>Past daily mantles</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px', color: '#e9d5ff' }}>
+                  {Object.entries(dailyCompletions)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([num, dateStr]) => {
+                      let displayDate = dateStr;
+                      try {
+                        const d = new Date(dateStr + 'T12:00:00');
+                        if (!isNaN(d.getTime())) {
+                          displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        }
+                      } catch {}
+                      return (
+                        <span key={num}>
+                          Daily #{num} — {displayDate}
+                        </span>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', flexWrap: 'wrap', fontSize: '1.1rem', alignItems: 'center' }}>
