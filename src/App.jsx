@@ -54,7 +54,7 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v11';
+  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v12';
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
@@ -376,6 +376,7 @@ const NBAGuessGame = () => {
             setTop5Players(top_5 || []);
             if (gameMode === 'daily') {
               const dateStr = new Date().toISOString().slice(0, 10);
+              // Chronological order: existing guesses then this winning guess (never sort)
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               const next = saveDailyCompletionToStorage(getDailyNumber(), dateStr, newCount, fullHistory, true, targetPlayer);
               setDailyCompletions(next);
@@ -650,7 +651,7 @@ const NBAGuessGame = () => {
           </div>
 
           <p style={{ color: '#94a3b8', marginBottom: targetMaxSimilar != null ? '8px' : '20px', fontSize: '1.1rem' }}>
-            Guess the mystery NBA player by finding similar players—like Wordle for basketball. Daily puzzle and free play modes.
+            Guess the mystery NBA player by finding similar players. Daily puzzle and unlimited free play modes.
           </p>
 
           {targetMaxSimilar != null && (
@@ -856,6 +857,7 @@ const NBAGuessGame = () => {
                         displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                       }
                     } catch {}
+                    // Display in saved order only (chronological—never sort)
                     const history = Array.isArray(entry?.guessHistory) ? entry.guessHistory : [];
                     return (
                       <>

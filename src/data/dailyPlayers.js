@@ -32,7 +32,8 @@ export const DAILY_PLAYERS = [
   'Hassan Whiteside',   // Day 14 = Daily #15
 
 // WHEN I LAUNCH THE APP ILL RESTART AT THE TOP OF THE LIST
-// 3/31/26 ? Also need current season data
+// 3/31/26 perhaps
+// Also need current season data
 
   // Add more names here for future days. Example:
   // 'LeBron James',
