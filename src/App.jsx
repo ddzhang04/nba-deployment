@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
 import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
+import { supabase } from './lib/supabaseClient';
 
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
@@ -46,9 +47,94 @@ const NBAGuessGame = () => {
       return true;
     }
   });
+  const [showAveragesPanel, setShowAveragesPanel] = useState(() => {
+    try {
+      const raw = localStorage.getItem('nba-mantle-ui-show-averages');
+      if (raw === '0') return false;
+      if (raw === '1') return true;
+      return true;
+    } catch {
+      return true;
+    }
+  });
+  const [averagesMode, setAveragesMode] = useState('daily'); // 'daily' | 'hardcore'
+  const [showAllAverages, setShowAllAverages] = useState(false);
+  const [averagesScope, setAveragesScope] = useState(() => {
+    try {
+      const raw = localStorage.getItem('nba-mantle-ui-averages-scope');
+      if (raw === 'local' || raw === 'global') return raw;
+      return 'global';
+    } catch {
+      return 'global';
+    }
+  }); // 'global' | 'local'
+  const [globalAverages, setGlobalAverages] = useState({ daily: null, hardcore: null });
+  const [globalAveragesLoading, setGlobalAveragesLoading] = useState(false);
+  const [globalAveragesError, setGlobalAveragesError] = useState('');
+  const [globalAveragesLastUpdated, setGlobalAveragesLastUpdated] = useState(null);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
+
+  const getOrCreateAnalyticsId = () => {
+    try {
+      const key = 'nba-mantle-analytics-id-v1';
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const id =
+        (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+          ? globalThis.crypto.randomUUID()
+          : `id_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+      localStorage.setItem(key, id);
+      return id;
+    } catch {
+      return '';
+    }
+  };
+
+  const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won }) => {
+    try {
+      // Best-effort: never block gameplay UI on this.
+      const anon_id = getOrCreateAnalyticsId();
+
+      if (!supabase) return;
+
+      // Frontend-only approach: write directly to Supabase using anon key.
+      // Use "ignoreDuplicates" so we don't need UPDATE RLS policies.
+      await supabase.from('mantle_runs').upsert(
+        {
+          anon_id,
+          mode,
+          daily_number: dailyNumber,
+          date,
+          answer,
+          guesses,
+          won,
+        },
+        { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
+      );
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchGlobalAverages = async (mode) => {
+    const cacheKey = mode === 'hardcore' ? 'hardcore' : 'daily';
+    setGlobalAveragesLoading(true);
+    setGlobalAveragesError('');
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const { data, error } = await supabase.rpc('get_mantle_answer_averages', { p_mode: cacheKey });
+      if (error) throw new Error('rpc failed');
+      const list = Array.isArray(data) ? data : [];
+      setGlobalAverages((prev) => ({ ...prev, [cacheKey]: list }));
+      setGlobalAveragesLastUpdated(Date.now());
+    } catch {
+      setGlobalAveragesError('Global averages unavailable (Supabase not set up yet).');
+    } finally {
+      setGlobalAveragesLoading(false);
+    }
+  };
 
   // Cache player name list locally so the UI feels instant on repeat visits.
   // We still refresh from the API in the background.
@@ -195,6 +281,42 @@ const NBAGuessGame = () => {
     setDailyCompletions(getDailyCompletionsFromStorage());
     setBallKnowledgeDailyCompletions(getBallKnowledgeDailyFromStorage());
   }, []);
+
+  const buildAnswerAverages = (completionsObj) => {
+    const byAnswer = new Map();
+    for (const entry of Object.values(completionsObj ?? {})) {
+      if (typeof entry !== 'object' || entry == null) continue;
+      const answer = typeof entry.answer === 'string' ? entry.answer.trim() : '';
+      const guesses = typeof entry.guesses === 'number' && Number.isFinite(entry.guesses) ? entry.guesses : null;
+      if (!answer || guesses == null) continue;
+      const prev = byAnswer.get(answer) ?? { answer, plays: 0, totalGuesses: 0, best: Infinity, worst: -Infinity };
+      prev.plays += 1;
+      prev.totalGuesses += guesses;
+      prev.best = Math.min(prev.best, guesses);
+      prev.worst = Math.max(prev.worst, guesses);
+      byAnswer.set(answer, prev);
+    }
+    return Array.from(byAnswer.values())
+      .map((row) => ({ ...row, avg: row.plays ? row.totalGuesses / row.plays : null }))
+      .sort((a, b) => {
+        const av = a.avg ?? -Infinity;
+        const bv = b.avg ?? -Infinity;
+        if (bv !== av) return bv - av; // hardest first
+        return a.answer.localeCompare(b.answer);
+      });
+  };
+
+  const dailyAnswerAverages = useMemo(() => buildAnswerAverages(dailyCompletions), [dailyCompletions]);
+  const hardcoreAnswerAverages = useMemo(() => buildAnswerAverages(ballKnowledgeDailyCompletions), [ballKnowledgeDailyCompletions]);
+
+  useEffect(() => {
+    if (!showAveragesPanel) return;
+    if (averagesScope !== 'global') return;
+    const modeKey = averagesMode === 'hardcore' ? 'hardcore' : 'daily';
+    if (globalAverages[modeKey] != null) return; // already loaded
+    fetchGlobalAverages(modeKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAveragesPanel, averagesScope, averagesMode]);
 
   const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all' || mode === 'daily' || mode === 'ballKnowledgeDaily') {
@@ -489,6 +611,7 @@ const NBAGuessGame = () => {
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
                 const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer);
                 setDailyCompletions(next);
+                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -496,6 +619,7 @@ const NBAGuessGame = () => {
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
                 const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer);
                 setBallKnowledgeDailyCompletions(next);
+                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
             }
           }
@@ -547,6 +671,7 @@ const NBAGuessGame = () => {
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
         const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer);
         setDailyCompletions(next);
+        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -554,6 +679,7 @@ const NBAGuessGame = () => {
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
         const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer);
         setBallKnowledgeDailyCompletions(next);
+        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
     }
     setLoading(false);
@@ -1330,6 +1456,244 @@ const NBAGuessGame = () => {
                       );
                     })}
                   </div>
+                )}
+              </div>
+            )}
+
+            {(dailyAnswerAverages.length > 0 || hardcoreAnswerAverages.length > 0) && (
+              <div style={{
+                marginTop: '14px',
+                padding: '14px 16px',
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.07))',
+                borderRadius: '12px',
+                border: '1px solid rgba(148, 163, 184, 0.25)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAveragesPanel((prev) => {
+                      const next = !prev;
+                      try { localStorage.setItem('nba-mantle-ui-show-averages', next ? '1' : '0'); } catch {}
+                      return next;
+                    });
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: 0,
+                    cursor: 'pointer',
+                    font: 'inherit',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{
+                    fontSize: '13px',
+                    color: '#93c5fd',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span style={{ opacity: 0.9 }}>📊</span>
+                    Average guesses (by answer)
+                    <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
+                      (includes all saved history on this device)
+                    </span>
+                  </div>
+                  <div style={{ color: '#93c5fd', fontWeight: 800, fontSize: '14px', lineHeight: 1 }}>
+                    {showAveragesPanel ? '▾' : '▸'}
+                  </div>
+                </button>
+
+                {showAveragesPanel && (
+                  <>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAveragesScope('global');
+                          try { localStorage.setItem('nba-mantle-ui-averages-scope', 'global'); } catch {}
+                        }}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '999px',
+                          border: averagesScope === 'global' ? '1px solid rgba(147, 197, 253, 0.75)' : '1px solid #334155',
+                          backgroundColor: averagesScope === 'global' ? 'rgba(59, 130, 246, 0.16)' : 'rgba(15, 23, 42, 0.35)',
+                          color: '#e5e7eb',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        Global
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAveragesScope('local');
+                          try { localStorage.setItem('nba-mantle-ui-averages-scope', 'local'); } catch {}
+                        }}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '999px',
+                          border: averagesScope === 'local' ? '1px solid rgba(148, 163, 184, 0.6)' : '1px solid #334155',
+                          backgroundColor: averagesScope === 'local' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.35)',
+                          color: '#e5e7eb',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        Local
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setAveragesMode('daily')}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '999px',
+                          border: averagesMode === 'daily' ? '1px solid rgba(196, 181, 253, 0.7)' : '1px solid #334155',
+                          backgroundColor: averagesMode === 'daily' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(15, 23, 42, 0.35)',
+                          color: '#e5e7eb',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                        }}
+                      >
+                        Daily
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAveragesMode('hardcore')}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '999px',
+                          border: averagesMode === 'hardcore' ? '1px solid rgba(252, 211, 77, 0.75)' : '1px solid #334155',
+                          backgroundColor: averagesMode === 'hardcore' ? 'rgba(217, 119, 6, 0.16)' : 'rgba(15, 23, 42, 0.35)',
+                          color: '#e5e7eb',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                        }}
+                      >
+                        Hardcore
+                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {averagesScope === 'global' && (
+                          <button
+                            type="button"
+                            onClick={() => fetchGlobalAverages(averagesMode === 'hardcore' ? 'hardcore' : 'daily')}
+                            style={{
+                              padding: '6px 10px',
+                              borderRadius: '999px',
+                              border: '1px solid #334155',
+                              backgroundColor: 'rgba(15, 23, 42, 0.35)',
+                              color: '#cbd5e1',
+                              cursor: 'pointer',
+                              font: 'inherit',
+                              fontSize: '12px',
+                              fontWeight: 700,
+                            }}
+                          >
+                            Refresh
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowAllAverages((v) => !v)}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '999px',
+                            border: '1px solid #334155',
+                            backgroundColor: 'rgba(15, 23, 42, 0.35)',
+                            color: '#cbd5e1',
+                            cursor: 'pointer',
+                            font: 'inherit',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          {showAllAverages ? 'Show top 12' : 'Show all'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const modeKey = averagesMode === 'hardcore' ? 'hardcore' : 'daily';
+                      const localList = modeKey === 'hardcore' ? hardcoreAnswerAverages : dailyAnswerAverages;
+                      const cloudList = globalAverages[modeKey];
+                      const list = averagesScope === 'global' ? (cloudList ?? []) : localList;
+                      if (!list.length) {
+                        if (averagesScope === 'global') {
+                          return (
+                            <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '0.9rem' }}>
+                              {globalAveragesLoading ? 'Loading global averages…' : globalAveragesError ? globalAveragesError : 'No global data yet.'}
+                              <div style={{ marginTop: '6px', color: '#64748b', fontSize: '0.85rem' }}>
+                                Tip: pick <strong>Local</strong> to see averages from your saved history right now.
+                              </div>
+                            </div>
+                          );
+                        }
+                        return <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '0.9rem' }}>No completed games with saved guess counts yet.</div>;
+                      }
+
+                      const shown = showAllAverages ? list : list.slice(0, 12);
+                      return (
+                        <div style={{
+                          marginTop: '10px',
+                          display: 'grid',
+                          gap: '8px'
+                        }}>
+                          {averagesScope === 'global' && (
+                            <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '2px' }}>
+                              {globalAveragesLastUpdated ? `Updated ${new Date(globalAveragesLastUpdated).toLocaleString()}` : 'Not yet refreshed'}
+                            </div>
+                          )}
+                          {shown.map((row) => (
+                            <div
+                              key={row.answer}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '12px',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                backgroundColor: 'rgba(15, 23, 42, 0.35)',
+                                border: '1px solid #334155',
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {row.answer}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
+                                  {row.plays} play{row.plays !== 1 ? 's' : ''} · best {Number.isFinite(row.best) ? row.best : '—'} · worst {Number.isFinite(row.worst) ? row.worst : '—'}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
+                                <div style={{ color: '#fbbf24', fontWeight: 900, fontSize: '14px' }}>
+                                  {row.avg != null ? Number(row.avg).toFixed(2) : '—'}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '12px' }}>avg guesses</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
             )}
