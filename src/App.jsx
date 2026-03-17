@@ -52,6 +52,7 @@ const NBAGuessGame = () => {
   });
   const [postWinGlobalDailyAverage, setPostWinGlobalDailyAverage] = useState(null); // { avg, wins } | null
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
+  const [supabaseDebug, setSupabaseDebug] = useState({ lastSubmitOk: null, lastError: '' });
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -77,7 +78,10 @@ const NBAGuessGame = () => {
       // Best-effort: never block gameplay UI on this.
       const anon_id = getOrCreateAnalyticsId();
 
-      if (!supabase) return;
+      if (!supabase) {
+        setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
+        return;
+      }
 
       // Frontend-only approach: write directly to Supabase using anon key.
       // Use "ignoreDuplicates" so we don't need UPDATE RLS policies.
@@ -93,7 +97,12 @@ const NBAGuessGame = () => {
         },
         { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
       );
-      if (error) console.error('Supabase submit error:', error);
+      if (error) {
+        console.error('Supabase submit error:', error);
+        setSupabaseDebug({ lastSubmitOk: false, lastError: error?.message || 'Supabase submit failed' });
+      } else {
+        setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
+      }
     } catch {
       // ignore
     }
@@ -111,8 +120,21 @@ const NBAGuessGame = () => {
         }
       }
     } catch {}
+    try { sessionStorage.clear(); } catch {}
     // Hard reload so React state can't keep stale data
     try { window.location.reload(); } catch {}
+  };
+
+  const testSupabaseWrite = async () => {
+    const iso = new Date().toISOString().slice(0, 10);
+    await submitCompletionToCloud({
+      mode: 'daily',
+      dailyNumber: 999999,
+      date: iso,
+      answer: 'TEST_RUN',
+      guesses: 1,
+      won: true,
+    });
   };
 
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
@@ -922,6 +944,25 @@ const NBAGuessGame = () => {
               <span>How to Play</span>
             </button>
             <button
+              onClick={testSupabaseWrite}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                border: '1px solid rgba(34, 211, 238, 0.45)',
+                backgroundColor: 'rgba(8, 145, 178, 0.22)',
+                color: '#a5f3fc',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 800,
+              }}
+              title="Writes a TEST row to Supabase"
+            >
+              🧪 Test Supabase
+            </button>
+            <button
               onClick={resetAllLocalDataNow}
               style={{
                 padding: '6px 12px',
@@ -958,6 +999,31 @@ const NBAGuessGame = () => {
               <span>🎮</span>
               <span>More / About</span>
             </button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '6px' }}>
+            <div style={{
+              fontSize: '12px',
+              color: '#94a3b8',
+              padding: '6px 10px',
+              borderRadius: '999px',
+              border: '1px solid rgba(148, 163, 184, 0.18)',
+              backgroundColor: 'rgba(2, 6, 23, 0.35)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{ color: supabase ? '#34d399' : '#fca5a5', fontWeight: 900 }}>
+                {supabase ? 'Supabase: connected' : 'Supabase: not configured'}
+              </span>
+              {supabaseDebug.lastSubmitOk === true && (
+                <span style={{ color: '#86efac', fontWeight: 800 }}>Last submit: OK</span>
+              )}
+              {supabaseDebug.lastSubmitOk === false && (
+                <span style={{ color: '#fca5a5', fontWeight: 800, maxWidth: 520, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Last submit failed: {supabaseDebug.lastError || 'unknown'}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Game Mode Selection */}
