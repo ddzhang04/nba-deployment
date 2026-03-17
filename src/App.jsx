@@ -125,17 +125,7 @@ const NBAGuessGame = () => {
     try { window.location.reload(); } catch {}
   };
 
-  const testSupabaseWrite = async () => {
-    const iso = new Date().toISOString().slice(0, 10);
-    await submitCompletionToCloud({
-      mode: 'daily',
-      dailyNumber: 999999,
-      date: iso,
-      answer: 'TEST_RUN',
-      guesses: 1,
-      won: true,
-    });
-  };
+  // (intentionally no public "test write" in production UI)
 
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
     // mode: 'daily' | 'hardcore'
@@ -944,25 +934,6 @@ const NBAGuessGame = () => {
               <span>How to Play</span>
             </button>
             <button
-              onClick={testSupabaseWrite}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '999px',
-                border: '1px solid rgba(34, 211, 238, 0.45)',
-                backgroundColor: 'rgba(8, 145, 178, 0.22)',
-                color: '#a5f3fc',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 800,
-              }}
-              title="Writes a TEST row to Supabase"
-            >
-              🧪 Test Supabase
-            </button>
-            <button
               onClick={resetAllLocalDataNow}
               style={{
                 padding: '6px 12px',
@@ -1014,12 +985,6 @@ const NBAGuessGame = () => {
             }}>
               <span style={{ color: supabase ? '#34d399' : '#fca5a5', fontWeight: 900 }}>
                 {supabase ? 'Supabase: connected' : 'Supabase: not configured'}
-              </span>
-              <span style={{ color: '#64748b', fontWeight: 700 }}>
-                env url:{import.meta.env.VITE_SUPABASE_URL ? 'ok' : 'missing'} · env key:{import.meta.env.VITE_SUPABASE_ANON_KEY ? 'ok' : 'missing'}
-              </span>
-              <span style={{ color: '#64748b', fontWeight: 700 }}>
-                {typeof window !== 'undefined' ? new URL(window.location.href).host : ''}
               </span>
               {supabaseDebug.lastSubmitOk === true && (
                 <span style={{ color: '#86efac', fontWeight: 800 }}>Last submit: OK</span>
