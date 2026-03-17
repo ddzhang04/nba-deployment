@@ -951,19 +951,25 @@ const NBAGuessGame = () => {
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
 
-          <p style={{ color: '#94a3b8', marginBottom: targetMaxSimilar != null ? '8px' : '20px', fontSize: '1.1rem' }}>
+          <p style={{ color: '#94a3b8', marginBottom: '8px', fontSize: '1.1rem' }}>
             Guess the mystery NBA player by finding similar players. Daily puzzle and unlimited free play modes.
           </p>
           <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', marginTop: '-10px', marginBottom: '14px' }}>
             Data is current through the <strong>2024–2025</strong> NBA season (no current season yet).
           </div>
 
-          {targetMaxSimilar != null && (
-            <p style={{ color: '#f97316', marginBottom: '20px', fontSize: '0.95rem' }}>
-              The closest any other player gets to this mystery player is about{' '}
-              <span style={{ fontWeight: 'bold' }}>{targetMaxSimilar}/100</span>.
+          <div style={{ minHeight: '26px', marginBottom: '16px' }}>
+            <p style={{ color: '#f59e0b', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.55 }}>
+              {targetMaxSimilar != null ? (
+                <>
+                  The closest any other player gets to this mystery player is about{' '}
+                  <span style={{ fontWeight: 800 }}>{targetMaxSimilar}/100</span>.
+                </>
+              ) : (
+                <>Calculating closest-player ceiling…</>
+              )}
             </p>
-          )}
+          </div>
 
           <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', marginBottom: '4px' }}>
             {(() => {
