@@ -972,6 +972,26 @@ const NBAGuessGame = () => {
           </div>
 
           <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', marginBottom: '4px' }}>
+            <button
+              onClick={() => setShowHowToPlay(true)}
+              className="how-to-play-btn"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '10px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>❓</span>
+              <span>How to Play</span>
+            </button>
+
             {(() => {
               // Hide destructive "reset" for normal users.
               // Enable by visiting with `?tester=1` (or `?tester=true`) OR setting localStorage `nba-mantle-tester=1`.
@@ -984,65 +1004,45 @@ const NBAGuessGame = () => {
                 return false;
               }
             })() && (
-              <>
-                <button
-                  onClick={() => setShowHowToPlay(true)}
-                  className="how-to-play-btn"
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '10px',
-                    border: '1px solid #4b5563',
-                    backgroundColor: '#111827',
-                    color: '#94a3b8',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>❓</span>
-                  <span>How to Play</span>
-                </button>
-                <button
-                  onClick={resetAllLocalDataNow}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '10px',
-                    border: '1px solid rgba(248, 113, 113, 0.55)',
-                    backgroundColor: 'rgba(127, 29, 29, 0.35)',
-                    color: '#fecaca',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 800,
-                  }}
-                  title="Clears your saved history and reloads"
-                >
-                  🧹 Reset local data
-                </button>
-                <button
-                  onClick={() => setShowMoreGames(true)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '10px',
-                    border: '1px solid #4b5563',
-                    backgroundColor: '#111827',
-                    color: '#94a3b8',
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>🎮</span>
-                  <span>More / About</span>
-                </button>
-              </>
+              <button
+                onClick={resetAllLocalDataNow}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(248, 113, 113, 0.55)',
+                  backgroundColor: 'rgba(127, 29, 29, 0.35)',
+                  color: '#fecaca',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 800,
+                }}
+                title="Clears your saved history and reloads"
+              >
+                🧹 Reset local data
+              </button>
             )}
+
+            <button
+              onClick={() => setShowMoreGames(true)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '10px',
+                border: '1px solid #4b5563',
+                backgroundColor: '#111827',
+                color: '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>🎮</span>
+              <span>More / About</span>
+            </button>
           </div>
 
           {/* Game Mode Selection */}
