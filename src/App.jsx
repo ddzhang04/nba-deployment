@@ -27,7 +27,7 @@ const NBAGuessGame = () => {
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
   const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
-  const STORAGE_RESET_VERSION = 'v2'; // bump to force fresh local storage for everyone
+  const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const [showDailyHistoryPanel, setShowDailyHistoryPanel] = useState(() => {
@@ -97,6 +97,22 @@ const NBAGuessGame = () => {
     } catch {
       // ignore
     }
+  };
+
+  const resetAllLocalDataNow = () => {
+    try {
+      // Remove all keys we own, across versions, plus the reset marker.
+      const markerKey = 'nba-mantle-storage-reset-marker';
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (!k) continue;
+        if (k === markerKey || k.startsWith('nba-mantle-')) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch {}
+    // Hard reload so React state can't keep stale data
+    try { window.location.reload(); } catch {}
   };
 
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
@@ -830,11 +846,11 @@ const NBAGuessGame = () => {
   };
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#0f172a', 
-      color: 'white', 
-      fontFamily: 'system-ui, -apple-system, sans-serif' 
+    <div style={{
+      minHeight: '100vh',
+      background: 'radial-gradient(1200px 600px at 20% 0%, rgba(34, 211, 238, 0.12), transparent 60%), radial-gradient(1000px 600px at 80% 10%, rgba(167, 139, 250, 0.14), transparent 55%), linear-gradient(135deg, #050b1a, #0b1226 55%, #070a13)',
+      color: 'white',
+      fontFamily: 'inherit'
     }}>
       {/* Copy-to-clipboard toast */}
       {showCopyToast && (
@@ -904,6 +920,25 @@ const NBAGuessGame = () => {
             >
               <span>❓</span>
               <span>How to Play</span>
+            </button>
+            <button
+              onClick={resetAllLocalDataNow}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '999px',
+                border: '1px solid rgba(248, 113, 113, 0.55)',
+                backgroundColor: 'rgba(127, 29, 29, 0.35)',
+                color: '#fecaca',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 800,
+              }}
+              title="Clears your saved history and reloads"
+            >
+              🧹 Reset local data
             </button>
             <button
               onClick={() => setShowMoreGames(true)}
