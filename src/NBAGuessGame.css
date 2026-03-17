@@ -12,6 +12,12 @@ html, body {
   height: 100%;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+/* Ensure form controls inherit the app font */
+button, input, textarea, select {
+  font: inherit;
 }
 
 /* NBA Guess Game Styles */
@@ -19,7 +25,6 @@ html, body {
   min-height: 100vh;
   background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e40af 100%);
   color: white;
-  font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
 .game-content {

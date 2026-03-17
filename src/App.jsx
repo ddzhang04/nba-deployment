@@ -81,7 +81,7 @@ const NBAGuessGame = () => {
 
       // Frontend-only approach: write directly to Supabase using anon key.
       // Use "ignoreDuplicates" so we don't need UPDATE RLS policies.
-      await supabase.from('mantle_runs').upsert(
+      const { error } = await supabase.from('mantle_runs').upsert(
         {
           anon_id,
           mode,
@@ -93,6 +93,7 @@ const NBAGuessGame = () => {
         },
         { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
       );
+      if (error) console.error('Supabase submit error:', error);
     } catch {
       // ignore
     }
@@ -115,7 +116,10 @@ const NBAGuessGame = () => {
       .eq('won', true)
       .limit(5000);
 
-    if (error) return null;
+    if (error) {
+      console.error('Supabase daily avg error:', error);
+      return null;
+    }
     const rows = Array.isArray(data) ? data : [];
     if (!rows.length) return { avg: null, wins: count ?? 0 };
     const total = rows.reduce((sum, r) => sum + (typeof r?.guesses === 'number' ? r.guesses : 0), 0);
@@ -264,25 +268,40 @@ const NBAGuessGame = () => {
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && !isPastDailySelected && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   useEffect(() => {
+    // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
+    try {
+      const markerKey = 'nba-mantle-storage-reset-marker';
+      const prevMarker = localStorage.getItem(markerKey);
+
+      if (prevMarker !== STORAGE_RESET_VERSION) {
+        const oldKeys = [
+          'nba-mantle-ui-show-daily-history',
+          'nba-mantle-ui-show-hardcore-history',
+          'nba-mantle-ui-show-averages',
+          'nba-mantle-ui-averages-scope',
+          'nba-mantle-analytics-id-v1',
+          'nba-mantle-players-cache-v1',
+          'nba-mantle-daily-completions-v12',
+          'nba-mantle-ball-knowledge-daily-v1',
+        ];
+        for (const k of oldKeys) localStorage.removeItem(k);
+
+        // Clear other known nba-mantle keys from prior versions.
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (!k) continue;
+          if (k.startsWith('nba-mantle-') && !k.endsWith(`-${STORAGE_RESET_VERSION}`) && k !== markerKey) {
+            localStorage.removeItem(k);
+          }
+        }
+
+        localStorage.setItem(markerKey, STORAGE_RESET_VERSION);
+      }
+    } catch {}
+
+    // Now load post-reset values
     setDailyCompletions(getDailyCompletionsFromStorage());
     setBallKnowledgeDailyCompletions(getBallKnowledgeDailyFromStorage());
-  }, []);
-
-  // Best-effort cleanup of old localStorage keys from earlier versions.
-  useEffect(() => {
-    try {
-      const oldKeys = [
-        'nba-mantle-ui-show-daily-history',
-        'nba-mantle-ui-show-hardcore-history',
-        'nba-mantle-ui-show-averages',
-        'nba-mantle-ui-averages-scope',
-        'nba-mantle-analytics-id-v1',
-        'nba-mantle-players-cache-v1',
-        'nba-mantle-daily-completions-v12',
-        'nba-mantle-ball-knowledge-daily-v1',
-      ];
-      for (const k of oldKeys) localStorage.removeItem(k);
-    } catch {}
   }, []);
 
   const resetPuzzleState = () => {
@@ -1195,22 +1214,41 @@ const NBAGuessGame = () => {
                     textAlign: 'left',
                   }}
                 >
-                  <div style={{
-                  fontSize: '13px',
-                  color: '#c4b5fd',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span style={{ opacity: 0.9 }}>🏆</span>
-                  Your daily mantles
-                  <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
-                    ({Object.keys(dailyCompletions).length} played)
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div
+                      aria-hidden
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '10px',
+                        display: 'grid',
+                        placeItems: 'center',
+                        backgroundColor: 'rgba(139, 92, 246, 0.18)',
+                        border: '1px solid rgba(139, 92, 246, 0.35)',
+                        flex: '0 0 auto',
+                      }}
+                    >
+                      🏆
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: '#e9d5ff', fontWeight: 900, fontSize: '14px', lineHeight: 1.2 }}>
+                        Your daily mantles
+                        <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '12px', marginLeft: '8px' }}>
+                          {Object.keys(dailyCompletions).length} played
+                        </span>
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
+                        {showDailyHistoryPanel ? 'Click to hide' : 'Click to show'}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ color: '#c4b5fd', fontWeight: 800, fontSize: '14px', lineHeight: 1 }}>
-                    {showDailyHistoryPanel ? '▾' : '▸'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
+                    <span style={{ color: '#c4b5fd', fontWeight: 900, fontSize: '12px' }}>
+                      {showDailyHistoryPanel ? 'Hide' : 'Show'}
+                    </span>
+                    <div style={{ color: '#c4b5fd', fontWeight: 900, fontSize: '18px', lineHeight: 1 }}>
+                      {showDailyHistoryPanel ? '▾' : '▸'}
+                    </div>
                   </div>
                 </button>
                 {showDailyHistoryPanel && (
@@ -1390,22 +1428,41 @@ const NBAGuessGame = () => {
                     textAlign: 'left',
                   }}
                 >
-                  <div style={{
-                  fontSize: '13px',
-                  color: '#fcd34d',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <span style={{ opacity: 0.9 }}>🧠</span>
-                  Your hardcore dailies
-                  <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
-                    ({Object.keys(ballKnowledgeDailyCompletions).length} played)
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div
+                      aria-hidden
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '10px',
+                        display: 'grid',
+                        placeItems: 'center',
+                        backgroundColor: 'rgba(217, 119, 6, 0.16)',
+                        border: '1px solid rgba(217, 119, 6, 0.32)',
+                        flex: '0 0 auto',
+                      }}
+                    >
+                      🧠
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: '#fef3c7', fontWeight: 900, fontSize: '14px', lineHeight: 1.2 }}>
+                        Your hardcore dailies
+                        <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '12px', marginLeft: '8px' }}>
+                          {Object.keys(ballKnowledgeDailyCompletions).length} played
+                        </span>
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
+                        {showHardcoreHistoryPanel ? 'Click to hide' : 'Click to show'}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ color: '#fcd34d', fontWeight: 800, fontSize: '14px', lineHeight: 1 }}>
-                    {showHardcoreHistoryPanel ? '▾' : '▸'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
+                    <span style={{ color: '#fcd34d', fontWeight: 900, fontSize: '12px' }}>
+                      {showHardcoreHistoryPanel ? 'Hide' : 'Show'}
+                    </span>
+                    <div style={{ color: '#fcd34d', fontWeight: 900, fontSize: '18px', lineHeight: 1 }}>
+                      {showHardcoreHistoryPanel ? '▾' : '▸'}
+                    </div>
                   </div>
                 </button>
                 {showHardcoreHistoryPanel && (
