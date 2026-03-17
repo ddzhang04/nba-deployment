@@ -30,6 +30,29 @@ const NBAGuessGame = () => {
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
+  // Cache player name list locally so the UI feels instant on repeat visits.
+  // We still refresh from the API in the background.
+  const PLAYERS_CACHE_KEY = 'nba-mantle-players-cache-v1';
+  const PLAYERS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+  const readPlayersCache = () => {
+    try {
+      const raw = localStorage.getItem(PLAYERS_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed?.players)) return null;
+      if (typeof parsed?.ts !== 'number') return null;
+      if (Date.now() - parsed.ts > PLAYERS_CACHE_TTL_MS) return null;
+      return parsed.players;
+    } catch {
+      return null;
+    }
+  };
+  const writePlayersCache = (players) => {
+    try {
+      localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), players }));
+    } catch {}
+  };
+
   // Fallback modern NBA players (only used if API loading fails)
   const modernPlayers = [
     'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Giannis Antetokounmpo',
@@ -265,59 +288,54 @@ const NBAGuessGame = () => {
   };
 
   useEffect(() => {
-
-
-
     const loadPlayerNames = async () => {
+      // 1) Render instantly from cache (if present), then refresh from API.
+      const cached = readPlayersCache();
+      if (cached?.length) {
+        const sortedCached = [...cached].sort();
+        setAllPlayers(sortedCached);
+        setFilteredPlayers(filterPlayersForMode(sortedCached, playersData, gameMode));
+      }
+
       try {
-        // Load player names
+        // 2) Load player names (fast endpoint) and update UI immediately.
         let response = await fetch(`${API_BASE}/players`);
-        if (!response.ok) {
-          response = await fetch(`${API_BASE}/player_awards`);
-        }
-        
-        if (response.ok) {
-          const playerNames = await response.json();
-          const sortedPlayers = playerNames.sort();
-          setAllPlayers(sortedPlayers);
-          
-          // Try to load full player data for filtering
-          try {
-            const fullDataResponse = await fetch(`${API_BASE}/players_data?v=2`);
-            if (fullDataResponse.ok) {
-              const fullData = await fullDataResponse.json();
-              setPlayersData(fullData);
-              
-              const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
-              setFilteredPlayers(filtered);
-              
-              if (filtered.length > 0) {
-                const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : filtered[Math.floor(Math.random() * filtered.length)];
-                setTargetPlayer(target);
-                fetchTargetMaxSimilarity(target);
-              } else {
-                setTargetMaxSimilar(null);
-              }
-              console.log('Loaded', sortedPlayers.length, 'total players,', filtered.length, 'for', gameMode, 'mode');
-            } else {
-              // No players_data: no filtering (classic/easy need players_data)
-              setFilteredPlayers(sortedPlayers);
-              const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-              setTargetPlayer(target);
-              fetchTargetMaxSimilarity(target);
-              console.log('Using all players (no players_data available)');
+        if (!response.ok) response = await fetch(`${API_BASE}/player_awards`);
+        if (!response.ok) throw new Error('Failed to fetch players');
+
+        const playerNames = await response.json();
+        writePlayersCache(playerNames);
+        const sortedPlayers = [...playerNames].sort();
+        setAllPlayers(sortedPlayers);
+
+        // Without players_data, keep the app playable using all names.
+        setFilteredPlayers(sortedPlayers);
+        const initialTarget =
+          gameMode === 'daily'
+            ? getDailyPlayerForIndex(getDailyPuzzleIndex())
+            : gameMode === 'ballKnowledgeDaily'
+            ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex())
+            : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+        setTargetPlayer(initialTarget);
+        fetchTargetMaxSimilarity(initialTarget);
+
+        // 3) Load full players_data in the background (improves classic/easy filtering).
+        fetch(`${API_BASE}/players_data?v=2`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((fullData) => {
+            if (!fullData) return;
+            setPlayersData(fullData);
+
+            const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
+            setFilteredPlayers(filtered.length ? filtered : sortedPlayers);
+
+            // If current mode relies on players_data (classic/easy), ensure the target is valid.
+            if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && gameMode !== 'all') {
+              const pool = filtered.length ? filtered : sortedPlayers;
+              setTargetPlayer((prev) => (pool.includes(prev) ? prev : pool[Math.floor(Math.random() * pool.length)]));
             }
-          } catch (err) {
-            // Fallback: use all players
-            setFilteredPlayers(sortedPlayers);
-            const target = gameMode === 'daily' ? getDailyPlayerForIndex(getDailyPuzzleIndex()) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(getDailyPuzzleIndex()) : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-            setTargetPlayer(target);
-            fetchTargetMaxSimilarity(target);
-            console.log('Using all players (filtering failed)');
-          }
-        } else {
-          throw new Error('Failed to fetch players');
-        }
+          })
+          .catch(() => {});
       } catch (error) {
         console.error('Could not load players from API, using fallback:', error);
         const fallback = modernPlayers;
@@ -1197,68 +1215,153 @@ const NBAGuessGame = () => {
                 </button>
               </div>
 
-              <p style={{ color: '#9ca3af', marginBottom: '12px', fontSize: '0.95rem' }}>
-                There is a secret NBA player. Your goal is to find them by guessing other players and using the similarity scores as hints.
-              </p>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '12px',
+                  marginBottom: '14px',
+                }}
+              >
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem' }}>🎯 Goal</div>
+                    <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '0.95rem' }}>Get to 100</div>
+                  </div>
+                  <div style={{ marginTop: '6px', color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
+                    Guess players to find the <strong>mystery player</strong>. Each guess gives a <strong>0–100</strong> similarity score.
+                  </div>
+                </div>
 
-              <ol style={{ paddingLeft: '20px', color: '#e5e7eb', fontSize: '0.95rem', marginBottom: '14px' }}>
-                <li style={{ marginBottom: '6px' }}>
-                  Type any NBA player&apos;s name in the box and press <span style={{ fontWeight: 'bold' }}>Submit Guess</span>.
-                </li>
-                <li style={{ marginBottom: '6px' }}>
-                  Each guess gets a score from <span style={{ fontWeight: 'bold' }}>0–100</span>. Higher scores mean the player is more similar to the mystery player.
-                </li>
-                <li style={{ marginBottom: '6px' }}>
-                  Check the <span style={{ fontWeight: 'bold' }}>breakdown tags</span> (team overlap, era, awards, etc.) to see why a guess was close.
-                </li>
-                <li style={{ marginBottom: '6px' }}>
-                  Use those clues to adjust your next guess and climb toward a score of <span style={{ fontWeight: 'bold' }}>100</span>.
-                </li>
-              </ol>
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
+                  <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>⚡ How it works</div>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#1d4ed8', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>1</div>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
+                        Type a player and hit <strong>Submit Guess</strong>.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#7c3aed', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>2</div>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
+                        Use the <strong>breakdown</strong> to see what made them similar.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#059669', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>3</div>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
+                        Adjust your next guess. <strong>Higher score = closer</strong>.
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '0.85rem', lineHeight: 1.45 }}>
+                    Exact scoring is intentionally a bit hidden—think of it as <strong>clues</strong>, not a formula.
+                  </div>
+                </div>
 
-              <div style={{ marginBottom: '12px', color: '#9ca3af', fontSize: '0.9rem' }}>
-                <p style={{ marginBottom: '4px' }}>
-                  <span style={{ fontWeight: 'bold', color: '#e5e7eb' }}>Modes:</span>
-                </p>
-                <ul style={{ paddingLeft: '20px', margin: 0 }}>
-                  <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Daily</span>: One shared puzzle per day. Same puzzle for everyone. Take your time — use Reveal when you want to see the answer.
-                  </li>
-                  <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Ball Knowledge Daily</span>: Same as Daily but with a separate, harder list of players. One puzzle per day; Reveal anytime.
-                  </li>
-                  <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>All Stars 1986 or Later</span>: Players who have made at least one All-Star team (1986 or later).
-                  </li>
-                  <li style={{ marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 'bold' }}>Classic</span>: Modern era players (2011+) with at least 6 seasons.
-                  </li>
-                  <li>
-                    <span style={{ fontWeight: 'bold' }}>All Players</span>: Any player in the full database.
-                  </li>
-                </ul>
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
+                  <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '10px' }}>🕹️ Modes</div>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ color: '#e9d5ff', fontWeight: 700 }}>📅 Daily</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>One puzzle/day • Reveal anytime</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ color: '#fef3c7', fontWeight: 700 }}>🧠 Ball Knowledge Daily</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Harder list • One puzzle/day</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ color: '#bbf7d0', fontWeight: 700 }}>😊 All Stars 1986+</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>All-Star players only</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ color: '#bfdbfe', fontWeight: 700 }}>🏆 Classic</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Modern (2011+) • 6+ seasons</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                      <span style={{ color: '#fde68a', fontWeight: 700 }}>🌟 All Players</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Full database</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
+                    <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem' }}>🧩 Breakdown clues</div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>More overlap → higher score</div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '8px',
+                    }}
+                  >
+                    {[
+                      ['Same team (seasons)', 'They were on the same roster in specific years.'],
+                      ['Shared teammates', 'They played with many of the same guys.'],
+                      ['Shared franchises', 'They played for the same organizations.'],
+                      ['Position', 'Similar role/position on the floor.'],
+                      ['Era', 'Career start years are close.'],
+                      ['Career length', 'Similar number of seasons played.'],
+                      ['Accolades', 'All-Star / All-NBA / All-Defense / All-Rookie / other awards.'],
+                    ].map(([title, desc]) => (
+                      <div
+                        key={title}
+                        style={{
+                          padding: '10px 10px',
+                          borderRadius: '10px',
+                          backgroundColor: 'rgba(30, 41, 59, 0.55)',
+                          border: '1px solid rgba(51, 65, 85, 0.9)',
+                        }}
+                      >
+                        <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.9rem', marginBottom: '4px' }}>
+                          {title}
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.82rem', lineHeight: 1.35 }}>
+                          {desc}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: '10px', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: 1.45 }}>
+                    Tip: start broad (same era / same position), then use team + teammate overlap to zoom in.
+                  </div>
+                  <div style={{ marginTop: '6px', color: '#94a3b8', fontSize: '0.85rem' }}>
+                    You can always press <strong>Reveal</strong> to see the answer and the top 5 closest players.
+                  </div>
+                </div>
               </div>
-
-              <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '8px' }}>
-                After each guess, you&apos;ll see a breakdown explaining why that player was similar:
-              </p>
-              <ul style={{ paddingLeft: '20px', marginTop: 0, marginBottom: '16px', color: '#d1d5db', fontSize: '0.9rem' }}>
-                <li><span style={{ fontWeight: 'bold' }}>Shared Seasons on Same Team</span>: specific seasons they were on the exact same roster.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Shared Teammates</span>: how many other players they&apos;ve both played with.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Shared Franchises</span>: if they both played for the same organizations.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Position Similarity</span>: whether they play the same or an adjacent position.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Era Overlap</span>: how close their <span style={{ fontWeight: 'bold' }}>start year</span> is (earliest unique season in the league).</li>
-                <li><span style={{ fontWeight: 'bold' }}>Career Length Similarity</span>: similar number of seasons in the league.</li>
-                <li><span style={{ fontWeight: 'bold' }}>All-Star Overlap</span>: same All-Star games.</li>
-                <li><span style={{ fontWeight: 'bold' }}>All-NBA Overlap</span>: same All-NBA teams in the same season.</li>
-                <li><span style={{ fontWeight: 'bold' }}>All-Defense Overlap</span>: same All-Defensive teams in the same season.</li>
-                <li><span style={{ fontWeight: 'bold' }}>All-Rookie Overlap</span>: same All-Rookie team in the same season.</li>
-                <li><span style={{ fontWeight: 'bold' }}>Awards</span>: overlap in other major awards.</li>
-              </ul>
-
-              <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '16px' }}>
-                You can also reveal the answer at any time with the <span style={{ fontWeight: 'bold' }}>Reveal</span> button, and see the top 5 most similar players to the mystery player.
-              </p>
 
               <div style={{ position: 'sticky', bottom: 0, marginTop: '12px' }}>
                 <button
