@@ -27,9 +27,12 @@ const NBAGuessGame = () => {
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
   const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
+  const STORAGE_RESET_VERSION = 'v2'; // bump to force fresh local storage for everyone
+  const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
+
   const [showDailyHistoryPanel, setShowDailyHistoryPanel] = useState(() => {
     try {
-      const raw = localStorage.getItem('nba-mantle-ui-show-daily-history');
+      const raw = localStorage.getItem(key('nba-mantle-ui-show-daily-history'));
       if (raw === '0') return false;
       if (raw === '1') return true;
       return true;
@@ -39,7 +42,7 @@ const NBAGuessGame = () => {
   });
   const [showHardcoreHistoryPanel, setShowHardcoreHistoryPanel] = useState(() => {
     try {
-      const raw = localStorage.getItem('nba-mantle-ui-show-hardcore-history');
+      const raw = localStorage.getItem(key('nba-mantle-ui-show-hardcore-history'));
       if (raw === '0') return false;
       if (raw === '1') return true;
       return true;
@@ -47,45 +50,22 @@ const NBAGuessGame = () => {
       return true;
     }
   });
-  const [showAveragesPanel, setShowAveragesPanel] = useState(() => {
-    try {
-      const raw = localStorage.getItem('nba-mantle-ui-show-averages');
-      if (raw === '0') return false;
-      if (raw === '1') return true;
-      return true;
-    } catch {
-      return true;
-    }
-  });
-  const [averagesMode, setAveragesMode] = useState('daily'); // 'daily' | 'hardcore'
-  const [showAllAverages, setShowAllAverages] = useState(false);
-  const [averagesScope, setAveragesScope] = useState(() => {
-    try {
-      const raw = localStorage.getItem('nba-mantle-ui-averages-scope');
-      if (raw === 'local' || raw === 'global') return raw;
-      return 'global';
-    } catch {
-      return 'global';
-    }
-  }); // 'global' | 'local'
-  const [globalAverages, setGlobalAverages] = useState({ daily: null, hardcore: null });
-  const [globalAveragesLoading, setGlobalAveragesLoading] = useState(false);
-  const [globalAveragesError, setGlobalAveragesError] = useState('');
-  const [globalAveragesLastUpdated, setGlobalAveragesLastUpdated] = useState(null);
+  const [postWinGlobalDailyAverage, setPostWinGlobalDailyAverage] = useState(null); // { avg, wins } | null
+  const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
   const getOrCreateAnalyticsId = () => {
     try {
-      const key = 'nba-mantle-analytics-id-v1';
-      const existing = localStorage.getItem(key);
+      const analyticsKey = key('nba-mantle-analytics-id');
+      const existing = localStorage.getItem(analyticsKey);
       if (existing) return existing;
       const id =
         (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
           ? globalThis.crypto.randomUUID()
           : `id_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-      localStorage.setItem(key, id);
+      localStorage.setItem(analyticsKey, id);
       return id;
     } catch {
       return '';
@@ -118,27 +98,33 @@ const NBAGuessGame = () => {
     }
   };
 
-  const fetchGlobalAverages = async (mode) => {
-    const cacheKey = mode === 'hardcore' ? 'hardcore' : 'daily';
-    setGlobalAveragesLoading(true);
-    setGlobalAveragesError('');
-    try {
-      if (!supabase) throw new Error('Supabase not configured');
-      const { data, error } = await supabase.rpc('get_mantle_answer_averages', { p_mode: cacheKey });
-      if (error) throw new Error('rpc failed');
-      const list = Array.isArray(data) ? data : [];
-      setGlobalAverages((prev) => ({ ...prev, [cacheKey]: list }));
-      setGlobalAveragesLastUpdated(Date.now());
-    } catch {
-      setGlobalAveragesError('Global averages unavailable (Supabase not set up yet).');
-    } finally {
-      setGlobalAveragesLoading(false);
-    }
+  const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
+    // mode: 'daily' | 'hardcore'
+    if (!supabase) return null;
+    const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+    const n = Number(dailyNumber);
+    if (!Number.isFinite(n) || n < 1) return null;
+
+    // Simple frontend-only approach (OK for early data): pull guesses and compute avg.
+    // Uses count=exact so you still see true win count even if we cap rows.
+    const { data, count, error } = await supabase
+      .from('mantle_runs')
+      .select('guesses', { count: 'exact' })
+      .eq('mode', m)
+      .eq('daily_number', n)
+      .eq('won', true)
+      .limit(5000);
+
+    if (error) return null;
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) return { avg: null, wins: count ?? 0 };
+    const total = rows.reduce((sum, r) => sum + (typeof r?.guesses === 'number' ? r.guesses : 0), 0);
+    return { avg: total / rows.length, wins: count ?? rows.length };
   };
 
   // Cache player name list locally so the UI feels instant on repeat visits.
   // We still refresh from the API in the background.
-  const PLAYERS_CACHE_KEY = 'nba-mantle-players-cache-v1';
+  const PLAYERS_CACHE_KEY = key('nba-mantle-players-cache');
   const PLAYERS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
   const readPlayersCache = () => {
     try {
@@ -210,7 +196,7 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = 'nba-mantle-daily-completions-v12';
+  const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const getDailyCompletionsFromStorage = () => {
     try {
       const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
@@ -245,7 +231,7 @@ const NBAGuessGame = () => {
   // Only lock you out of replaying *today's* daily. Past dailies are replayable.
   const dailyAlreadyPlayed = gameMode === 'daily' && !isPastDailySelected && dailyCompletions[String(activeDailyNumber)] != null;
 
-  const BALL_KNOWLEDGE_DAILY_KEY = 'nba-mantle-ball-knowledge-daily-v1';
+  const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
   const getBallKnowledgeDailyFromStorage = () => {
     try {
       const raw = localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY);
@@ -282,41 +268,74 @@ const NBAGuessGame = () => {
     setBallKnowledgeDailyCompletions(getBallKnowledgeDailyFromStorage());
   }, []);
 
-  const buildAnswerAverages = (completionsObj) => {
-    const byAnswer = new Map();
-    for (const entry of Object.values(completionsObj ?? {})) {
-      if (typeof entry !== 'object' || entry == null) continue;
-      const answer = typeof entry.answer === 'string' ? entry.answer.trim() : '';
-      const guesses = typeof entry.guesses === 'number' && Number.isFinite(entry.guesses) ? entry.guesses : null;
-      if (!answer || guesses == null) continue;
-      const prev = byAnswer.get(answer) ?? { answer, plays: 0, totalGuesses: 0, best: Infinity, worst: -Infinity };
-      prev.plays += 1;
-      prev.totalGuesses += guesses;
-      prev.best = Math.min(prev.best, guesses);
-      prev.worst = Math.max(prev.worst, guesses);
-      byAnswer.set(answer, prev);
-    }
-    return Array.from(byAnswer.values())
-      .map((row) => ({ ...row, avg: row.plays ? row.totalGuesses / row.plays : null }))
-      .sort((a, b) => {
-        const av = a.avg ?? -Infinity;
-        const bv = b.avg ?? -Infinity;
-        if (bv !== av) return bv - av; // hardest first
-        return a.answer.localeCompare(b.answer);
-      });
+  // Best-effort cleanup of old localStorage keys from earlier versions.
+  useEffect(() => {
+    try {
+      const oldKeys = [
+        'nba-mantle-ui-show-daily-history',
+        'nba-mantle-ui-show-hardcore-history',
+        'nba-mantle-ui-show-averages',
+        'nba-mantle-ui-averages-scope',
+        'nba-mantle-analytics-id-v1',
+        'nba-mantle-players-cache-v1',
+        'nba-mantle-daily-completions-v12',
+        'nba-mantle-ball-knowledge-daily-v1',
+      ];
+      for (const k of oldKeys) localStorage.removeItem(k);
+    } catch {}
+  }, []);
+
+  const resetPuzzleState = () => {
+    setGuess('');
+    setGuessHistory([]);
+    setGameWon(false);
+    setGuessCount(0);
+    setError('');
+    setTop5Players([]);
+    setShowAnswer(false);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedSuggestionIndex(-1);
+    setPostWinGlobalDailyAverage(null);
+    setPostWinGlobalDailyAverageLoading(false);
   };
 
-  const dailyAnswerAverages = useMemo(() => buildAnswerAverages(dailyCompletions), [dailyCompletions]);
-  const hardcoreAnswerAverages = useMemo(() => buildAnswerAverages(ballKnowledgeDailyCompletions), [ballKnowledgeDailyCompletions]);
-
+  // Sync daily targets when you pick a past day (this was the main "past mantles" bug).
   useEffect(() => {
-    if (!showAveragesPanel) return;
-    if (averagesScope !== 'global') return;
-    const modeKey = averagesMode === 'hardcore' ? 'hardcore' : 'daily';
-    if (globalAverages[modeKey] != null) return; // already loaded
-    fetchGlobalAverages(modeKey);
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    const correctTarget =
+      gameMode === 'daily'
+        ? getDailyPlayerForIndex(activeDailyIndex)
+        : getBallKnowledgeDailyPlayer(activeDailyIndex);
+    setTargetPlayer(correctTarget);
+    fetchTargetMaxSimilarity(correctTarget);
+    resetPuzzleState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAveragesPanel, averagesScope, averagesMode]);
+  }, [gameMode, activeDailyIndex]);
+
+  // After a win, show global average guesses for this daily (if available).
+  useEffect(() => {
+    if (!gameWon || !targetPlayer) return;
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    let cancelled = false;
+    const run = async () => {
+      setPostWinGlobalDailyAverageLoading(true);
+      try {
+        if (cancelled) return;
+        const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+        const result = await fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber });
+        if (cancelled) return;
+        setPostWinGlobalDailyAverage(result);
+      } catch {
+        setPostWinGlobalDailyAverage(null);
+      } finally {
+        if (!cancelled) setPostWinGlobalDailyAverageLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameWon, targetPlayer, gameMode, activeDailyNumber]);
 
   const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all' || mode === 'daily' || mode === 'ballKnowledgeDaily') {
@@ -385,11 +404,13 @@ const NBAGuessGame = () => {
   const startNewGame = () => {
     let chosenPlayer;
     if (gameMode === 'daily') {
-      chosenPlayer = getDailyPlayerForIndex(getDailyPuzzleIndex());
+      // Respect past-daily selection (if any)
+      chosenPlayer = getDailyPlayerForIndex(activeDailyIndex);
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
     } else if (gameMode === 'ballKnowledgeDaily') {
-      chosenPlayer = getBallKnowledgeDailyPlayer(getDailyPuzzleIndex());
+      // Respect past-daily selection (if any)
+      chosenPlayer = getBallKnowledgeDailyPlayer(activeDailyIndex);
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
     } else {
@@ -404,16 +425,7 @@ const NBAGuessGame = () => {
       setTargetPlayer(chosenPlayer);
       fetchTargetMaxSimilarity(chosenPlayer);
     }
-    setGuess('');
-    setGuessHistory([]);
-    setGameWon(false);
-    setGuessCount(0);
-    setError('');
-    setTop5Players([]);
-    setShowAnswer(false);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setSelectedSuggestionIndex(-1);
+    resetPuzzleState();
     console.log('New game started with:', chosenPlayer, 'Mode:', gameMode);
   };
 
@@ -527,13 +539,6 @@ const NBAGuessGame = () => {
 
     loadPlayerNames();
   }, []);
-
-  // When in Ball Knowledge Daily, keep target in sync with the ball-knowledge list (not the main Daily list).
-  useEffect(() => {
-    if (gameMode !== 'ballKnowledgeDaily') return;
-    const correct = getBallKnowledgeDailyPlayer(activeDailyIndex);
-    setTargetPlayer((prev) => (prev === correct ? prev : correct));
-  }, [gameMode, activeDailyIndex]);
 
   // Load player headshots (from public/player-images.json, built by scripts/fetch-nba-player-images.js)
   useEffect(() => {
@@ -1172,7 +1177,7 @@ const NBAGuessGame = () => {
                   onClick={() => {
                     setShowDailyHistoryPanel((prev) => {
                       const next = !prev;
-                      try { localStorage.setItem('nba-mantle-ui-show-daily-history', next ? '1' : '0'); } catch {}
+                      try { localStorage.setItem(key('nba-mantle-ui-show-daily-history'), next ? '1' : '0'); } catch {}
                       return next;
                     });
                   }}
@@ -1367,7 +1372,7 @@ const NBAGuessGame = () => {
                   onClick={() => {
                     setShowHardcoreHistoryPanel((prev) => {
                       const next = !prev;
-                      try { localStorage.setItem('nba-mantle-ui-show-hardcore-history', next ? '1' : '0'); } catch {}
+                      try { localStorage.setItem(key('nba-mantle-ui-show-hardcore-history'), next ? '1' : '0'); } catch {}
                       return next;
                     });
                   }}
@@ -1456,244 +1461,6 @@ const NBAGuessGame = () => {
                       );
                     })}
                   </div>
-                )}
-              </div>
-            )}
-
-            {(dailyAnswerAverages.length > 0 || hardcoreAnswerAverages.length > 0) && (
-              <div style={{
-                marginTop: '14px',
-                padding: '14px 16px',
-                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.07))',
-                borderRadius: '12px',
-                border: '1px solid rgba(148, 163, 184, 0.25)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-              }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAveragesPanel((prev) => {
-                      const next = !prev;
-                      try { localStorage.setItem('nba-mantle-ui-show-averages', next ? '1' : '0'); } catch {}
-                      return next;
-                    });
-                  }}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
-                    border: 'none',
-                    background: 'transparent',
-                    padding: 0,
-                    cursor: 'pointer',
-                    font: 'inherit',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{
-                    fontSize: '13px',
-                    color: '#93c5fd',
-                    fontWeight: '600',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    <span style={{ opacity: 0.9 }}>📊</span>
-                    Average guesses (by answer)
-                    <span style={{ color: '#94a3b8', fontWeight: '500', fontSize: '12px' }}>
-                      (includes all saved history on this device)
-                    </span>
-                  </div>
-                  <div style={{ color: '#93c5fd', fontWeight: 800, fontSize: '14px', lineHeight: 1 }}>
-                    {showAveragesPanel ? '▾' : '▸'}
-                  </div>
-                </button>
-
-                {showAveragesPanel && (
-                  <>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAveragesScope('global');
-                          try { localStorage.setItem('nba-mantle-ui-averages-scope', 'global'); } catch {}
-                        }}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '999px',
-                          border: averagesScope === 'global' ? '1px solid rgba(147, 197, 253, 0.75)' : '1px solid #334155',
-                          backgroundColor: averagesScope === 'global' ? 'rgba(59, 130, 246, 0.16)' : 'rgba(15, 23, 42, 0.35)',
-                          color: '#e5e7eb',
-                          cursor: 'pointer',
-                          font: 'inherit',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                        }}
-                      >
-                        Global
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAveragesScope('local');
-                          try { localStorage.setItem('nba-mantle-ui-averages-scope', 'local'); } catch {}
-                        }}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '999px',
-                          border: averagesScope === 'local' ? '1px solid rgba(148, 163, 184, 0.6)' : '1px solid #334155',
-                          backgroundColor: averagesScope === 'local' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.35)',
-                          color: '#e5e7eb',
-                          cursor: 'pointer',
-                          font: 'inherit',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                        }}
-                      >
-                        Local
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setAveragesMode('daily')}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '999px',
-                          border: averagesMode === 'daily' ? '1px solid rgba(196, 181, 253, 0.7)' : '1px solid #334155',
-                          backgroundColor: averagesMode === 'daily' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(15, 23, 42, 0.35)',
-                          color: '#e5e7eb',
-                          cursor: 'pointer',
-                          font: 'inherit',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                        }}
-                      >
-                        Daily
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAveragesMode('hardcore')}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '999px',
-                          border: averagesMode === 'hardcore' ? '1px solid rgba(252, 211, 77, 0.75)' : '1px solid #334155',
-                          backgroundColor: averagesMode === 'hardcore' ? 'rgba(217, 119, 6, 0.16)' : 'rgba(15, 23, 42, 0.35)',
-                          color: '#e5e7eb',
-                          cursor: 'pointer',
-                          font: 'inherit',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                        }}
-                      >
-                        Hardcore
-                      </button>
-                      <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {averagesScope === 'global' && (
-                          <button
-                            type="button"
-                            onClick={() => fetchGlobalAverages(averagesMode === 'hardcore' ? 'hardcore' : 'daily')}
-                            style={{
-                              padding: '6px 10px',
-                              borderRadius: '999px',
-                              border: '1px solid #334155',
-                              backgroundColor: 'rgba(15, 23, 42, 0.35)',
-                              color: '#cbd5e1',
-                              cursor: 'pointer',
-                              font: 'inherit',
-                              fontSize: '12px',
-                              fontWeight: 700,
-                            }}
-                          >
-                            Refresh
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setShowAllAverages((v) => !v)}
-                          style={{
-                            padding: '6px 10px',
-                            borderRadius: '999px',
-                            border: '1px solid #334155',
-                            backgroundColor: 'rgba(15, 23, 42, 0.35)',
-                            color: '#cbd5e1',
-                            cursor: 'pointer',
-                            font: 'inherit',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {showAllAverages ? 'Show top 12' : 'Show all'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {(() => {
-                      const modeKey = averagesMode === 'hardcore' ? 'hardcore' : 'daily';
-                      const localList = modeKey === 'hardcore' ? hardcoreAnswerAverages : dailyAnswerAverages;
-                      const cloudList = globalAverages[modeKey];
-                      const list = averagesScope === 'global' ? (cloudList ?? []) : localList;
-                      if (!list.length) {
-                        if (averagesScope === 'global') {
-                          return (
-                            <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '0.9rem' }}>
-                              {globalAveragesLoading ? 'Loading global averages…' : globalAveragesError ? globalAveragesError : 'No global data yet.'}
-                              <div style={{ marginTop: '6px', color: '#64748b', fontSize: '0.85rem' }}>
-                                Tip: pick <strong>Local</strong> to see averages from your saved history right now.
-                              </div>
-                            </div>
-                          );
-                        }
-                        return <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '0.9rem' }}>No completed games with saved guess counts yet.</div>;
-                      }
-
-                      const shown = showAllAverages ? list : list.slice(0, 12);
-                      return (
-                        <div style={{
-                          marginTop: '10px',
-                          display: 'grid',
-                          gap: '8px'
-                        }}>
-                          {averagesScope === 'global' && (
-                            <div style={{ color: '#64748b', fontSize: '12px', marginBottom: '2px' }}>
-                              {globalAveragesLastUpdated ? `Updated ${new Date(globalAveragesLastUpdated).toLocaleString()}` : 'Not yet refreshed'}
-                            </div>
-                          )}
-                          {shown.map((row) => (
-                            <div
-                              key={row.answer}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                gap: '12px',
-                                padding: '10px 12px',
-                                borderRadius: '10px',
-                                backgroundColor: 'rgba(15, 23, 42, 0.35)',
-                                border: '1px solid #334155',
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ color: '#e5e7eb', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {row.answer}
-                                </div>
-                                <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '2px' }}>
-                                  {row.plays} play{row.plays !== 1 ? 's' : ''} · best {Number.isFinite(row.best) ? row.best : '—'} · worst {Number.isFinite(row.worst) ? row.worst : '—'}
-                                </div>
-                              </div>
-                              <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
-                                <div style={{ color: '#fbbf24', fontWeight: 900, fontSize: '14px' }}>
-                                  {row.avg != null ? Number(row.avg).toFixed(2) : '—'}
-                                </div>
-                                <div style={{ color: '#94a3b8', fontSize: '12px' }}>avg guesses</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </>
                 )}
               </div>
             )}
@@ -2439,6 +2206,20 @@ const NBAGuessGame = () => {
                   <p style={{ margin: 0, fontSize: '1.1rem' }}>
                     Congratulations! You found {targetPlayer} in {guessCount} guesses!
                   </p>
+                  <div style={{ marginTop: '10px', fontSize: '0.95rem', opacity: 0.95 }}>
+                    {postWinGlobalDailyAverageLoading ? (
+                      <span>Fetching global daily average…</span>
+                    ) : postWinGlobalDailyAverage?.avg != null ? (
+                      <span>
+                        Global daily average: <strong>{Number(postWinGlobalDailyAverage.avg).toFixed(2)}</strong> guesses
+                        {postWinGlobalDailyAverage?.wins != null ? (
+                          <span style={{ opacity: 0.9 }}> ({postWinGlobalDailyAverage.wins} win{postWinGlobalDailyAverage.wins === 1 ? '' : 's'})</span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span style={{ opacity: 0.9 }}>Global daily average: —</span>
+                    )}
+                  </div>
                 </div>
               )}
 
