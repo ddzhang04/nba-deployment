@@ -718,7 +718,7 @@ const NBAGuessGame = () => {
               }}
             >
               <span>🎮</span>
-              <span>More games</span>
+              <span>More / About</span>
             </button>
           </div>
 
