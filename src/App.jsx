@@ -1413,7 +1413,7 @@ const NBAGuessGame = () => {
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h2 style={{ fontSize: '1.3rem', margin: 0, color: '#e5e7eb' }}>More basketball games</h2>
+                <h2 style={{ fontSize: '1.3rem', margin: 0, color: '#e5e7eb' }}>More / About</h2>
                 <button
                   onClick={() => setShowMoreGames(false)}
                   style={{
@@ -1429,8 +1429,53 @@ const NBAGuessGame = () => {
                   ×
                 </button>
               </div>
-              <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '16px', lineHeight: 1.5 }}>
-                If you like NBA Mantle, try this other hoops project: build a roster under the salary cap and run a full season simulation.
+
+              <div
+                style={{
+                  padding: '14px 14px',
+                  borderRadius: '14px',
+                  border: '1px solid rgba(59, 130, 246, 0.35)',
+                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(15, 23, 42, 0.35))',
+                  marginBottom: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1rem' }}>👋 About the creator</div>
+                  <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '0.85rem' }}>Beta</div>
+                </div>
+                <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.5 }}>
+                  Hey, I&apos;m <strong>Josh</strong> — an undergrad at Northeastern studying <strong>Data Science</strong>. I built NBA Mantle because I love the NBA and stats.
+                </div>
+                <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                  <a
+                    href="https://instagram.com/joshuam0y"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      backgroundColor: 'rgba(236, 72, 153, 0.16)',
+                      border: '1px solid rgba(236, 72, 153, 0.35)',
+                      color: '#fce7f3',
+                      textDecoration: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    <span>📷</span>
+                    Instagram @joshuam0y
+                  </a>
+                  <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
+                    Questions or bugs? DM me. Also—share it with friends.
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '12px', lineHeight: 1.5 }}>
+                If you like NBA Mantle, try this other hoops project.
               </p>
               <a
                 href="https://nba-budget-ball.vercel.app/"
@@ -1455,7 +1500,7 @@ const NBAGuessGame = () => {
                 <span>🏀</span>
                 NBA Budget Ball – Build a champion on a budget
               </a>
-              <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '12px', marginBottom: 0 }}>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '10px', marginBottom: 0 }}>
                 Salary cap roster builder and season sim · React, Supabase, Vercel
               </p>
             </div>
