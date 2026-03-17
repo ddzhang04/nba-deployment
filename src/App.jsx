@@ -1015,6 +1015,9 @@ const NBAGuessGame = () => {
               <span style={{ color: supabase ? '#34d399' : '#fca5a5', fontWeight: 900 }}>
                 {supabase ? 'Supabase: connected' : 'Supabase: not configured'}
               </span>
+              <span style={{ color: '#64748b', fontWeight: 700 }}>
+                env url:{import.meta.env.VITE_SUPABASE_URL ? 'ok' : 'missing'} · env key:{import.meta.env.VITE_SUPABASE_ANON_KEY ? 'ok' : 'missing'}
+              </span>
               {supabaseDebug.lastSubmitOk === true && (
                 <span style={{ color: '#86efac', fontWeight: 800 }}>Last submit: OK</span>
               )}
