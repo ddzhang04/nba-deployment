@@ -360,10 +360,11 @@ const NBAGuessGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyIndex]);
 
-  // After a win, show global average guesses for this daily (if available).
+  // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
   useEffect(() => {
-    if (!gameWon || !targetPlayer) return;
+    if (!targetPlayer) return;
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    if (!gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed) return;
     let cancelled = false;
     const run = async () => {
       setPostWinGlobalDailyAverageLoading(true);
@@ -382,7 +383,7 @@ const NBAGuessGame = () => {
     run();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameWon, targetPlayer, gameMode, activeDailyNumber]);
+  }, [gameWon, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, targetPlayer, gameMode, activeDailyNumber]);
 
   const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all' || mode === 'daily' || mode === 'ballKnowledgeDaily') {
@@ -2057,17 +2058,45 @@ const NBAGuessGame = () => {
                   if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 } catch {}
                 return (
-                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.35)' }}>
-                    <p style={{ margin: '0 0 12px', color: '#e9d5ff', fontSize: '0.95rem' }}>
-                      You already played Daily #{activeDailyNumber} on {displayDate}.
-                      {entry?.won ? ` You got it in ${entry?.guesses ?? '?'} guess${entry?.guesses !== 1 ? 'es' : ''}!` : " You didn't get it."}
-                    </p>
-                    {!entry?.won && targetPlayer && (
-                      <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
-                        The answer was <strong>{targetPlayer}</strong>.
-                      </p>
+                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: entry?.won ? 'rgba(34, 197, 94, 0.18)' : 'rgba(139, 92, 246, 0.15)', border: entry?.won ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(139, 92, 246, 0.35)' }}>
+                    {entry?.won ? (
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+                        {getPlayerImage(entry?.answer || targetPlayer) && (
+                          <img src={getPlayerImage(entry?.answer || targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
+                        )}
+                        <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
+                          Daily #{activeDailyNumber} ({displayDate}) — you got it in <strong>{entry?.guesses ?? '?'}</strong> guesses!
+                        </p>
+                        <div style={{ marginTop: '10px', fontSize: '0.95rem', opacity: 0.95, color: 'white' }}>
+                          {postWinGlobalDailyAverageLoading ? (
+                            <span>Fetching global daily average…</span>
+                          ) : postWinGlobalDailyAverage?.avg != null ? (
+                            <span>
+                              Global daily average: <strong>{Number(postWinGlobalDailyAverage.avg).toFixed(2)}</strong> guesses
+                              {postWinGlobalDailyAverage?.wins != null ? (
+                                <span style={{ opacity: 0.9 }}> ({postWinGlobalDailyAverage.wins} win{postWinGlobalDailyAverage.wins === 1 ? '' : 's'})</span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span style={{ opacity: 0.9 }}>Global daily average: —</span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p style={{ margin: '0 0 12px', color: '#e9d5ff', fontSize: '0.95rem' }}>
+                          You already played Daily #{activeDailyNumber} on {displayDate}. You revealed it.
+                        </p>
+                        {targetPlayer && (
+                          <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
+                            The answer was <strong>{targetPlayer}</strong>.
+                          </p>
+                        )}
+                      </>
                     )}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: entry?.won ? '14px' : 0, justifyContent: entry?.won ? 'center' : 'flex-start' }}>
                       <button
                         type="button"
                         onClick={() => setSelectedDailyDetail(String(activeDailyNumber))}
@@ -2075,9 +2104,9 @@ const NBAGuessGame = () => {
                           padding: '10px 16px',
                           borderRadius: '8px',
                           border: 'none',
-                          backgroundColor: '#8b5cf6',
+                          backgroundColor: entry?.won ? '#7c3aed' : '#8b5cf6',
                           color: 'white',
-                          fontWeight: '600',
+                          fontWeight: '700',
                           cursor: 'pointer',
                           fontSize: '0.9rem'
                         }}
@@ -2099,7 +2128,7 @@ const NBAGuessGame = () => {
                             border: 'none',
                             backgroundColor: '#3b82f6',
                             color: 'white',
-                            fontWeight: '600',
+                            fontWeight: '700',
                             cursor: 'pointer',
                             fontSize: '0.9rem'
                           }}
