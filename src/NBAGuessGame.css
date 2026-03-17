@@ -12,7 +12,8 @@ html, body {
   height: 100%;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-weight: 600;
 }
 
 /* Ensure form controls inherit the app font */

@@ -260,8 +260,8 @@ const NBAGuessGame = () => {
 
   const [dailyCompletions, setDailyCompletions] = useState({});
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
-  // Only lock you out of replaying *today's* daily. Past dailies are replayable.
-  const dailyAlreadyPlayed = gameMode === 'daily' && !isPastDailySelected && dailyCompletions[String(activeDailyNumber)] != null;
+  // Lock out replaying any daily that already has a saved completion (today or past).
+  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(activeDailyNumber)] != null;
 
   const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
   const getBallKnowledgeDailyFromStorage = () => {
@@ -294,7 +294,8 @@ const NBAGuessGame = () => {
   };
   const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState({});
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
-  const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && !isPastDailySelected && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
+  // Lock out replaying any hardcore daily that already has a saved completion (today or past).
+  const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   useEffect(() => {
     // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
     try {
@@ -345,6 +346,45 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
     setPostWinGlobalDailyAverage(null);
     setPostWinGlobalDailyAverageLoading(false);
+  };
+
+  const getActiveCompletionEntry = () => {
+    if (gameMode === 'daily') return dailyCompletions[String(activeDailyNumber)] ?? null;
+    if (gameMode === 'ballKnowledgeDaily') return ballKnowledgeDailyCompletions[String(activeDailyNumber)] ?? null;
+    return null;
+  };
+
+  const getEndScreenModel = () => {
+    const completion = getActiveCompletionEntry();
+    const completionWon = typeof completion === 'object' && completion != null ? completion?.won !== false : false;
+    const completionGuesses = typeof completion === 'object' && completion != null ? completion?.guesses ?? null : null;
+    const completionAnswer = typeof completion === 'object' && completion != null ? completion?.answer ?? '' : '';
+
+    const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
+    if (!isDailyMode) {
+      if (gameWon) {
+        return { state: 'won', answer: targetPlayer, guesses: guessCount, canShare: true, canReveal: false, completionKey: null };
+      }
+      if (showAnswer) {
+        return { state: 'revealed', answer: targetPlayer, guesses: null, canShare: false, canReveal: false, completionKey: null };
+      }
+      return null;
+    }
+
+    if (dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed) {
+      if (completionWon) {
+        return { state: 'won', answer: completionAnswer || targetPlayer, guesses: completionGuesses, canShare: true, canReveal: false, completionKey: String(activeDailyNumber) };
+      }
+      return { state: 'revealed', answer: completionAnswer || targetPlayer, guesses: null, canShare: false, canReveal: false, completionKey: String(activeDailyNumber) };
+    }
+
+    if (gameWon) {
+      return { state: 'won', answer: targetPlayer, guesses: guessCount, canShare: true, canReveal: false, completionKey: null };
+    }
+    if (showAnswer) {
+      return { state: 'revealed', answer: targetPlayer, guesses: null, canShare: false, canReveal: false, completionKey: null };
+    }
+    return null;
   };
 
   // Sync daily targets when you pick a past day (this was the main "past mantles" bug).
@@ -861,7 +901,14 @@ const NBAGuessGame = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'radial-gradient(1200px 600px at 20% 0%, rgba(34, 211, 238, 0.12), transparent 60%), radial-gradient(1000px 600px at 80% 10%, rgba(167, 139, 250, 0.14), transparent 55%), linear-gradient(135deg, #050b1a, #0b1226 55%, #070a13)',
+      background: [
+        // subtle vignette
+        'radial-gradient(900px 520px at 50% 15%, rgba(0, 0, 0, 0.22), transparent 60%)',
+        // hardwood grain lines
+        'repeating-linear-gradient(90deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 2px, rgba(0,0,0,0.00) 2px, rgba(0,0,0,0.00) 40px)',
+        // warm wood base
+        'linear-gradient(135deg, #2b170a 0%, #5b3418 28%, #8a5a2b 55%, #b47c3c 78%, #8a5a2b 100%)',
+      ].join(', '),
       color: 'white',
       fontFamily: 'inherit'
     }}>
@@ -890,16 +937,17 @@ const NBAGuessGame = () => {
       <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         {/* Header */}
         <div className="game-header" style={{ 
-          background: 'linear-gradient(135deg, #1e293b, #334155)',
+          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '16px',
           padding: '24px',
           marginBottom: '24px',
           textAlign: 'center',
-          border: '1px solid #334155'
+          border: '1px solid rgba(255, 255, 255, 0.10)',
+          backdropFilter: 'blur(10px)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0, background: 'linear-gradient(45deg, #f59e0b, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
+            <h1 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, letterSpacing: '0.5px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
 
@@ -1200,7 +1248,7 @@ const NBAGuessGame = () => {
                       Today
                     </button>
                     <div style={{ color: '#94a3b8', fontSize: '0.85rem', alignSelf: 'center' }}>
-                      Tip: past days are replayable and won’t overwrite existing results.
+                      Tip: you can view past days here. Completed days can’t be replayed.
                     </div>
                   </div>
 
@@ -2050,24 +2098,49 @@ const NBAGuessGame = () => {
             }}>
               <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
               
-              {dailyAlreadyPlayed && (() => {
-                const entry = dailyCompletions[String(activeDailyNumber)];
-                let displayDate = entry?.date ?? '';
+              {(() => {
+                const end = getEndScreenModel();
+                if (!end) return null;
+
+                const isHardcore = gameMode === 'ballKnowledgeDaily';
+                const completion = getActiveCompletionEntry();
+                const dateStr = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
+                let displayDate = dateStr;
                 try {
-                  const d = new Date((entry?.date ?? '') + 'T12:00:00');
+                  const d = new Date((dateStr ?? '') + 'T12:00:00');
                   if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                 } catch {}
+
+                const accentBorder = end.state === 'won'
+                  ? '1px solid rgba(34, 197, 94, 0.35)'
+                  : isHardcore
+                  ? '1px solid rgba(217, 119, 6, 0.35)'
+                  : '1px solid rgba(139, 92, 246, 0.35)';
+
+                const accentBg = end.state === 'won'
+                  ? 'rgba(34, 197, 94, 0.18)'
+                  : isHardcore
+                  ? 'rgba(217, 119, 6, 0.15)'
+                  : 'rgba(139, 92, 246, 0.15)';
+
                 return (
-                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: entry?.won ? 'rgba(34, 197, 94, 0.18)' : 'rgba(139, 92, 246, 0.15)', border: entry?.won ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid rgba(139, 92, 246, 0.35)' }}>
-                    {entry?.won ? (
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
-                        {getPlayerImage(entry?.answer || targetPlayer) && (
-                          <img src={getPlayerImage(entry?.answer || targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
-                        )}
+                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: accentBg, border: accentBorder }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>{end.state === 'won' ? '🎉' : '🎯'}</div>
+                      {getPlayerImage(end.answer) && (
+                        <img src={getPlayerImage(end.answer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
+                      )}
+                      {end.state === 'won' ? (
                         <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
-                          Daily #{activeDailyNumber} ({displayDate}) — you got it in <strong>{entry?.guesses ?? '?'}</strong> guesses!
+                          {gameMode === 'daily' ? 'Daily' : gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Game'} #{activeDailyNumber}{displayDate ? ` (${displayDate})` : ''} — you got it in <strong>{end.guesses ?? '?'}</strong> guesses!
                         </p>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
+                          The answer was <strong>{end.answer}</strong>
+                        </p>
+                      )}
+
+                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && end.state === 'won' && (
                         <div style={{ marginTop: '10px', fontSize: '0.95rem', opacity: 0.95, color: 'white' }}>
                           {postWinGlobalDailyAverageLoading ? (
                             <span>Fetching global daily average…</span>
@@ -2082,115 +2155,42 @@ const NBAGuessGame = () => {
                             <span style={{ opacity: 0.9 }}>Global daily average: —</span>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <>
-                        <p style={{ margin: '0 0 12px', color: '#e9d5ff', fontSize: '0.95rem' }}>
-                          You already played Daily #{activeDailyNumber} on {displayDate}. You revealed it.
-                        </p>
-                        {targetPlayer && (
-                          <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
-                            The answer was <strong>{targetPlayer}</strong>.
-                          </p>
-                        )}
-                      </>
-                    )}
+                      )}
+                    </div>
 
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: entry?.won ? '14px' : 0, justifyContent: entry?.won ? 'center' : 'flex-start' }}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDailyDetail(String(activeDailyNumber))}
-                        style={{
-                          padding: '10px 16px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: entry?.won ? '#7c3aed' : '#8b5cf6',
-                          color: 'white',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem'
-                        }}
-                      >
-                        View your guesses
-                      </button>
-                      {entry?.won && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', justifyContent: 'center' }}>
+                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
                         <button
                           type="button"
                           onClick={() => {
-                            const shareText = `🏀 I got the daily NBA Mantle #${activeDailyNumber} in ${entry?.guesses ?? '?'} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`;
-                            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(shareText);
-                            setShowCopyToast(true);
-                            setTimeout(() => setShowCopyToast(false), 2500);
+                            if (gameMode === 'daily') setSelectedDailyDetail(String(activeDailyNumber));
+                            else setSelectedBallKnowledgeDetail(String(activeDailyNumber));
                           }}
                           style={{
                             padding: '10px 16px',
                             borderRadius: '8px',
                             border: 'none',
-                            backgroundColor: '#3b82f6',
+                            backgroundColor: isHardcore ? '#d97706' : '#7c3aed',
                             color: 'white',
-                            fontWeight: '700',
+                            fontWeight: '800',
                             cursor: 'pointer',
                             fontSize: '0.9rem'
                           }}
                         >
-                          📤 Share
+                          View your guesses
                         </button>
                       )}
-                    </div>
-                  </div>
-                );
-              })()}
-              {ballKnowledgeDailyAlreadyPlayed && (() => {
-                const entry = ballKnowledgeDailyCompletions[String(activeDailyNumber)];
-                let displayDate = entry?.date ?? '';
-                try {
-                  const d = new Date((entry?.date ?? '') + 'T12:00:00');
-                  if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                } catch {}
-                return (
-                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(217, 119, 6, 0.15)', border: '1px solid rgba(217, 119, 6, 0.35)' }}>
-                    <p style={{ margin: '0 0 12px', color: '#fef3c7', fontSize: '0.95rem' }}>
-                      You already played Hardcore Daily #{activeDailyNumber} on {displayDate}.
-                      {entry?.won ? ` You got it in ${entry?.guesses ?? '?'} guess${entry?.guesses !== 1 ? 'es' : ''}!` : " You didn't get it."}
-                    </p>
-                    {!entry?.won && targetPlayer && (
-                      <p style={{ margin: '0 0 12px', color: '#fbbf24', fontSize: '0.95rem' }}>
-                        The answer was <strong>{targetPlayer}</strong>.
-                      </p>
-                    )}
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedBallKnowledgeDetail(String(activeDailyNumber))}
-                        style={{
-                          padding: '10px 16px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: '#d97706',
-                          color: 'white',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem'
-                        }}
-                      >
-                        View your guesses
-                      </button>
-                      {entry?.won && (
+                      {end.canShare && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const shareText = `🏀 I got Hardcore Daily #${activeDailyNumber} in ${entry?.guesses ?? '?'} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`;
-                            if (navigator.clipboard?.writeText) navigator.clipboard.writeText(shareText);
-                            setShowCopyToast(true);
-                            setTimeout(() => setShowCopyToast(false), 2500);
-                          }}
+                          onClick={handleShare}
                           style={{
                             padding: '10px 16px',
                             borderRadius: '8px',
                             border: 'none',
                             backgroundColor: '#3b82f6',
                             color: 'white',
-                            fontWeight: '600',
+                            fontWeight: '800',
                             cursor: 'pointer',
                             fontSize: '0.9rem'
                           }}
@@ -2348,77 +2348,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
 
-              {gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
-                <div style={{ 
-                  textAlign: 'center', 
-                  backgroundColor: '#22c55e', 
-                  color: 'white', 
-                  padding: '20px', 
-                  borderRadius: '12px', 
-                  margin: '16px 0' 
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
-                  {getPlayerImage(targetPlayer) && (
-                    <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
-                  )}
-                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    Congratulations! You found {targetPlayer} in {guessCount} guesses!
-                  </p>
-                  <div style={{ marginTop: '10px', fontSize: '0.95rem', opacity: 0.95 }}>
-                    {postWinGlobalDailyAverageLoading ? (
-                      <span>Fetching global daily average…</span>
-                    ) : postWinGlobalDailyAverage?.avg != null ? (
-                      <span>
-                        Global daily average: <strong>{Number(postWinGlobalDailyAverage.avg).toFixed(2)}</strong> guesses
-                        {postWinGlobalDailyAverage?.wins != null ? (
-                          <span style={{ opacity: 0.9 }}> ({postWinGlobalDailyAverage.wins} win{postWinGlobalDailyAverage.wins === 1 ? '' : 's'})</span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span style={{ opacity: 0.9 }}>Global daily average: —</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {showAnswer && !gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
-                <div style={{
-                  textAlign: 'center',
-                  backgroundColor: '#f59e0b',
-                  color: 'white',
-                  padding: '20px',
-                  borderRadius: '12px',
-                  margin: '16px 0'
-                }}>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎯</div>
-                  {getPlayerImage(targetPlayer) && (
-                    <img src={getPlayerImage(targetPlayer)} alt="" style={{ width: 64, height: 64, borderRadius: 12, objectFit: 'cover', marginBottom: '8px' }} />
-                  )}
-                  <p style={{ margin: 0, fontSize: '1.1rem' }}>
-                    The answer was {targetPlayer}
-                  </p>
-                </div>
-              )}
-
-              {gameWon && targetPlayer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
-                <button
-                  onClick={handleShare}
-                  style={{
-                    marginTop: '8px',
-                    width: '100%',
-                    padding: '10px 18px',
-                    borderRadius: '10px',
-                    border: '1px solid #4b5563',
-                    background: 'linear-gradient(135deg, #0ea5e9, #3b82f6)',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    cursor: 'pointer',
-                    fontSize: '0.95rem',
-                  }}
-                >
-                  📤 Share your result
-                </button>
-              )}
+              {/* Universal end screen handles win/reveal/already-played */}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
