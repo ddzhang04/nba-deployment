@@ -945,16 +945,16 @@ const NBAGuessGame = () => {
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '18px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
             <h1 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, letterSpacing: '0.5px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
 
-          <p style={{ color: '#94a3b8', marginBottom: '8px', fontSize: '1.1rem' }}>
+          <p style={{ color: '#94a3b8', margin: '0 auto 10px', fontSize: '1.06rem', lineHeight: 1.35, maxWidth: '62ch' }}>
             Guess the mystery NBA player by finding similar players. Daily puzzle and unlimited free play modes.
           </p>
-          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.85rem', marginTop: '-10px', marginBottom: '14px' }}>
+          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.88rem', margin: '0 auto 18px', lineHeight: 1.3, maxWidth: '62ch' }}>
             Data is current through the <strong>2024–2025</strong> NBA season (no current season yet).
           </div>
 
