@@ -938,12 +938,12 @@ const NBAGuessGame = () => {
         {/* Header */}
         <div className="game-header" style={{ 
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
-          borderRadius: '16px',
-          padding: '24px',
+          borderRadius: '12px',
+          padding: '18px',
           marginBottom: '24px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
-          backdropFilter: 'blur(10px)'
+          backdropFilter: 'blur(6px)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
@@ -965,7 +965,7 @@ const NBAGuessGame = () => {
             </p>
           )}
 
-          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '4px', marginBottom: '8px' }}>
+          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', marginBottom: '4px' }}>
             {(() => {
               // Hide destructive "reset" for normal users.
               // Enable by visiting with `?tester=1` (or `?tester=true`) OR setting localStorage `nba-mantle-tester=1`.
@@ -984,7 +984,7 @@ const NBAGuessGame = () => {
                   className="how-to-play-btn"
                   style={{
                     padding: '6px 12px',
-                    borderRadius: '999px',
+                    borderRadius: '10px',
                     border: '1px solid #4b5563',
                     backgroundColor: '#111827',
                     color: '#94a3b8',
@@ -1002,7 +1002,7 @@ const NBAGuessGame = () => {
                   onClick={resetAllLocalDataNow}
                   style={{
                     padding: '6px 12px',
-                    borderRadius: '999px',
+                    borderRadius: '10px',
                     border: '1px solid rgba(248, 113, 113, 0.55)',
                     backgroundColor: 'rgba(127, 29, 29, 0.35)',
                     color: '#fecaca',
@@ -1021,7 +1021,7 @@ const NBAGuessGame = () => {
                   onClick={() => setShowMoreGames(true)}
                   style={{
                     padding: '6px 12px',
-                    borderRadius: '999px',
+                    borderRadius: '10px',
                     border: '1px solid #4b5563',
                     backgroundColor: '#111827',
                     color: '#94a3b8',
@@ -1041,12 +1041,12 @@ const NBAGuessGame = () => {
 
           {/* Game Mode Selection */}
           <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleModeChange('easy')}
                 style={{
                   padding: '10px 20px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: 'none',
                   fontWeight: 'bold',
                   cursor: 'pointer',
@@ -1061,7 +1061,7 @@ const NBAGuessGame = () => {
                 onClick={() => handleModeChange('classic')}
                 style={{
                   padding: '10px 20px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: 'none',
                   fontWeight: 'bold',
                   cursor: 'pointer',
@@ -1076,7 +1076,7 @@ const NBAGuessGame = () => {
                 onClick={() => handleModeChange('all')}
                 style={{
                   padding: '10px 20px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   border: 'none',
                   fontWeight: 'bold',
                   cursor: 'pointer',
@@ -1088,12 +1088,12 @@ const NBAGuessGame = () => {
                 🌟 All Players
               </button>
             </div>
-            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleModeChange('daily')}
                 style={{
                   padding: '14px 32px',
-                  borderRadius: '12px',
+                  borderRadius: '10px',
                   border: gameMode === 'daily' ? '2px solid #a78bfa' : '2px solid #475569',
                   fontWeight: 'bold',
                   fontSize: '1.1rem',
@@ -1110,7 +1110,7 @@ const NBAGuessGame = () => {
                 onClick={() => handleModeChange('ballKnowledgeDaily')}
                 style={{
                   padding: '14px 32px',
-                  borderRadius: '12px',
+                  borderRadius: '10px',
                   border: gameMode === 'ballKnowledgeDaily' ? '2px solid #f59e0b' : '2px solid #475569',
                   fontWeight: 'bold',
                   fontSize: '1.1rem',
