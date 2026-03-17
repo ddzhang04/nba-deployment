@@ -785,33 +785,69 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
   };
 
-  const handleShare = () => {
-    if (!targetPlayer || !gameWon) return;
+  const copyToClipboardBestEffort = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleShare = async (override) => {
+    const mode = override?.mode ?? gameMode;
+    const dailyNumber = override?.dailyNumber ?? activeDailyNumber;
+    const answer = override?.answer ?? targetPlayer;
+    const guesses = override?.guesses ?? guessCount;
+    if (!answer) return;
 
     const shareText =
-      gameMode === 'daily'
-        ? `🏀 I got the daily NBA Mantle #${activeDailyNumber} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
-        : gameMode === 'ballKnowledgeDaily'
-        ? `🏀 I got Hardcore Daily #${activeDailyNumber} in ${guessCount} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+      mode === 'daily'
+        ? `🏀 I got the daily NBA Mantle #${dailyNumber} in ${guesses} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
+        : mode === 'hardcore' || mode === 'ballKnowledgeDaily'
+        ? `🏀 I got Hardcore Daily #${dailyNumber} in ${guesses} guesses! Show me what you got 👉 https://nba-deployment.vercel.app/`
         : (() => {
             const modeLabel =
-              gameMode === 'classic'
+              mode === 'classic'
                 ? 'Classic'
-                : gameMode === 'easy'
+                : mode === 'easy'
                 ? 'All Stars 1986 or Later'
                 : 'All Players';
-            return `🏀 I guessed ${targetPlayer} in ${guessCount} guesses on NBA Mantle (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
+            return `🏀 I guessed ${answer} in ${guesses} guesses on NBA Mantle (${modeLabel} mode)! Think you know ball? Try it here 👉 https://nba-deployment.vercel.app/`;
           })();
 
-    const copyPromise =
-      navigator.clipboard && navigator.clipboard.writeText
-        ? navigator.clipboard.writeText(shareText)
-        : Promise.resolve();
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: shareText });
+        return;
+      }
+    } catch {
+      // fall back to clipboard
+    }
 
-    copyPromise.finally(() => {
+    const copied = await copyToClipboardBestEffort(shareText);
+    if (copied) {
       setShowCopyToast(true);
       setTimeout(() => setShowCopyToast(false), 2500);
-    });
+    } else {
+      setError('Could not share/copy. Please copy manually.');
+    }
   };
 
   const getScoreColor = (score) => {
@@ -2182,7 +2218,14 @@ const NBAGuessGame = () => {
                       {end.canShare && (
                         <button
                           type="button"
-                          onClick={handleShare}
+                          onClick={() =>
+                            handleShare({
+                              mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : gameMode,
+                              dailyNumber: activeDailyNumber,
+                              answer: end.answer,
+                              guesses: end.guesses ?? guessCount,
+                            })
+                          }
                           style={{
                             padding: '10px 16px',
                             borderRadius: '8px',
