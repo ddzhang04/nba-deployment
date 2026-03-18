@@ -2202,5 +2202,9 @@
   "Chris Paul": {
     "id": "paulch01",
     "imageUrl": "http://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/paulch01.jpg"
+  },
+  "Jae Crowder": {
+    "id": "203109",
+    "imageUrl": "https://cdn.nba.com/headshots/nba/latest/260x190/203109.png"
   }
 }

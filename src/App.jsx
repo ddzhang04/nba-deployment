@@ -29,6 +29,7 @@ const NBAGuessGame = () => {
   const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
   const [prefetchedTargetTop5, setPrefetchedTargetTop5] = useState([]); // top_5 for current target (prefetched)
   const [prefetchedTargetTop5Loading, setPrefetchedTargetTop5Loading] = useState(false);
+  const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
@@ -557,10 +558,14 @@ const NBAGuessGame = () => {
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
       setPrefetchedTargetTop5Loading(false);
+      setPrefetchedTargetTop5For(null);
       return;
     }
 
     try {
+      // Clear any stale prefetched values until this request finishes.
+      setPrefetchedTargetTop5For(playerName);
+      setPrefetchedTargetTop5([]);
       setPrefetchedTargetTop5Loading(true);
       const result = await fetchJsonWithRetry(
         `${API_BASE}/guess`,
@@ -588,6 +593,7 @@ const NBAGuessGame = () => {
     } catch (e) {
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
+      setPrefetchedTargetTop5For(null);
     } finally {
       setPrefetchedTargetTop5Loading(false);
     }
@@ -828,12 +834,14 @@ const NBAGuessGame = () => {
 
           if (score === 100) {
             setGameWon(true);
-            setTop5Players((top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []));
+            const canUsePrefetchedTop5 =
+              prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0;
+            setTop5Players((top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []));
             if (gameMode === 'daily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-                const top5ToStore = (top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []);
+                const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
                 const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
                 setDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
@@ -842,7 +850,7 @@ const NBAGuessGame = () => {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-                const top5ToStore = (top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []);
+                const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
                 const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
@@ -868,7 +876,7 @@ const NBAGuessGame = () => {
     setLoading(true);
     let top5Now = [];
     try {
-      if (Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
+      if (prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
         top5Now = prefetchedTargetTop5;
       } else {
         const result = await fetchJsonWithRetry(

@@ -108,15 +108,15 @@ function extractOgImageFromPlayerHtml(playerHtml) {
   return url;
 }
 
-async function fetchBasketballReferenceHeadshotForName(name) {
+async function fetchBasketballReferenceHeadshotForName(name, { bbrRetries = 4, bbrBaseDelayMs = 1800 } = {}) {
   // Search for the player, then scrape the og:image from their player page.
   const searchUrl = `${BBR_BASE}/search/search.fcgi?search=${encodeURIComponent(name)}&i=sup_players`;
-  const searchHtml = await bbrFetchHtml(searchUrl);
+  const searchHtml = await bbrFetchHtml(searchUrl, { retries: bbrRetries, baseDelayMs: bbrBaseDelayMs });
   const href = extractFirstPlayerHrefFromSearch(searchHtml);
   if (!href) return { reason: 'no_href' };
 
   const playerUrl = `${BBR_BASE}${href}`;
-  const playerHtml = await bbrFetchHtml(playerUrl);
+  const playerHtml = await bbrFetchHtml(playerUrl, { retries: bbrRetries, baseDelayMs: bbrBaseDelayMs });
 
   const imageUrl = extractOgImageFromPlayerHtml(playerHtml);
   if (!imageUrl) return { reason: 'no_og_image' };
@@ -131,6 +131,15 @@ async function main() {
   const targetsFrom = targetsFromArg ? targetsFromArg.split('=')[1] : 'gameplayLists';
   const apiBaseArg = process.argv.find((a) => a.startsWith('--apiBase='));
   const API_BASE = apiBaseArg ? apiBaseArg.split('=')[1] : 'https://nba-mantle-6-5.onrender.com/api';
+  const forceNamesArg = process.argv.find((a) => a.startsWith('--forceNames='));
+  const forceNames = forceNamesArg
+    ? forceNamesArg.split('=')[1].split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const bbrRetriesArg = process.argv.find((a) => a.startsWith('--bbrRetries='));
+  const bbrRetries = bbrRetriesArg ? Number(bbrRetriesArg.split('=')[1]) : 4;
+  const bbrBaseDelayMsArg = process.argv.find((a) => a.startsWith('--bbrBaseDelayMs='));
+  const bbrBaseDelayMs = bbrBaseDelayMsArg ? Number(bbrBaseDelayMsArg.split('=')[1]) : 1800;
 
   const byId = {}; // id -> { id, name, imageUrl } (only used for full NBA refresh)
   const players = {}; // { [playerName]: { id, imageUrl } }
@@ -198,9 +207,27 @@ async function main() {
   const maxMissing = maxMissingArg ? Number(maxMissingArg.split('=')[1]) : Infinity;
 
   const missingTargets = [];
-  for (const name of targetNames) {
-    if (!existingByNorm.has(normalizePlayerName(name))) missingTargets.push(name);
+
+  const pushIfMissing = (name) => {
+    if (!targetNames.has(name)) return;
+    const norm = normalizePlayerName(name);
+    if (existingByNorm.has(norm)) return;
+    if (missingTargets.includes(name)) return;
+    missingTargets.push(name);
+  };
+
+  // If forcing names, prioritize them first.
+  for (const name of forceNames) {
+    pushIfMissing(name);
     if (missingTargets.length >= maxMissing) break;
+  }
+
+  // Then fill remaining slots in targetNames order.
+  if (missingTargets.length < maxMissing) {
+    for (const name of targetNames) {
+      pushIfMissing(name);
+      if (missingTargets.length >= maxMissing) break;
+    }
   }
 
   if (missingTargets.length > 0) console.log('BBR fallback: missing targets', missingTargets.length);
@@ -214,7 +241,7 @@ async function main() {
     try {
       // Small delay to reduce chances of being rate-limited.
       await new Promise((r) => setTimeout(r, 1100));
-      const bbr = await fetchBasketballReferenceHeadshotForName(name);
+      const bbr = await fetchBasketballReferenceHeadshotForName(name, { bbrRetries, bbrBaseDelayMs });
       if (bbr?.imageUrl) {
         players[name] = { id: bbr.id, imageUrl: bbr.imageUrl };
         existingByNorm.add(norm);
