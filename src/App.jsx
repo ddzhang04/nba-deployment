@@ -53,9 +53,39 @@ const NBAGuessGame = () => {
   const [postWinGlobalDailyAverage, setPostWinGlobalDailyAverage] = useState(null); // { avg, wins } | null
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
   const [supabaseDebug, setSupabaseDebug] = useState({ lastSubmitOk: null, lastError: '' });
+  const [backendWarming, setBackendWarming] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+  const fetchJsonWithRetry = async (url, options = {}, { timeoutMs = 15000, retries = 1, retryDelayMs = 600 } = {}) => {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetchWithTimeout(url, options, timeoutMs);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        lastErr = e;
+        if (attempt < retries) {
+          await sleep(retryDelayMs);
+          continue;
+        }
+      }
+    }
+    throw lastErr || new Error('Request failed');
+  };
 
   const getOrCreateAnalyticsId = () => {
     try {
@@ -174,6 +204,29 @@ const NBAGuessGame = () => {
   const writePlayersCache = (players) => {
     try {
       localStorage.setItem(PLAYERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), players }));
+    } catch {}
+  };
+
+  // Cache full players_data locally (this can be large / slower to download).
+  // This makes Classic/Easy filtering fast even if the backend is warming up.
+  const PLAYERS_DATA_CACHE_KEY = key('nba-mantle-players-data-cache-v2');
+  const PLAYERS_DATA_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
+  const readPlayersDataCache = () => {
+    try {
+      const raw = localStorage.getItem(PLAYERS_DATA_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.data !== 'object' || parsed.data === null) return null;
+      if (typeof parsed?.ts !== 'number') return null;
+      if (Date.now() - parsed.ts > PLAYERS_DATA_CACHE_TTL_MS) return null;
+      return parsed.data;
+    } catch {
+      return null;
+    }
+  };
+  const writePlayersDataCache = (data) => {
+    try {
+      localStorage.setItem(PLAYERS_DATA_CACHE_KEY, JSON.stringify({ ts: Date.now(), data }));
     } catch {}
   };
 
@@ -461,26 +514,25 @@ const NBAGuessGame = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/guess`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
+      const result = await fetchJsonWithRetry(
+        `${API_BASE}/guess`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({
+            guess: playerName,
+            target: playerName,
+          }),
         },
-        body: JSON.stringify({
-          guess: playerName,
-          target: playerName
-        })
-      });
+        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+      );
 
-      if (response.ok) {
-        const result = await response.json();
-        const top5 = result.top_5 || [];
-        if (Array.isArray(top5) && top5.length > 0) {
-          const [, score] = top5[0];
-          setTargetMaxSimilar(typeof score === 'number' ? score : null);
-        } else {
-          setTargetMaxSimilar(null);
-        }
+      const top5 = result?.top_5 || [];
+      if (Array.isArray(top5) && top5.length > 0) {
+        const [, score] = top5[0];
+        setTargetMaxSimilar(typeof score === 'number' ? score : null);
       } else {
         setTargetMaxSimilar(null);
       }
@@ -564,13 +616,30 @@ const NBAGuessGame = () => {
         setFilteredPlayers(filterPlayersForMode(sortedCached, playersData, gameMode));
       }
 
+      // 1b) Render instantly from players_data cache (if present).
+      const cachedPlayersData = readPlayersDataCache();
+      if (cachedPlayersData) {
+        setPlayersData(cachedPlayersData);
+        if (cached?.length) {
+          setFilteredPlayers((prev) => {
+            const base = cached?.length ? [...cached].sort() : prev;
+            const filtered = filterPlayersForMode(base, cachedPlayersData, gameMode);
+            return filtered.length ? filtered : base;
+          });
+        }
+      }
+
       try {
         // 2) Load player names (fast endpoint) and update UI immediately.
-        let response = await fetch(`${API_BASE}/players`);
-        if (!response.ok) response = await fetch(`${API_BASE}/player_awards`);
-        if (!response.ok) throw new Error('Failed to fetch players');
-
-        const playerNames = await response.json();
+        setBackendWarming(true);
+        let playerNames = null;
+        try {
+          playerNames = await fetchJsonWithRetry(`${API_BASE}/players`, {}, { timeoutMs: 9000, retries: 1, retryDelayMs: 700 });
+        } catch {
+          playerNames = await fetchJsonWithRetry(`${API_BASE}/player_awards`, {}, { timeoutMs: 9000, retries: 1, retryDelayMs: 700 });
+        } finally {
+          setBackendWarming(false);
+        }
         writePlayersCache(playerNames);
         const sortedPlayers = [...playerNames].sort();
         setAllPlayers(sortedPlayers);
@@ -587,11 +656,16 @@ const NBAGuessGame = () => {
         fetchTargetMaxSimilarity(initialTarget);
 
         // 3) Load full players_data in the background (improves classic/easy filtering).
-        fetch(`${API_BASE}/players_data?v=2`)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((fullData) => {
+        (async () => {
+          try {
+            const fullData = await fetchJsonWithRetry(
+              `${API_BASE}/players_data?v=2`,
+              {},
+              { timeoutMs: 20000, retries: 1, retryDelayMs: 900 }
+            );
             if (!fullData) return;
             setPlayersData(fullData);
+            writePlayersDataCache(fullData);
 
             const filtered = filterPlayersForMode(sortedPlayers, fullData, gameMode);
             setFilteredPlayers(filtered.length ? filtered : sortedPlayers);
@@ -601,9 +675,12 @@ const NBAGuessGame = () => {
               const pool = filtered.length ? filtered : sortedPlayers;
               setTargetPlayer((prev) => (pool.includes(prev) ? prev : pool[Math.floor(Math.random() * pool.length)]));
             }
-          })
-          .catch(() => {});
+          } catch {
+            // ignore (keep gameplay usable without fullData)
+          }
+        })();
       } catch (error) {
+        setBackendWarming(false);
         console.error('Could not load players from API, using fallback:', error);
         const fallback = modernPlayers;
         setAllPlayers(fallback);
@@ -663,20 +740,22 @@ const NBAGuessGame = () => {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE}/guess`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
+      const result = await fetchJsonWithRetry(
+        `${API_BASE}/guess`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({
+            guess: guess.trim(),
+            target: targetPlayer,
+          }),
         },
-        body: JSON.stringify({
-          guess: guess.trim(),
-          target: targetPlayer
-        })
-      });
+        { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+      );
 
-      if (response.ok) {
-        const result = await response.json();
-        const { score, matched_name, breakdown, top_5 } = result;
+      const { score, matched_name, breakdown, top_5 } = result;
 
         const newGuess = {
           name: matched_name || guess.trim(),
@@ -721,12 +800,8 @@ const NBAGuessGame = () => {
         }
 
         setGuess('');
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || 'Unknown error occurred');
-      }
     } catch (err) {
-      setError('Connection error. Please check your internet connection and try again.');
+      setError(backendWarming ? 'Waking up the server… try again in a moment.' : 'Connection error. Please check your internet connection and try again.');
       console.error('API Error:', err);
     }
 
@@ -738,21 +813,21 @@ const NBAGuessGame = () => {
     
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/guess`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
+      const result = await fetchJsonWithRetry(
+        `${API_BASE}/guess`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({
+            guess: targetPlayer,
+            target: targetPlayer,
+          }),
         },
-        body: JSON.stringify({
-          guess: targetPlayer,
-          target: targetPlayer
-        })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setTop5Players(result.top_5 || []);
-      }
+        { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+      );
+      setTop5Players(result?.top_5 || []);
     } catch (err) {
       console.error('Error fetching top 5:', err);
     }
