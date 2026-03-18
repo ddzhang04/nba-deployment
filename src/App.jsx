@@ -481,6 +481,11 @@ const NBAGuessGame = () => {
     // Fallback: if older saves don't have top5, re-fetch it based on answer/target.
     const answer = completion?.answer || targetPlayer;
     if (!answer) return;
+    // Important: protect against async responses from the *previous* daily mode/daily.
+    // This prevents showing Daily Top 5 on Ball Knowledge Daily after a quick switch.
+    let cancelled = false;
+    const modeAtStart = gameMode;
+    const activeDailyNumberAtStart = activeDailyNumber;
     (async () => {
       try {
         const result = await fetchJsonWithRetry(
@@ -493,9 +498,13 @@ const NBAGuessGame = () => {
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
         );
         const fetchedTop5 = Array.isArray(result?.top_5) ? result.top_5 : [];
+        if (cancelled) return;
+        if (modeAtStart !== gameMode) return;
+        if (activeDailyNumberAtStart !== activeDailyNumber) return;
         if (fetchedTop5.length) setTop5Players(fetchedTop5);
       } catch {}
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed]);
 
@@ -2084,13 +2093,13 @@ const NBAGuessGame = () => {
                     }}
                   >
                     {[
-                      ['Same team (seasons)', 'They were on the same roster in specific years.'],
-                      ['Shared teammates', 'They played with many of the same guys.'],
-                      ['Shared franchises', 'They played for the same organizations.'],
-                      ['Position', 'Similar role/position on the floor.'],
-                      ['Era', 'Career start years are close.'],
-                      ['Career length', 'Similar number of seasons played.'],
-                      ['Accolades', 'All-Star / All-NBA / All-Defense / All-Rookie / other awards.'],
+                      ['Same team (seasons)', 'Shared roster seasons: the more overlapping years, the higher the similarity.'],
+                      ['Shared teammates', 'Shared teammate overlap across careers: more common names tends to increase the score.'],
+                      ['Shared franchises', 'Both players played for the same franchises (even if not at the same time).'],
+                      ['Position', 'Similar role/position: closer roles on the floor contribute more.'],
+                      ['Era', 'Era overlap (numbers like 4/7/10): closer start eras increase this clue.'],
+                      ['Career length', 'Career-length similarity: players with comparable career spans score higher.'],
+                      ['Accolades', 'Awards overlap (All-Star / All-NBA / All-Defense / All-Rookie, etc.). More shared accolades = higher.'],
                     ].map(([title, desc]) => (
                       <div
                         key={title}
