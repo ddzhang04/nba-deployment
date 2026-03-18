@@ -2093,13 +2093,13 @@ const NBAGuessGame = () => {
                     }}
                   >
                     {[
-                      ['Same team (seasons)', 'Same-team overlap: 0–50 (more overlapping seasons = higher).'],
+                      ['Same team (seasons)', 'Shared-team seasons: 0–50 (more seasons on the same team = higher).'],
                       ['Shared teammates', 'Shared teammate overlap: 0–5 (more shared teammates = higher).'],
                       ['Shared franchises', 'Shared franchise overlap: 0–10 (same orgs = higher).'],
-                      ['Position', 'Position similarity: 0–10 (more similar roles = higher).'],
-                      ['Era', 'Era overlap: 0–10 (closer start eras = higher).'],
+                      ['Position', 'Position similarity: 0–10 (closer roles on the court = higher).'],
+                      ['Era', 'Start year overlap: 0–10 (closer start years = higher).'],
                       ['Career length', 'Career-length similarity: 0–6 (closer career span = higher).'],
-                      ['Accolades', 'Awards/league honors overlap: `award_overlap` 0–8 + `all_*` overlaps 0–5 (more shared honors = higher).'],
+                      ['Accolades', 'Awards/recognition overlap: All-Star / All-NBA / All-Defense / All-Rookie (and similar). Higher = more shared honors.'],
                     ].map(([title, desc]) => (
                       <div
                         key={title}
