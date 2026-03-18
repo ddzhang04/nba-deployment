@@ -1348,7 +1348,7 @@ const NBAGuessGame = () => {
                     fontWeight: 700,
                   }}
                 >
-                  🗓️ Pick a past day
+                  {gameMode === 'ballKnowledgeDaily' ? '🗓️ Pick a past Hardcore Daily' : '🗓️ Pick a past day'}
                 </button>
                 {selectedDailyIndexOverride != null && (
                   <button
@@ -1365,7 +1365,7 @@ const NBAGuessGame = () => {
                       fontWeight: 700,
                     }}
                   >
-                    ↩ Back to today
+                    {gameMode === 'ballKnowledgeDaily' ? "↩ Back to today's Hardcore Daily" : '↩ Back to today'}
                   </button>
                 )}
               </div>
@@ -1401,7 +1401,9 @@ const NBAGuessGame = () => {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <div>
-                      <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1.05rem' }}>Play a past daily</div>
+                      <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1.05rem' }}>
+                        Play a past {gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'daily'}
+                      </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '2px' }}>
                         Select a day to play. Today is #{todayDailyIndex + 1}.
                       </div>
