@@ -27,6 +27,7 @@ const NBAGuessGame = () => {
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
   const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
+  const [prefetchedTargetTop5, setPrefetchedTargetTop5] = useState([]); // top_5 for current target (prefetched)
   const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
@@ -553,6 +554,7 @@ const NBAGuessGame = () => {
   const fetchTargetMaxSimilarity = async (playerName) => {
     if (!playerName) {
       setTargetMaxSimilar(null);
+      setPrefetchedTargetTop5([]);
       return;
     }
 
@@ -573,6 +575,7 @@ const NBAGuessGame = () => {
       );
 
       const top5 = result?.top_5 || [];
+      setPrefetchedTargetTop5(Array.isArray(top5) ? top5 : []);
       if (Array.isArray(top5) && top5.length > 0) {
         const [, score] = top5[0];
         setTargetMaxSimilar(typeof score === 'number' ? score : null);
@@ -581,6 +584,7 @@ const NBAGuessGame = () => {
       }
     } catch (e) {
       setTargetMaxSimilar(null);
+      setPrefetchedTargetTop5([]);
     }
   };
 
@@ -819,12 +823,13 @@ const NBAGuessGame = () => {
 
           if (score === 100) {
             setGameWon(true);
-            setTop5Players(top_5 || []);
+            setTop5Players((top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []));
             if (gameMode === 'daily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top_5 || []);
+                const top5ToStore = (top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []);
+                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
                 setDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
@@ -832,7 +837,8 @@ const NBAGuessGame = () => {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top_5 || []);
+                const top5ToStore = (top_5 && top_5.length) ? top_5 : (prefetchedTargetTop5 || []);
+                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
@@ -855,32 +861,39 @@ const NBAGuessGame = () => {
     if (!targetPlayer) return;
     
     setLoading(true);
+    let top5Now = [];
     try {
-      const result = await fetchJsonWithRetry(
-        `${API_BASE}/guess`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
+      if (Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
+        top5Now = prefetchedTargetTop5;
+      } else {
+        const result = await fetchJsonWithRetry(
+          `${API_BASE}/guess`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: JSON.stringify({
+              guess: targetPlayer,
+              target: targetPlayer,
+            }),
           },
-          body: JSON.stringify({
-            guess: targetPlayer,
-            target: targetPlayer,
-          }),
-        },
-        { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
-      );
-      setTop5Players(result?.top_5 || []);
+          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+        );
+        top5Now = Array.isArray(result?.top_5) ? result.top_5 : [];
+      }
     } catch (err) {
       console.error('Error fetching top 5:', err);
     }
+
+    setTop5Players(top5Now);
     
     setShowAnswer(true);
     if (gameMode === 'daily') {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, result?.top_5 || []);
+        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, top5Now || []);
         setDailyCompletions(next);
         submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
@@ -888,7 +901,7 @@ const NBAGuessGame = () => {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, result?.top_5 || []);
+        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, top5Now || []);
         setBallKnowledgeDailyCompletions(next);
         submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
