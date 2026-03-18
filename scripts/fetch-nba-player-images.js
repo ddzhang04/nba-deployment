@@ -64,6 +64,12 @@ async function fetchHtml(url) {
   return res.text();
 }
 
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, { ...options, headers: { ...options.headers, 'User-Agent': UA } });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return await res.json();
+}
+
 async function bbrFetchHtml(url, { retries = 4, baseDelayMs = 1800 } = {}) {
   let lastErr = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -121,6 +127,11 @@ async function fetchBasketballReferenceHeadshotForName(name) {
 
 async function main() {
   const useEnrichExisting = process.argv.includes('--enrichExisting');
+  const targetsFromArg = process.argv.find((a) => a.startsWith('--targetsFrom='));
+  const targetsFrom = targetsFromArg ? targetsFromArg.split('=')[1] : 'gameplayLists';
+  const apiBaseArg = process.argv.find((a) => a.startsWith('--apiBase='));
+  const API_BASE = apiBaseArg ? apiBaseArg.split('=')[1] : 'https://nba-mantle-6-5.onrender.com/api';
+
   const byId = {}; // id -> { id, name, imageUrl } (only used for full NBA refresh)
   const players = {}; // { [playerName]: { id, imageUrl } }
 
@@ -165,13 +176,22 @@ async function main() {
     }
   }
 
-  // Basketball-Reference fallback: fill missing headshots for the players
-  // we actually use in gameplay.
-  const targetNames = new Set([
-    ...NBA_ALL_STAR_NAMES,
-    ...DAILY_PLAYERS,
-    ...BALL_KNOWLEDGE_DAILY_PLAYERS,
-  ]);
+  // Basketball-Reference fallback: fill missing headshots only for the
+  // names that are relevant for this run.
+  let targetNames;
+  if (targetsFrom === 'backendPlayers') {
+    console.log('Loading player names from backend:', `${API_BASE}/players`);
+    const list = await fetchJson(`${API_BASE}/players`);
+    if (!Array.isArray(list)) throw new Error('Backend /players did not return an array');
+    targetNames = new Set(list);
+  } else {
+    // Default: gameplay lists (All-Stars + Daily + Hardcore Daily)
+    targetNames = new Set([
+      ...NBA_ALL_STAR_NAMES,
+      ...DAILY_PLAYERS,
+      ...BALL_KNOWLEDGE_DAILY_PLAYERS,
+    ]);
+  }
   const existingByNorm = new Set(Object.keys(players).map(normalizePlayerName));
 
   const maxMissingArg = process.argv.find((a) => a.startsWith('--maxMissing='));
