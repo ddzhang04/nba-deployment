@@ -105,6 +105,8 @@ function extractOgImageFromPlayerHtml(playerHtml) {
   const url = m[1];
   if (url.startsWith('//')) return `https:${url}`;
   if (url.startsWith('/')) return `${BBR_BASE}${url}`;
+  // Avoid mixed-content blocks when your app is served over https.
+  if (url.startsWith('http://')) return `https://${url.slice('http://'.length)}`;
   return url;
 }
 
