@@ -1,23 +1,33 @@
 /**
- * Build player-images.json from NBA.com (no browser).
- * Run: node scripts/fetch-nba-player-images.js
+ * Build player-images.json from NBA.com (no browser), with optional
+ * Basketball-Reference fallback for missing players.
  *
- * Fetches the main players page (~50) plus all 30 team roster pages to get
- * 500+ players. Dedupes by player ID.
+ * Run:
+ *   node scripts/fetch-nba-player-images.js
+ *
+ * Behavior:
+ * - Pulls players from NBA.com (main players + all team rosters).
+ * - For any target players still missing a headshot, attempts to fetch
+ *   a headshot from Basketball-Reference via `og:image` on the player page.
  *
  * Output: public/player-images.json
- *   { "Player Name": { "id": "123", "imageUrl": "https://cdn.nba.com/headshots/nba/latest/260x190/123.png" } }
+ *   { "Player Name": { "id": "123|jamesle01", "imageUrl": "https://..." } }
  */
 
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { NBA_ALL_STAR_NAMES, normalizePlayerName } from '../src/data/allStarPlayers.js';
+import { DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
+import { BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const OUT_JSON = join(ROOT, 'public', 'player-images.json');
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+const BBR_UA = UA;
+const BBR_BASE = 'https://www.basketball-reference.com';
 
 // All 30 NBA team IDs (NBA.com)
 const TEAM_IDS = [
@@ -54,45 +64,153 @@ async function fetchHtml(url) {
   return res.text();
 }
 
-async function main() {
-  const byId = {}; // id -> { id, name, imageUrl }
-
-  // 1) Main players page
-  console.log('Fetching main players page...');
-  const mainHtml = await fetchHtml('https://www.nba.com/players');
-  Object.assign(byId, extractPlayersFromHtml(mainHtml));
-  console.log('  Total so far:', Object.keys(byId).length);
-
-  // 2) All team roster pages
-  for (let i = 0; i < TEAM_IDS.length; i++) {
-    const tid = TEAM_IDS[i];
+async function bbrFetchHtml(url, { retries = 4, baseDelayMs = 1800 } = {}) {
+  let lastErr = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const html = await fetchHtml(`https://www.nba.com/team/${tid}/roster`);
-      const teamPlayers = extractPlayersFromHtml(html);
-      let added = 0;
-      for (const [id, entry] of Object.entries(teamPlayers)) {
-        if (!byId[id]) {
-          byId[id] = entry;
-          added++;
-        }
+      const res = await fetch(url, { headers: { 'User-Agent': BBR_UA } });
+      if (res.status === 429) {
+        const wait = baseDelayMs * (attempt + 1);
+        console.warn(`  BBR 429 on attempt ${attempt + 1}, waiting ${wait}ms`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
       }
-      if (added > 0) console.log(`  Team ${tid}: +${added} (total ${Object.keys(byId).length})`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.text();
     } catch (e) {
-      console.warn(`  Team ${tid} failed:`, e.message);
+      lastErr = e;
+      // Back off on transient errors too.
+      if (attempt < retries) await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
     }
-    // Small delay to avoid hammering
-    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw lastErr || new Error('BBR fetch failed');
+}
+
+function extractFirstPlayerHrefFromSearch(searchHtml) {
+  // Example: /players/j/jamesle01.html
+  const m = searchHtml.match(/href=["'](\/players\/[a-z]\/[a-z0-9]+\.html)["']/i);
+  return m?.[1] ?? null;
+}
+
+function extractOgImageFromPlayerHtml(playerHtml) {
+  // Basketball-Reference includes an og:image meta tag we can scrape reliably.
+  const m = playerHtml.match(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+  if (!m?.[1]) return null;
+  const url = m[1];
+  if (url.startsWith('//')) return `https:${url}`;
+  if (url.startsWith('/')) return `${BBR_BASE}${url}`;
+  return url;
+}
+
+async function fetchBasketballReferenceHeadshotForName(name) {
+  // Search for the player, then scrape the og:image from their player page.
+  const searchUrl = `${BBR_BASE}/search/search.fcgi?search=${encodeURIComponent(name)}&i=sup_players`;
+  const searchHtml = await bbrFetchHtml(searchUrl);
+  const href = extractFirstPlayerHrefFromSearch(searchHtml);
+  if (!href) return { reason: 'no_href' };
+
+  const playerUrl = `${BBR_BASE}${href}`;
+  const playerHtml = await bbrFetchHtml(playerUrl);
+
+  const imageUrl = extractOgImageFromPlayerHtml(playerHtml);
+  if (!imageUrl) return { reason: 'no_og_image' };
+
+  const id = href.split('/').pop().replace(/\.html$/i, '');
+  return { id, imageUrl, reason: 'ok' };
+}
+
+async function main() {
+  const useEnrichExisting = process.argv.includes('--enrichExisting');
+  const byId = {}; // id -> { id, name, imageUrl } (only used for full NBA refresh)
+  const players = {}; // { [playerName]: { id, imageUrl } }
+
+  if (useEnrichExisting) {
+    console.log('Loading existing', OUT_JSON);
+    const existing = JSON.parse(readFileSync(OUT_JSON, 'utf8'));
+    for (const [name, entry] of Object.entries(existing)) {
+      if (!entry?.imageUrl) continue;
+      players[name] = entry;
+    }
+  } else {
+    // 1) Main players page
+    console.log('Fetching main players page...');
+    const mainHtml = await fetchHtml('https://www.nba.com/players');
+    Object.assign(byId, extractPlayersFromHtml(mainHtml));
+    console.log('  Total so far:', Object.keys(byId).length);
+
+    // 2) All team roster pages
+    for (let i = 0; i < TEAM_IDS.length; i++) {
+      const tid = TEAM_IDS[i];
+      try {
+        const html = await fetchHtml(`https://www.nba.com/team/${tid}/roster`);
+        const teamPlayers = extractPlayersFromHtml(html);
+        let added = 0;
+        for (const [id, entry] of Object.entries(teamPlayers)) {
+          if (!byId[id]) {
+            byId[id] = entry;
+            added++;
+          }
+        }
+        if (added > 0) console.log(`  Team ${tid}: +${added} (total ${Object.keys(byId).length})`);
+      } catch (e) {
+        console.warn(`  Team ${tid} failed:`, e.message);
+      }
+      // Small delay to avoid hammering
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    // Output: key by name (last seen name wins for same id)
+    for (const entry of Object.values(byId)) {
+      players[entry.name] = { id: entry.id, imageUrl: entry.imageUrl };
+    }
   }
 
-  // Output: key by name (last seen name wins for same id)
-  const players = {};
-  for (const entry of Object.values(byId)) {
-    players[entry.name] = { id: entry.id, imageUrl: entry.imageUrl };
+  // Basketball-Reference fallback: fill missing headshots for the players
+  // we actually use in gameplay.
+  const targetNames = new Set([
+    ...NBA_ALL_STAR_NAMES,
+    ...DAILY_PLAYERS,
+    ...BALL_KNOWLEDGE_DAILY_PLAYERS,
+  ]);
+  const existingByNorm = new Set(Object.keys(players).map(normalizePlayerName));
+
+  const maxMissingArg = process.argv.find((a) => a.startsWith('--maxMissing='));
+  const maxMissing = maxMissingArg ? Number(maxMissingArg.split('=')[1]) : Infinity;
+
+  const missingTargets = [];
+  for (const name of targetNames) {
+    if (!existingByNorm.has(normalizePlayerName(name))) missingTargets.push(name);
+    if (missingTargets.length >= maxMissing) break;
+  }
+
+  if (missingTargets.length > 0) console.log('BBR fallback: missing targets', missingTargets.length);
+
+  let filled = 0;
+  for (let i = 0; i < missingTargets.length; i++) {
+    const name = missingTargets[i];
+    const norm = normalizePlayerName(name);
+    if (existingByNorm.has(norm)) continue;
+
+    try {
+      // Small delay to reduce chances of being rate-limited.
+      await new Promise((r) => setTimeout(r, 1100));
+      const bbr = await fetchBasketballReferenceHeadshotForName(name);
+      if (bbr?.imageUrl) {
+        players[name] = { id: bbr.id, imageUrl: bbr.imageUrl };
+        existingByNorm.add(norm);
+        filled++;
+        if (filled % 20 === 0) console.log('  BBR filled so far:', filled);
+      } else {
+        console.warn('  BBR no headshot for:', name, 'reason:', bbr?.reason || 'unknown');
+      }
+    } catch (e) {
+      console.warn('  BBR failed for:', name, '-', e?.message || e);
+    }
   }
 
   mkdirSync(dirname(OUT_JSON), { recursive: true });
   writeFileSync(OUT_JSON, JSON.stringify(players, null, 2), 'utf8');
-  console.log('Wrote', Object.keys(players).length, 'players to', OUT_JSON);
+  console.log('Wrote', Object.keys(players).length, 'players to', OUT_JSON, '(filled', filled, 'via BBR)');
 }
 
 main().catch((e) => {

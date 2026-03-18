@@ -4,7 +4,7 @@
  * Uses the same epoch as the main Daily (same day index = same puzzle #).
  */
 
-import { DAILY_PUZZLE_EPOCH } from './dailyPlayers';
+import { DAILY_PUZZLE_EPOCH } from './dailyPlayers.js';
 
 export { DAILY_PUZZLE_EPOCH };
 
