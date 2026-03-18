@@ -835,7 +835,7 @@ const NBAGuessGame = () => {
         if (!alreadyGuessed) {
           setGuessHistory(prev => {
             const updated = [...prev, newGuess];
-            return updated.slice(0, 15);
+            return updated;
           });
 
           const newCount = guessCount + 1;
