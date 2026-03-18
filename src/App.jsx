@@ -2303,7 +2303,7 @@ const NBAGuessGame = () => {
                       )}
                       {end.state === 'won' ? (
                         <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
-                          {gameMode === 'daily' ? 'Daily' : gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Game'} #{activeDailyNumber}{displayDate ? ` (${displayDate})` : ''} — you got it in <strong>{end.guesses ?? '?'}</strong> guesses!
+                          {gameMode === 'daily' ? 'Daily' : gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Game'} #{activeDailyNumber}{displayDate ? ` (${displayDate})` : ''} — you got it in <strong>{end.guesses ?? '?'}</strong> guesses! The answer was <strong>{end.answer}</strong>.
                         </p>
                       ) : (
                         <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
