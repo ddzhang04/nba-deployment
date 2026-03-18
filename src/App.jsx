@@ -28,6 +28,7 @@ const NBAGuessGame = () => {
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
   const [targetMaxSimilar, setTargetMaxSimilar] = useState(null);
   const [prefetchedTargetTop5, setPrefetchedTargetTop5] = useState([]); // top_5 for current target (prefetched)
+  const [prefetchedTargetTop5Loading, setPrefetchedTargetTop5Loading] = useState(false);
   const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
@@ -555,10 +556,12 @@ const NBAGuessGame = () => {
     if (!playerName) {
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
+      setPrefetchedTargetTop5Loading(false);
       return;
     }
 
     try {
+      setPrefetchedTargetTop5Loading(true);
       const result = await fetchJsonWithRetry(
         `${API_BASE}/guess`,
         {
@@ -585,6 +588,8 @@ const NBAGuessGame = () => {
     } catch (e) {
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
+    } finally {
+      setPrefetchedTargetTop5Loading(false);
     }
   };
 
@@ -2603,6 +2608,21 @@ const NBAGuessGame = () => {
                       <ScoreBar score={score} />
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Top 5 placeholder while backend warms / prefetch runs */}
+            {top5Players.length === 0 && (gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed) && prefetchedTargetTop5Loading && (
+              <div style={{
+                background: 'linear-gradient(135deg, #1e293b, #334155)',
+                borderRadius: '16px',
+                padding: '24px',
+                border: '1px solid #334155'
+              }}>
+                <h3 style={{ fontSize: '1.3rem', marginBottom: '10px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
+                <div style={{ color: '#cbd5e1', fontSize: '0.98rem' }}>
+                  Generating closest guesses… (server may be warming up)
                 </div>
               </div>
             )}
