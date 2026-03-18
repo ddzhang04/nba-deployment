@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
 import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
@@ -30,8 +30,27 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5, setPrefetchedTargetTop5] = useState([]); // top_5 for current target (prefetched)
   const [prefetchedTargetTop5Loading, setPrefetchedTargetTop5Loading] = useState(false);
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
+
   const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
+
+  const bestPrevRef = useRef(null);
+  const [bestSoFar, setBestSoFar] = useState(null);
+  const [bestDelta, setBestDelta] = useState(null);
+
+  const FAVORITES_KEY = key('nba-mantle-favorites');
+  const [favoritePlayerKeys, setFavoritePlayerKeys] = useState(() => {
+    try {
+      const raw = localStorage.getItem(FAVORITES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const favoritePlayerKeySet = useMemo(() => new Set(favoritePlayerKeys), [favoritePlayerKeys]);
+
+  const [nextDailyCountdown, setNextDailyCountdown] = useState(null);
 
   const [showDailyHistoryPanel, setShowDailyHistoryPanel] = useState(() => {
     try {
@@ -268,6 +287,16 @@ const NBAGuessGame = () => {
       : todayDailyIndex;
   const activeDailyNumber = activeDailyIndex + 1;
   const isPastDailySelected = activeDailyIndex !== todayDailyIndex;
+
+  const formatHMS = useCallback((ms) => {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  }, []);
+
   const getISODateForDailyIndex = (index) => {
     try {
       const epochUTC = Date.UTC(
@@ -281,6 +310,25 @@ const NBAGuessGame = () => {
       return new Date().toISOString().slice(0, 10);
     }
   };
+
+  // Next daily puzzle time (UTC midnight rollover).
+  useEffect(() => {
+    const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
+    if (!isDailyMode) {
+      setNextDailyCountdown(null);
+      return;
+    }
+
+    const tick = () => {
+      const now = new Date();
+      const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
+      setNextDailyCountdown(formatHMS(nextUtcMidnight.getTime() - now.getTime()));
+    };
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [gameMode, formatHMS]);
 
   // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
@@ -404,7 +452,36 @@ const NBAGuessGame = () => {
     setSelectedSuggestionIndex(-1);
     setPostWinGlobalDailyAverage(null);
     setPostWinGlobalDailyAverageLoading(false);
+    bestPrevRef.current = null;
+    setBestSoFar(null);
+    setBestDelta(null);
   };
+
+  // Persist favorites so they survive refresh.
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritePlayerKeys));
+    } catch {}
+  }, [favoritePlayerKeys, FAVORITES_KEY]);
+
+  // Track best score (+delta when it improves).
+  useEffect(() => {
+    if (!Array.isArray(guessHistory) || guessHistory.length === 0) {
+      setBestSoFar(null);
+      setBestDelta(null);
+      bestPrevRef.current = null;
+      return;
+    }
+    const bestNow = Math.max(...guessHistory.map((g) => (typeof g?.score === 'number' ? g.score : -Infinity)));
+    const prevBest = bestPrevRef.current;
+    setBestSoFar(bestNow);
+    if (typeof prevBest === 'number' && bestNow > prevBest) {
+      setBestDelta(bestNow - prevBest);
+    } else {
+      setBestDelta(null);
+    }
+    bestPrevRef.current = bestNow;
+  }, [guessHistory]);
 
   const getActiveCompletionEntry = () => {
     if (gameMode === 'daily') return dailyCompletions[String(activeDailyNumber)] ?? null;
@@ -796,6 +873,20 @@ const NBAGuessGame = () => {
     if (!name || !playerImagesMap) return null;
     const entry = playerImagesMap[name] ?? playerImagesMap[normalizePlayerName(name)];
     return entry?.imageUrl ?? null;
+  };
+
+  const isFavoritePlayer = (name) => {
+    if (!name) return false;
+    return favoritePlayerKeySet.has(normalizePlayerName(name));
+  };
+
+  const toggleFavoritePlayer = (name) => {
+    if (!name) return;
+    const k = normalizePlayerName(name);
+    setFavoritePlayerKeys((prev) => {
+      if (prev.includes(k)) return prev.filter((x) => x !== k);
+      return [...prev, k];
+    });
   };
 
   const makeGuess = async () => {
@@ -1924,6 +2015,16 @@ const NBAGuessGame = () => {
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>Guesses: {guessCount}</span>
             )}
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !isPastDailySelected && nextDailyCountdown != null && (
+              <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '1rem' }}>
+                Next in {nextDailyCountdown} UTC
+              </span>
+            )}
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && bestSoFar != null && (
+              <span style={{ color: '#34d399', fontWeight: 'bold', fontSize: '1rem' }}>
+                Best: {bestSoFar}{bestDelta != null ? ` (+${bestDelta})` : ''}
+              </span>
+            )}
             {gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && (
               <span style={{ color: '#fbbf24' }}>⚡ Attempt #{guessCount}</span>
             )}
@@ -2417,7 +2518,10 @@ const NBAGuessGame = () => {
                             !name.includes('?') &&
                             normalizePlayerName(name).includes(normQuery)
                           ).slice(0, 8);
-                          setSuggestions(filtered);
+                          const sorted = [...filtered].sort(
+                            (a, b) => Number(isFavoritePlayer(b)) - Number(isFavoritePlayer(a))
+                          );
+                          setSuggestions(sorted);
                           setShowSuggestions(true);
                         } else {
                           setSuggestions([]);
@@ -2680,30 +2784,62 @@ const NBAGuessGame = () => {
                         />
                       )}
                       <h4 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{item.name}</h4>
+                      <button
+                        type="button"
+                        onClick={() => toggleFavoritePlayer(item.name)}
+                        style={{
+                          marginLeft: 'auto',
+                          border: 'none',
+                          background: 'transparent',
+                          color: isFavoritePlayer(item.name) ? '#fbbf24' : '#334155',
+                          cursor: 'pointer',
+                          fontSize: '18px',
+                          lineHeight: 1,
+                          padding: 0
+                        }}
+                        aria-label={isFavoritePlayer(item.name) ? 'Unfavorite player' : 'Favorite player'}
+                      >
+                        {isFavoritePlayer(item.name) ? '★' : '☆'}
+                      </button>
                     </div>
                     
                     <ScoreBar score={item.score} />
                     
                     {item.breakdown && Object.keys(item.breakdown).length > 0 && (
                       <div style={{ marginTop: '12px' }}>
-                        {Object.entries(item.breakdown)
-                          .filter(([key, value]) => 
-                            key !== 'total' && 
-                            key !== 'shared_seasons_detail' && 
-                            value > 0
-                          )
-                          .map(([key, value]) => (
-                            <div key={key} style={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between', 
-                              fontSize: '12px', 
-                              color: '#94a3b8', 
-                              marginBottom: '4px' 
-                            }}>
-                              <span>{formatBreakdownKey(key)}</span>
-                              <span style={{ color: '#10b981', fontWeight: 'bold' }}>+{value}</span>
-                            </div>
-                          ))}
+                        {(() => {
+                          const entries = Object.entries(item.breakdown).filter(
+                            ([key, value]) =>
+                              key !== 'total' &&
+                              key !== 'shared_seasons_detail' &&
+                              typeof value === 'number' &&
+                              value > 0
+                          );
+                          if (!entries.length) return null;
+                          const maxVal = Math.max(...entries.map(([, v]) => v));
+                          return entries.map(([key, value]) => {
+                            const isMax = value === maxVal;
+                            return (
+                              <div
+                                key={key}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  fontSize: '12px',
+                                  color: isMax ? '#e0f2fe' : '#94a3b8',
+                                  marginBottom: '4px',
+                                  padding: isMax ? '4px 8px' : 0,
+                                  borderRadius: isMax ? '8px' : 0,
+                                  border: isMax ? '1px solid rgba(56,189,248,0.35)' : 'none',
+                                  backgroundColor: isMax ? 'rgba(59,130,246,0.16)' : 'transparent'
+                                }}
+                              >
+                                <span>{formatBreakdownKey(key)}</span>
+                                <span style={{ color: '#10b981', fontWeight: 'bold' }}>+{value}</span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
                   </div>
