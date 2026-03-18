@@ -2093,13 +2093,13 @@ const NBAGuessGame = () => {
                     }}
                   >
                     {[
-                      ['Same team (seasons)', 'Shared roster seasons: the more overlapping years, the higher the similarity.'],
-                      ['Shared teammates', 'Shared teammate overlap across careers: more common names tends to increase the score.'],
-                      ['Shared franchises', 'Both players played for the same franchises (even if not at the same time).'],
-                      ['Position', 'Similar role/position: closer roles on the floor contribute more.'],
-                      ['Era', 'Era overlap (numbers like 4/7/10): closer start eras increase this clue.'],
-                      ['Career length', 'Career-length similarity: players with comparable career spans score higher.'],
-                      ['Accolades', 'Awards overlap (All-Star / All-NBA / All-Defense / All-Rookie, etc.). More shared accolades = higher.'],
+                      ['Same team (seasons)', 'Same-team overlap: 0–50 (more overlapping seasons = higher).'],
+                      ['Shared teammates', 'Shared teammate overlap: 0–5 (more shared teammates = higher).'],
+                      ['Shared franchises', 'Shared franchise overlap: 0–10 (same orgs = higher).'],
+                      ['Position', 'Position similarity: 0–10 (more similar roles = higher).'],
+                      ['Era', 'Era overlap: 0–10 (closer start eras = higher).'],
+                      ['Career length', 'Career-length similarity: 0–6 (closer career span = higher).'],
+                      ['Accolades', 'Awards/league honors overlap: `award_overlap` 0–8 + `all_*` overlaps 0–5 (more shared honors = higher).'],
                     ].map(([title, desc]) => (
                       <div
                         key={title}
