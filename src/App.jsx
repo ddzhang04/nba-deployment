@@ -279,7 +279,7 @@ const NBAGuessGame = () => {
     }
   };
 
-  // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won }
+  // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const getDailyCompletionsFromStorage = () => {
@@ -291,10 +291,11 @@ const NBAGuessGame = () => {
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
         if (typeof val === 'string') {
-          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '' };
+          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
-          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '' };
+          const top5 = Array.isArray(val?.top5) ? val.top5 : [];
+          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
@@ -302,9 +303,9 @@ const NBAGuessGame = () => {
       return {};
     }
   };
-  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '') => {
+  const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getDailyCompletionsFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer, top5 } };
     try {
       localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -326,10 +327,11 @@ const NBAGuessGame = () => {
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
         if (typeof val === 'string') {
-          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '' };
+          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
-          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '' };
+          const top5 = Array.isArray(val?.top5) ? val.top5 : [];
+          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
@@ -337,9 +339,9 @@ const NBAGuessGame = () => {
       return {};
     }
   };
-  const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '') => {
+  const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getBallKnowledgeDailyFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer, top5 } };
     try {
       localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
     } catch {}
@@ -452,6 +454,47 @@ const NBAGuessGame = () => {
     resetPuzzleState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyIndex]);
+
+  // If the selected daily is already completed, restore its end-state (including Top 5).
+  useEffect(() => {
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    const completion = getActiveCompletionEntry();
+    if (!completion) return;
+
+    const restoredHistory = Array.isArray(completion?.guessHistory) ? completion.guessHistory : [];
+    setGuessHistory(restoredHistory);
+    setGuessCount(typeof completion?.guesses === 'number' ? completion.guesses : restoredHistory.length);
+
+    const won = completion?.won !== false;
+    setGameWon(won);
+    setShowAnswer(!won);
+
+    const top5 = Array.isArray(completion?.top5) ? completion.top5 : [];
+    if (top5.length) {
+      setTop5Players(top5);
+      return;
+    }
+
+    // Fallback: if older saves don't have top5, re-fetch it based on answer/target.
+    const answer = completion?.answer || targetPlayer;
+    if (!answer) return;
+    (async () => {
+      try {
+        const result = await fetchJsonWithRetry(
+          `${API_BASE}/guess`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ guess: answer, target: answer }),
+          },
+          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+        );
+        const fetchedTop5 = Array.isArray(result?.top_5) ? result.top_5 : [];
+        if (fetchedTop5.length) setTop5Players(fetchedTop5);
+      } catch {}
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed]);
 
   // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
   useEffect(() => {
@@ -781,7 +824,7 @@ const NBAGuessGame = () => {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer);
+                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top_5 || []);
                 setDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
@@ -789,7 +832,7 @@ const NBAGuessGame = () => {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer);
+                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top_5 || []);
                 setBallKnowledgeDailyCompletions(next);
                 submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
               }
@@ -837,7 +880,7 @@ const NBAGuessGame = () => {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer);
+        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, result?.top_5 || []);
         setDailyCompletions(next);
         submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
@@ -845,7 +888,7 @@ const NBAGuessGame = () => {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer);
+        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, result?.top_5 || []);
         setBallKnowledgeDailyCompletions(next);
         submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
       }
