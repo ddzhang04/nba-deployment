@@ -14,8 +14,37 @@
 
 export const DAILY_PUZZLE_EPOCH = '2026-03-19';
 
-export const DAILY_PLAYERS = [
-  // Day 0 = Daily #1 (kept fixed)
+// Bump this when you want to reshuffle the rotation for everyone.
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v1';
+
+const hashSeed = (str) => {
+  // FNV-1a 32-bit
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+};
+
+const mulberry32 = (a) => () => {
+  let t = (a += 0x6d2b79f5);
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+export const shuffleDeterministic = (arr, seedStr) => {
+  const out = Array.isArray(arr) ? [...arr] : [];
+  const rand = mulberry32(hashSeed(String(seedStr ?? '')));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+};
+
+const BASE_DAILY_PLAYERS = [
   "Kevin Garnett",
   "Allen Iverson",
   "De'Andre Hunter",
@@ -395,3 +424,8 @@ export const DAILY_PLAYERS = [
   "Trevor Ariza",
   "Derek Fisher",
 ];
+
+export const DAILY_PLAYERS = shuffleDeterministic(
+  BASE_DAILY_PLAYERS,
+  `${DAILY_PUZZLE_EPOCH}-${ROTATION_SHUFFLE_VERSION}-daily`
+);

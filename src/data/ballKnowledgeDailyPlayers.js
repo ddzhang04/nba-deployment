@@ -4,11 +4,11 @@
  * Uses the same epoch as the main Daily (same day index = same puzzle #).
  */
 
-import { DAILY_PUZZLE_EPOCH } from './dailyPlayers.js';
+import { DAILY_PUZZLE_EPOCH, ROTATION_SHUFFLE_VERSION, shuffleDeterministic } from './dailyPlayers.js';
 
 export { DAILY_PUZZLE_EPOCH };
 
-export const BALL_KNOWLEDGE_DAILY_PLAYERS = [
+const BASE_HARDCORE_DAILY_PLAYERS = [
   "Bob Dandridge",
   "Denzel Valentine",
   "Gerald Henderson",
@@ -388,3 +388,8 @@ export const BALL_KNOWLEDGE_DAILY_PLAYERS = [
   "Elfrid Payton",
   "Michael Kidd-Gilchrist",
 ];
+
+export const BALL_KNOWLEDGE_DAILY_PLAYERS = shuffleDeterministic(
+  BASE_HARDCORE_DAILY_PLAYERS,
+  `${DAILY_PUZZLE_EPOCH}-${ROTATION_SHUFFLE_VERSION}-hardcore`
+);
