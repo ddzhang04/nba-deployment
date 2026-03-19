@@ -279,13 +279,16 @@ const NBAGuessGame = () => {
 
   // Daily mode: one puzzle per day (seeded by calendar). Same puzzle for everyone globally.
   // Use UTC so the day index is the same for everyone regardless of timezone.
+  // If this offset is non-zero, puzzle index and displayed epoch date intentionally differ.
+  // Streaks must use the *live puzzle calendar day* derived from this same mapping.
+  const DAILY_PUZZLE_INDEX_OFFSET = -1;
   const getDailyPuzzleIndex = () => {
     const epoch = new Date(DAILY_PUZZLE_EPOCH + 'T00:00:00.000Z').getTime();
     const now = new Date();
     const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
     // We moved the displayed epoch back one day (Mar 18) but want to keep the
     // current puzzle number/history stable for existing players.
-    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) - 1);
+    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) + DAILY_PUZZLE_INDEX_OFFSET);
   };
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
@@ -347,13 +350,17 @@ const NBAGuessGame = () => {
     const isLiveWin = (num, entry) => {
       if (!Number.isFinite(num) || num <= 0) return false;
       if (!(typeof entry === 'object' && entry != null && entry?.won !== false)) return false;
-      const puzzleDate = entry?.date ?? '';
       const completedAt = entry?.completedAt ?? '';
-      if (typeof puzzleDate !== 'string' || typeof completedAt !== 'string') return false;
-      if (!puzzleDate) return false;
       // completedAt is an ISO timestamp; compare just the YYYY-MM-DD.
+      if (typeof completedAt !== 'string') return false;
       const completedDate = completedAt.slice(0, 10);
-      return completedDate === puzzleDate;
+
+      // Compare against the *live puzzle calendar day*, not the displayed/stored date.
+      // If dailyNumber = num corresponds to dayIndex = num-1, then live day for that index is:
+      // liveDayIndex = (num - 1) - DAILY_PUZZLE_INDEX_OFFSET
+      const liveDayIndex = (num - 1) - DAILY_PUZZLE_INDEX_OFFSET;
+      const liveDate = getISODateForDailyIndex(liveDayIndex);
+      return completedDate === liveDate;
     };
 
     const hasLiveWonToday = (() => {
