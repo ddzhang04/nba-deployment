@@ -1,6 +1,6 @@
 /**
- * Ball Knowledge Daily — Same calendar logic as Daily, different player list.
- * Edit this file to change which player is used each day for Ball Knowledge Daily.
+ * Hardcore Daily — Same calendar logic as Daily, different player list.
+ * Edit this file to change which player is used each day for Hardcore Daily.
  * Uses the same epoch as the main Daily (same day index = same puzzle #).
  */
 

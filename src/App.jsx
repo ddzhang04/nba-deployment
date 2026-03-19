@@ -289,7 +289,7 @@ const NBAGuessGame = () => {
     BALL_KNOWLEDGE_DAILY_PLAYERS[index % BALL_KNOWLEDGE_DAILY_PLAYERS.length] ?? BALL_KNOWLEDGE_DAILY_PLAYERS[0];
 
   // Allow playing a past daily by selecting a specific day index.
-  // This affects Daily + Ball Knowledge Daily (same calendar).
+  // This affects Daily + Hardcore Daily (same calendar).
   const [selectedDailyIndexOverride, setSelectedDailyIndexOverride] = useState(null); // number | null
   const [showPastDailyPicker, setShowPastDailyPicker] = useState(false);
   const todayDailyIndex = getDailyPuzzleIndex();
@@ -640,7 +640,7 @@ const NBAGuessGame = () => {
     if (!answer) return;
     setRestoringTop5(true);
     // Important: protect against async responses from the *previous* daily mode/daily.
-    // This prevents showing Daily Top 5 on Ball Knowledge Daily after a quick switch.
+    // This prevents showing Daily Top 5 on Hardcore Daily after a quick switch.
     let cancelled = false;
     const modeAtStart = gameMode;
     const activeDailyNumberAtStart = activeDailyNumber;
@@ -2208,7 +2208,7 @@ const NBAGuessGame = () => {
               </div>
             )}
 
-            {/* Past Ball Knowledge Dailies */}
+            {/* Past Hardcore Dailies */}
             {Object.keys(ballKnowledgeDailyCompletions).length > 0 && (
               <div style={{
                 marginTop: '14px',
@@ -2718,9 +2718,9 @@ const NBAGuessGame = () => {
                 const dailyWins = getWinsCount(dailyCompletions);
                 const bkdWins = getWinsCount(ballKnowledgeDailyCompletions);
 
-                const pill = (label, value, tint) => (
+                const pill = (label, value, tint, subLabel = '') => (
                   <div
-                    key={label}
+                    key={`${label}-${subLabel}`}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -2736,7 +2736,14 @@ const NBAGuessGame = () => {
                       lineHeight: 1.2,
                     }}
                   >
-                    <span style={{ opacity: 0.9 }}>{label}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ opacity: 0.95, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                      {subLabel ? (
+                        <div style={{ marginTop: '2px', opacity: 0.75, fontSize: '12px', fontWeight: 700 }}>
+                          {subLabel}
+                        </div>
+                      ) : null}
+                    </div>
                     <span style={{ color: 'white' }}>{value}</span>
                   </div>
                 );
@@ -2746,12 +2753,12 @@ const NBAGuessGame = () => {
 
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-                    {pill('Daily wins', dailyWins, dailyTint)}
-                    {pill('Hardcore wins', bkdWins, bkdTint)}
-                    {pill('Daily streak', dailyStats.currentStreak, dailyTint)}
-                    {pill('Hardcore streak', bkdStats.currentStreak, bkdTint)}
-                    {pill('Daily best streak', dailyStats.maxStreak, dailyTint)}
-                    {pill('Hardcore best streak', bkdStats.maxStreak, bkdTint)}
+                    {pill('Daily', dailyWins, dailyTint, 'Wins')}
+                    {pill('Hardcore', bkdWins, bkdTint, 'Wins')}
+                    {pill('Daily', dailyStats.currentStreak, dailyTint, 'Current streak')}
+                    {pill('Hardcore', bkdStats.currentStreak, bkdTint, 'Current streak')}
+                    {pill('Daily', dailyStats.maxStreak, dailyTint, 'Best streak')}
+                    {pill('Hardcore', bkdStats.maxStreak, bkdTint, 'Best streak')}
                   </div>
                 );
               })()}
