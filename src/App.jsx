@@ -876,17 +876,6 @@ const NBAGuessGame = () => {
         setTargetPlayer(target);
         fetchTargetMaxSimilarity(target);
       }
-
-      setGuess('');
-      setGuessHistory([]);
-      setGameWon(false);
-      setGuessCount(0);
-      setError('');
-      setTop5Players([]);
-      setShowAnswer(false);
-      setSuggestions([]);
-      setShowSuggestions(false);
-      setSelectedSuggestionIndex(-1);
     };
 
     loadPlayerNames();
