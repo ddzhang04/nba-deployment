@@ -15,7 +15,7 @@
 export const DAILY_PUZZLE_EPOCH = '2026-03-18';
 
 // Bump this when you want to reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v3';
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v4';
 // Keep shuffle seed stable even if the displayed epoch date changes.
 export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-19';
 
