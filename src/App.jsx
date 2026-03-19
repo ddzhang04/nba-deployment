@@ -626,6 +626,7 @@ const NBAGuessGame = () => {
     // Keep daily/hardcore answers server-side (prevents casual console peeking).
     setTargetPlayer('');
     resetPuzzleState();
+    fetchDailyCeiling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyIndex]);
 
@@ -816,10 +817,12 @@ const NBAGuessGame = () => {
       // Daily answer is server-side.
       setTargetPlayer('');
       setTargetMaxSimilar(null);
+      fetchDailyCeiling();
     } else if (gameMode === 'ballKnowledgeDaily') {
       // Hardcore answer is server-side.
       setTargetPlayer('');
       setTargetMaxSimilar(null);
+      fetchDailyCeiling();
     } else {
       // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
       const playersToUse = filteredPlayers.length > 0
@@ -1088,6 +1091,27 @@ const NBAGuessGame = () => {
   const triggerInputShake = () => {
     setShakeInput(true);
     setTimeout(() => setShakeInput(false), 440);
+  };
+
+  const fetchDailyCeiling = async () => {
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    setTargetMaxSimilar(null);
+    try {
+      const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+      const r = await fetchJsonWithRetry(
+        `${SECURE_API_BASE}/ceiling`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ mode: modeKey, dailyNumber: activeDailyNumber }),
+        },
+        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+      );
+      const ceiling = typeof r?.ceiling === 'number' ? r.ceiling : null;
+      setTargetMaxSimilar(ceiling);
+    } catch {
+      setTargetMaxSimilar(null);
+    }
   };
 
   const makeGuess = async () => {
