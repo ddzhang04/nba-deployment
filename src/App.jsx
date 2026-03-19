@@ -1149,9 +1149,9 @@ const NBAGuessGame = () => {
       );
 
       const { score, matched_name, breakdown, top_5 } = result;
-      if (score === 100 && typeof result?.answer === 'string' && result.answer) {
-        setTargetPlayer(result.answer);
-      }
+      const resolvedAnswerFromResult = typeof result?.answer === 'string' ? result.answer : '';
+      const resolvedAnswer = score === 100 && resolvedAnswerFromResult ? resolvedAnswerFromResult : targetPlayer;
+      if (score === 100 && resolvedAnswerFromResult) setTargetPlayer(resolvedAnswerFromResult);
 
         const newGuess = {
           name: matched_name || guess.trim(),
@@ -1184,18 +1184,20 @@ const NBAGuessGame = () => {
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
-                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
+                const answerToStore = resolvedAnswer || targetPlayer;
+                const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
+                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true });
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
-                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, targetPlayer, top5ToStore);
+                const answerToStore = resolvedAnswer || targetPlayer;
+                const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: newCount, won: true });
+                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true });
               }
             }
           }
@@ -1231,6 +1233,7 @@ const NBAGuessGame = () => {
     
     setLoading(true);
     let top5Now = [];
+    let revealedAnswer = '';
     try {
       if (!isDailyLike && prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
         top5Now = prefetchedTargetTop5;
@@ -1244,7 +1247,8 @@ const NBAGuessGame = () => {
           },
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
         );
-        if (typeof r?.answer === 'string' && r.answer) setTargetPlayer(r.answer);
+        revealedAnswer = typeof r?.answer === 'string' ? r.answer : '';
+        if (revealedAnswer) setTargetPlayer(revealedAnswer);
         top5Now = Array.isArray(r?.top_5) ? r.top_5 : [];
       } else {
         const result = await fetchJsonWithRetry(
@@ -1274,17 +1278,19 @@ const NBAGuessGame = () => {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, top5Now || []);
+        const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
+        const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
+        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false });
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
-        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, targetPlayer, top5Now || []);
+        const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
+        const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setBallKnowledgeDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: targetPlayer, guesses: guessCount, won: false });
+        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false });
       }
     }
     setLoading(false);
