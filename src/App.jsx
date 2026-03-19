@@ -81,6 +81,7 @@ const NBAGuessGame = () => {
   const [confettiBurstId, setConfettiBurstId] = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
+  const [restoringTop5, setRestoringTop5] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -563,6 +564,7 @@ const NBAGuessGame = () => {
     // Fallback: if older saves don't have top5, re-fetch it based on answer/target.
     const answer = completion?.answer || targetPlayer;
     if (!answer) return;
+    setRestoringTop5(true);
     // Important: protect against async responses from the *previous* daily mode/daily.
     // This prevents showing Daily Top 5 on Ball Knowledge Daily after a quick switch.
     let cancelled = false;
@@ -585,6 +587,9 @@ const NBAGuessGame = () => {
         if (activeDailyNumberAtStart !== activeDailyNumber) return;
         if (fetchedTop5.length) setTop5Players(fetchedTop5);
       } catch {}
+      finally {
+        if (!cancelled) setRestoringTop5(false);
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3047,7 +3052,7 @@ const NBAGuessGame = () => {
             )}
 
             {/* Top 5 placeholder while backend warms / prefetch runs */}
-            {top5Players.length === 0 && (gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed) && prefetchedTargetTop5Loading && (
+            {top5Players.length === 0 && (gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed) && (prefetchedTargetTop5Loading || restoringTop5) && (
               <div style={{
                 background: 'linear-gradient(135deg, #1e293b, #334155)',
                 borderRadius: '16px',
@@ -3056,7 +3061,7 @@ const NBAGuessGame = () => {
               }}>
                 <h3 style={{ fontSize: '1.3rem', marginBottom: '10px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
                 <div style={{ color: '#cbd5e1', fontSize: '0.95rem', marginBottom: '14px' }}>
-                  Generating closest guesses… (server may be warming up)
+                  {restoringTop5 ? 'Loading this daily’s Top 5 Most Similar…' : 'Generating closest guesses… (server may be warming up)'}
                 </div>
                 <div style={{ display: 'grid', gap: '12px' }}>
                   {Array.from({ length: 5 }).map((_, i) => (
