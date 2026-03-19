@@ -195,13 +195,72 @@ const NBAGuessGame = () => {
 
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
     // mode: 'daily' | 'hardcore'
-    if (!supabase) return null;
     const m = mode === 'hardcore' ? 'hardcore' : 'daily';
     const n = Number(dailyNumber);
     if (!Number.isFinite(n) || n < 1) return null;
 
-    // Simple frontend-only approach (OK for early data): pull guesses and compute avg.
-    // Uses count=exact so you still see true win count even if we cap rows.
+    // Cache per (mode,dailyNumber) so reloads don't recompute on every visit.
+    const CACHE_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+    const cacheKey = key(`nba-mantle-global-daily-avg-${m}-${n}`);
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.ts && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= CACHE_TTL_MS) {
+          return parsed?.value ?? null;
+        }
+      }
+    } catch {}
+
+    // Prefer the server-side RPC (fast) that powers this endpoint: `api/stats/averages.js`.
+    // If the shape ever changes, we fall back to the older Supabase row-scan method.
+    try {
+      const apiResult = await fetchJsonWithRetry(
+        `${SECURE_API_BASE}/stats/averages?mode=${encodeURIComponent(m)}`,
+        {},
+        { timeoutMs: 20000, retries: 1, retryDelayMs: 600 }
+      );
+
+      const list = Array.isArray(apiResult?.averages) ? apiResult.averages : [];
+      for (const item of list) {
+        // Common shape: { daily_number: number, avg: number, wins: number }
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          const dn = Number(item.daily_number ?? item.dailyNumber ?? item.daily ?? NaN);
+          if (dn !== n) continue;
+
+          const avgRaw = item.avg ?? item.average ?? item.average_guess ?? item.guesses_avg ?? item.global_avg;
+          const winsRaw = item.wins ?? item.win_count ?? item.wins_count ?? item.winCount;
+
+          const avg = Number(avgRaw);
+          const wins = winsRaw == null ? null : Number(winsRaw);
+
+          if (Number.isFinite(avg)) {
+            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
+          }
+        }
+
+        // Alternate shape: [dailyNumber, avg, wins]
+        if (Array.isArray(item)) {
+          const dn = Number(item[0]);
+          if (dn !== n) continue;
+          const avg = Number(item[1]);
+          const wins = item.length > 2 ? Number(item[2]) : null;
+          if (Number.isFinite(avg)) {
+            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
+          }
+        }
+      }
+    } catch {
+      // fall through to Supabase fallback
+    }
+
+    // Fallback: older frontend-only approach.
+    if (!supabase) return null;
+
     const { data, count, error } = await supabase
       .from('mantle_runs')
       .select('guesses', { count: 'exact' })
@@ -217,7 +276,9 @@ const NBAGuessGame = () => {
     const rows = Array.isArray(data) ? data : [];
     if (!rows.length) return { avg: null, wins: count ?? 0 };
     const total = rows.reduce((sum, r) => sum + (typeof r?.guesses === 'number' ? r.guesses : 0), 0);
-    return { avg: total / rows.length, wins: count ?? rows.length };
+    const value = { avg: total / rows.length, wins: count ?? rows.length };
+    try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+    return value;
   };
 
   // Cache player name list locally so the UI feels instant on repeat visits.
