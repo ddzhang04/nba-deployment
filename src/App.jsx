@@ -324,6 +324,34 @@ const NBAGuessGame = () => {
     }
   };
 
+  const addDaysToIsoDate = (iso, days) => {
+    const s = String(iso || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    try {
+      const d = new Date(s + 'T12:00:00Z');
+      if (isNaN(d.getTime())) return '';
+      d.setUTCDate(d.getUTCDate() + Number(days || 0));
+      return d.toISOString().slice(0, 10);
+    } catch {
+      return '';
+    }
+  };
+
+  // Some older saved completions stored a date that was 1 day ahead.
+  // Normalize for display (but don't mutate storage).
+  const normalizeCompletionIsoForDisplay = (storedIso, dailyNumber) => {
+    const raw = String(storedIso || '').slice(0, 10);
+    if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const num = Number(dailyNumber);
+    if (!Number.isFinite(num) || num <= 0) return raw;
+    const expected = getISODateForDailyIndex(num - 1);
+    if (!expected) return raw;
+    if (raw === expected) return raw;
+    const minusOne = addDaysToIsoDate(raw, -1);
+    if (minusOne && minusOne === expected) return expected;
+    return raw;
+  };
+
   // Next daily puzzle time (UTC midnight rollover).
   useEffect(() => {
     const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
@@ -1987,7 +2015,8 @@ const NBAGuessGame = () => {
                   {Object.entries(dailyCompletions)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([num, entry]) => {
-                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const dateStrRaw = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, num);
                       const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
                       let displayDate = dateStr;
                       try {
@@ -2070,7 +2099,8 @@ const NBAGuessGame = () => {
                 >
                   {(() => {
                     const entry = dailyCompletions[selectedDailyDetail];
-                    const dateStr = entry?.date ?? '';
+                  const dateStrRaw = entry?.date ?? '';
+                  const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, selectedDailyDetail);
                     let displayDate = dateStr;
                     try {
                       const d = new Date(dateStr + 'T12:00:00');
@@ -2201,7 +2231,8 @@ const NBAGuessGame = () => {
                   {Object.entries(ballKnowledgeDailyCompletions)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([num, entry]) => {
-                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const dateStrRaw = typeof entry === 'string' ? entry : entry?.date ?? '';
+                      const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, num);
                       const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
                       let displayDate = dateStr;
                       try {
@@ -2284,7 +2315,8 @@ const NBAGuessGame = () => {
                 >
                   {(() => {
                     const entry = ballKnowledgeDailyCompletions[selectedBallKnowledgeDetail];
-                    const dateStr = entry?.date ?? '';
+                    const dateStrRaw = entry?.date ?? '';
+                    const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, selectedBallKnowledgeDetail);
                     let displayDate = dateStr;
                     try {
                       const d = new Date(dateStr + 'T12:00:00');
@@ -2854,7 +2886,8 @@ const NBAGuessGame = () => {
 
                 const isHardcore = gameMode === 'ballKnowledgeDaily';
                 const completion = getActiveCompletionEntry();
-                const dateStr = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
+                const dateStrRaw = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
+                const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, activeDailyNumber);
                 let displayDate = dateStr;
                 try {
                   const d = new Date((dateStr ?? '') + 'T12:00:00');
