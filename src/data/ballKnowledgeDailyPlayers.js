@@ -4,7 +4,7 @@
  * Uses the same epoch as the main Daily (same day index = same puzzle #).
  */
 
-import { DAILY_PUZZLE_EPOCH, ROTATION_SHUFFLE_VERSION, shuffleDeterministic } from './dailyPlayers.js';
+import { DAILY_PUZZLE_EPOCH, ROTATION_SHUFFLE_SEED_EPOCH, ROTATION_SHUFFLE_VERSION, shuffleDeterministic } from './dailyPlayers.js';
 
 export { DAILY_PUZZLE_EPOCH };
 
@@ -391,5 +391,5 @@ const BASE_HARDCORE_DAILY_PLAYERS = [
 
 export const BALL_KNOWLEDGE_DAILY_PLAYERS = shuffleDeterministic(
   BASE_HARDCORE_DAILY_PLAYERS,
-  `${DAILY_PUZZLE_EPOCH}-${ROTATION_SHUFFLE_VERSION}-hardcore`
+  `${ROTATION_SHUFFLE_SEED_EPOCH}-${ROTATION_SHUFFLE_VERSION}-hardcore`
 );
