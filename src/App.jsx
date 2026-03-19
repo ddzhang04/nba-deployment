@@ -813,15 +813,13 @@ const NBAGuessGame = () => {
   const startNewGame = () => {
     let chosenPlayer;
     if (gameMode === 'daily') {
-      // Respect past-daily selection (if any)
-      chosenPlayer = getDailyPlayerForIndex(activeDailyIndex);
-      setTargetPlayer(chosenPlayer);
-      fetchTargetMaxSimilarity(chosenPlayer);
+      // Daily answer is server-side.
+      setTargetPlayer('');
+      setTargetMaxSimilar(null);
     } else if (gameMode === 'ballKnowledgeDaily') {
-      // Respect past-daily selection (if any)
-      chosenPlayer = getBallKnowledgeDailyPlayer(activeDailyIndex);
-      setTargetPlayer(chosenPlayer);
-      fetchTargetMaxSimilarity(chosenPlayer);
+      // Hardcore answer is server-side.
+      setTargetPlayer('');
+      setTargetMaxSimilar(null);
     } else {
       // Don't use full list fallback for All Stars Only when backend hasn't provided is_all_star
       const playersToUse = filteredPlayers.length > 0
@@ -835,7 +833,6 @@ const NBAGuessGame = () => {
       fetchTargetMaxSimilarity(chosenPlayer);
     }
     resetPuzzleState();
-    console.log('New game started with:', chosenPlayer, 'Mode:', gameMode);
   };
 
   const maybeScrollAfterGuess = () => {
@@ -882,14 +879,14 @@ const NBAGuessGame = () => {
     
     // Start a new game with the new mode (or clear target if no players for this mode)
     if (filtered.length > 0) {
-      const target =
-        newMode === 'daily'
-          ? getDailyPlayerForIndex(selectedDailyIndexOverride != null ? selectedDailyIndexOverride : getDailyPuzzleIndex())
-          : newMode === 'ballKnowledgeDaily'
-          ? getBallKnowledgeDailyPlayer(selectedDailyIndexOverride != null ? selectedDailyIndexOverride : getDailyPuzzleIndex())
-          : filtered[Math.floor(Math.random() * filtered.length)];
-      setTargetPlayer(target);
-      fetchTargetMaxSimilarity(target);
+      if (newMode === 'daily' || newMode === 'ballKnowledgeDaily') {
+        setTargetPlayer('');
+        setTargetMaxSimilar(null);
+      } else {
+        const target = filtered[Math.floor(Math.random() * filtered.length)];
+        setTargetPlayer(target);
+        fetchTargetMaxSimilarity(target);
+      }
     } else {
       setTargetPlayer('');
       setTargetMaxSimilar(null);
@@ -907,7 +904,6 @@ const NBAGuessGame = () => {
     setShowSuggestions(false);
     setSelectedSuggestionIndex(-1);
     
-    console.log('Mode changed to:', newMode, 'Players available:', filtered.length);
   };
 
   useEffect(() => {
@@ -950,14 +946,14 @@ const NBAGuessGame = () => {
 
         // Without players_data, keep the app playable using all names.
         setFilteredPlayers(sortedPlayers);
-        const initialTarget =
-          gameMode === 'daily'
-            ? getDailyPlayerForIndex(activeDailyIndex)
-            : gameMode === 'ballKnowledgeDaily'
-            ? getBallKnowledgeDailyPlayer(activeDailyIndex)
-            : sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
-        setTargetPlayer(initialTarget);
-        fetchTargetMaxSimilarity(initialTarget);
+        if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
+          setTargetPlayer('');
+          setTargetMaxSimilar(null);
+        } else {
+          const initialTarget = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+          setTargetPlayer(initialTarget);
+          fetchTargetMaxSimilarity(initialTarget);
+        }
 
         // 3) Load full players_data in the background (improves classic/easy filtering).
         (async () => {
@@ -989,9 +985,14 @@ const NBAGuessGame = () => {
         const fallback = modernPlayers;
         setAllPlayers(fallback);
         setFilteredPlayers(fallback);
-        const target = gameMode === 'daily' ? getDailyPlayerForIndex(activeDailyIndex) : gameMode === 'ballKnowledgeDaily' ? getBallKnowledgeDailyPlayer(activeDailyIndex) : fallback[Math.floor(Math.random() * fallback.length)];
-        setTargetPlayer(target);
-        fetchTargetMaxSimilarity(target);
+        if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
+          setTargetPlayer('');
+          setTargetMaxSimilar(null);
+        } else {
+          const target = fallback[Math.floor(Math.random() * fallback.length)];
+          setTargetPlayer(target);
+          fetchTargetMaxSimilarity(target);
+        }
       }
     };
 
