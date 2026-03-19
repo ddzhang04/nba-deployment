@@ -429,12 +429,17 @@ const NBAGuessGame = () => {
       if (typeof parsed !== 'object' || parsed === null) return {};
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
+        const canonicalDate = (() => {
+          const n = Number(num);
+          if (!Number.isFinite(n) || n < 1) return '';
+          return getISODateForDailyIndex(n - 1);
+        })();
         if (typeof val === 'string') {
-          out[num] = { date: val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
+          out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
           const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: val?.date ?? '', completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
+          out[num] = { date: canonicalDate || (val?.date ?? ''), completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
@@ -465,12 +470,17 @@ const NBAGuessGame = () => {
       if (typeof parsed !== 'object' || parsed === null) return {};
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
+        const canonicalDate = (() => {
+          const n = Number(num);
+          if (!Number.isFinite(n) || n < 1) return '';
+          return getISODateForDailyIndex(n - 1);
+        })();
         if (typeof val === 'string') {
-          out[num] = { date: val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
+          out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
           const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: val?.date ?? '', completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
+          out[num] = { date: canonicalDate || (val?.date ?? ''), completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
