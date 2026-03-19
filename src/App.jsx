@@ -33,7 +33,7 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
-  const STORAGE_RESET_VERSION = 'v5'; // bump to force fresh local storage for everyone
+  const STORAGE_RESET_VERSION = 'v6'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const bestPrevRef = useRef(null);
@@ -340,19 +340,30 @@ const NBAGuessGame = () => {
 
     const reveals = entries.filter(([, entry]) => typeof entry === 'object' && entry != null && entry?.won === false).length;
 
-    const hasWonToday = (() => {
+    const isLiveWin = (num, entry) => {
+      if (!Number.isFinite(num) || num <= 0) return false;
+      if (!(typeof entry === 'object' && entry != null && entry?.won !== false)) return false;
+      const puzzleDate = entry?.date ?? '';
+      const completedAt = entry?.completedAt ?? '';
+      if (typeof puzzleDate !== 'string' || typeof completedAt !== 'string') return false;
+      if (!puzzleDate) return false;
+      // completedAt is an ISO timestamp; compare just the YYYY-MM-DD.
+      const completedDate = completedAt.slice(0, 10);
+      return completedDate === puzzleDate;
+    };
+
+    const hasLiveWonToday = (() => {
       const num = todayIdx + 1;
       const e = completions?.[String(num)];
-      return typeof e === 'object' && e != null && e?.won !== false;
+      return isLiveWin(num, e);
     })();
 
-    const streakStartIdx = hasWonToday ? todayIdx : todayIdx - 1;
+    const streakStartIdx = hasLiveWonToday ? todayIdx : todayIdx - 1;
     let currentStreak = 0;
     for (let idx = streakStartIdx; idx >= 0; idx--) {
       const num = idx + 1;
       const e = completions?.[String(num)];
-      const won = typeof e === 'object' && e != null && e?.won !== false;
-      if (!won) break;
+      if (!isLiveWin(num, e)) break;
       currentStreak++;
     }
 
@@ -361,8 +372,7 @@ const NBAGuessGame = () => {
     for (let idx = 0; idx <= todayIdx; idx++) {
       const num = idx + 1;
       const e = completions?.[String(num)];
-      const won = typeof e === 'object' && e != null && e?.won !== false;
-      if (won) {
+      if (isLiveWin(num, e)) {
         run++;
         if (run > maxStreak) maxStreak = run;
       } else {
@@ -404,7 +414,7 @@ const NBAGuessGame = () => {
     return () => clearInterval(id);
   }, [gameMode, formatHMS]);
 
-  // Past daily mantles: keyed by daily number, value = { date, guesses, guessHistory, won, answer, top5 }
+  // Past daily mantles: keyed by daily number, value = { date, completedAt, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const getDailyCompletionsFromStorage = () => {
@@ -416,11 +426,11 @@ const NBAGuessGame = () => {
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
         if (typeof val === 'string') {
-          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
+          out[num] = { date: val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
           const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
+          out[num] = { date: val?.date ?? '', completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
@@ -430,7 +440,7 @@ const NBAGuessGame = () => {
   };
   const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getDailyCompletionsFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer, top5 } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
     try {
       localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -452,11 +462,11 @@ const NBAGuessGame = () => {
       const out = {};
       for (const [num, val] of Object.entries(parsed)) {
         if (typeof val === 'string') {
-          out[num] = { date: val, guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
+          out[num] = { date: val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
         } else {
           const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
           const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: val?.date ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
+          out[num] = { date: val?.date ?? '', completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
         }
       }
       return out;
@@ -466,7 +476,7 @@ const NBAGuessGame = () => {
   };
   const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getBallKnowledgeDailyFromStorage();
-    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, guesses, guessHistory, won, answer, top5 } };
+    const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
     try {
       localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
     } catch {}
@@ -2752,13 +2762,18 @@ const NBAGuessGame = () => {
                 const bkdTint = { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' };
 
                 return (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-                    {pill('Daily', dailyWins, dailyTint, 'Wins')}
-                    {pill('Hardcore', bkdWins, bkdTint, 'Wins')}
-                    {pill('Daily', dailyStats.currentStreak, dailyTint, 'Current streak')}
-                    {pill('Hardcore', bkdStats.currentStreak, bkdTint, 'Current streak')}
-                    {pill('Daily', dailyStats.maxStreak, dailyTint, 'Best streak')}
-                    {pill('Hardcore', bkdStats.maxStreak, bkdTint, 'Best streak')}
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                      {pill('Daily', dailyWins, dailyTint, 'Wins')}
+                      {pill('Hardcore', bkdWins, bkdTint, 'Wins')}
+                      {pill('Daily', dailyStats.currentStreak, dailyTint, 'Live streak')}
+                      {pill('Hardcore', bkdStats.currentStreak, bkdTint, 'Live streak')}
+                      {pill('Daily', dailyStats.maxStreak, dailyTint, 'Best live streak')}
+                      {pill('Hardcore', bkdStats.maxStreak, bkdTint, 'Best live streak')}
+                    </div>
+                    <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '12px', lineHeight: 1.35 }}>
+                      Streaks only count when you solve on the scheduled day. Solving past days won’t change streaks.
+                    </div>
                   </div>
                 );
               })()}
