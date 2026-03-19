@@ -23,6 +23,7 @@ const NBAGuessGame = () => {
   const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [showMoreGames, setShowMoreGames] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
@@ -1605,50 +1606,6 @@ const NBAGuessGame = () => {
             Data is current through the <strong>2024–2025</strong> NBA season (no current season yet).
           </div>
 
-          {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', margin: '0 auto 12px', maxWidth: '72ch' }}>
-              {(() => {
-                const dailyStats = computeDailyStats(dailyCompletions, todayDailyIndex);
-                const bkdStats = computeDailyStats(ballKnowledgeDailyCompletions, todayDailyIndex);
-                const dailyWins = getWinsCount(dailyCompletions);
-                const bkdWins = getWinsCount(ballKnowledgeDailyCompletions);
-
-                const pill = (label, value, tint) => (
-                  <div
-                    key={label}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 10px',
-                      borderRadius: '999px',
-                      border: `1px solid ${tint.border}`,
-                      backgroundColor: tint.bg,
-                      color: tint.fg,
-                      fontSize: '12px',
-                      fontWeight: 800,
-                      lineHeight: 1,
-                    }}
-                  >
-                    <span style={{ opacity: 0.9 }}>{label}</span>
-                    <span style={{ color: 'white' }}>{value}</span>
-                  </div>
-                );
-
-                return (
-                  <>
-                    {pill('Daily ✅', dailyWins, { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' })}
-                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
-                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
-                    {pill('BKD ✅', bkdWins, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' })}
-                    {pill('BKD streak', bkdStats.currentStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
-                    {pill('BKD best', bkdStats.maxStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
-                  </>
-                );
-              })()}
-            </div>
-          )}
-
           <div style={{ minHeight: '26px', marginBottom: '16px' }}>
             <p style={{ color: '#f59e0b', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.55 }}>
               {targetMaxSimilar != null ? (
@@ -1682,6 +1639,27 @@ const NBAGuessGame = () => {
               <span>❓</span>
               <span>How to Play</span>
             </button>
+
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
+              <button
+                onClick={() => setShowStats(true)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #4b5563',
+                  backgroundColor: '#111827',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>📊</span>
+                <span>Stats</span>
+              </button>
+            )}
 
             <button
               onClick={() => setShowFavorites(true)}
@@ -2683,6 +2661,97 @@ const NBAGuessGame = () => {
                   Got it, let&apos;s play
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Modal */}
+        {showStats && (
+          <div
+            onClick={() => setShowStats(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15,23,42,0.85)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 50,
+              padding: '16px',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '540px',
+                maxHeight: '100%',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                borderRadius: '16px',
+                padding: '20px',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+                border: '1px solid #334155',
+                overflowY: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h2 style={{ fontSize: '1.4rem', margin: 0, color: '#e5e7eb' }}>Stats</h2>
+                <button
+                  onClick={() => setShowStats(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px 8px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              {(() => {
+                const dailyStats = computeDailyStats(dailyCompletions, todayDailyIndex);
+                const bkdStats = computeDailyStats(ballKnowledgeDailyCompletions, todayDailyIndex);
+                const dailyWins = getWinsCount(dailyCompletions);
+                const bkdWins = getWinsCount(ballKnowledgeDailyCompletions);
+
+                const pill = (label, value, tint) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: `1px solid ${tint.border}`,
+                      backgroundColor: tint.bg,
+                      color: tint.fg,
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    <span style={{ opacity: 0.9 }}>{label}</span>
+                    <span style={{ color: 'white' }}>{value}</span>
+                  </div>
+                );
+
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    {pill('Daily ✅', dailyWins, { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' })}
+                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
+                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
+                    {pill('BKD ✅', bkdWins, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' })}
+                    {pill('BKD streak', bkdStats.currentStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                    {pill('BKD best', bkdStats.maxStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
