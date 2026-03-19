@@ -791,16 +791,7 @@ const NBAGuessGame = () => {
     console.log('New game started with:', chosenPlayer, 'Mode:', gameMode);
   };
 
-  const isMobileViewport = () => {
-    try {
-      return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
-    } catch {
-      return false;
-    }
-  };
-
   const maybeScrollAfterGuess = () => {
-    if (!isMobileViewport()) return;
     const cardEl = pulseGuessCardRef.current;
     const historyEl = guessHistoryEndRef.current;
     const inputEl = guessSectionRef.current;
