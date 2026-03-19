@@ -178,10 +178,12 @@ const NBAGuessGame = () => {
     try {
       // Remove all keys we own, across versions, plus the reset marker.
       const markerKey = 'nba-mantle-storage-reset-marker';
+      const testerKey = 'nba-mantle-tester';
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
         if (!k) continue;
-        if (k === markerKey || k.startsWith('nba-mantle-')) {
+        // Preserve tester flag so you can repeatedly reset while staying in tester mode.
+        if (k === markerKey || (k.startsWith('nba-mantle-') && k !== testerKey)) {
           localStorage.removeItem(k);
         }
       }
