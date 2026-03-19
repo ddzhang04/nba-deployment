@@ -33,7 +33,7 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
-  const STORAGE_RESET_VERSION = 'v4'; // bump to force fresh local storage for everyone
+  const STORAGE_RESET_VERSION = 'v5'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const bestPrevRef = useRef(null);
@@ -2744,10 +2744,10 @@ const NBAGuessGame = () => {
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
                     {pill('Daily ✅', dailyWins, { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' })}
-                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
-                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
                     {pill('BKD ✅', bkdWins, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' })}
+                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
                     {pill('BKD streak', bkdStats.currentStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
                     {pill('BKD best', bkdStats.maxStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
                   </div>
                 );
