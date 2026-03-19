@@ -13,7 +13,7 @@ html, body {
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   font-family: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Ensure form controls inherit the app font */
@@ -136,7 +136,7 @@ button, input, textarea, select {
 
 .panel h3 {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
@@ -218,7 +218,7 @@ button, input, textarea, select {
   border-radius: 0.5rem;
   color: white;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -256,13 +256,13 @@ button, input, textarea, select {
 
 .win-message p {
   color: #10b981;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 1.2rem;
 }
 
 .reveal-message p {
   color: #3b82f6;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 1.2rem;
 }
 
@@ -280,7 +280,7 @@ button, input, textarea, select {
   border: none;
   border-radius: 0.5rem;
   color: white;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -419,7 +419,7 @@ button, input, textarea, select {
 
 .guess-header h4 {
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
   flex: 1;
 }

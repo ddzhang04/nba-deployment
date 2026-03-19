@@ -562,7 +562,13 @@ const NBAGuessGame = () => {
     }
 
     // Fallback: if older saves don't have top5, re-fetch it based on answer/target.
-    const answer = completion?.answer || targetPlayer;
+    // Note: on reload, `targetPlayer` may not be set yet (effects race), so compute it from the daily index too.
+    const computedDailyTarget =
+      gameMode === 'daily'
+        ? getDailyPlayerForIndex(activeDailyIndex)
+        : getBallKnowledgeDailyPlayer(activeDailyIndex);
+
+    const answer = completion?.answer || computedDailyTarget || targetPlayer;
     if (!answer) return;
     setRestoringTop5(true);
     // Important: protect against async responses from the *previous* daily mode/daily.
@@ -626,6 +632,26 @@ const NBAGuessGame = () => {
     const id = setTimeout(() => setConfettiBurstId(null), 3600);
     return () => clearTimeout(id);
   }, [confettiBurstId]);
+
+  // If a completed Daily was restored without local Top 5, use the already-prefetched Top 5.
+  useEffect(() => {
+    if (top5Players.length > 0) return;
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    if (!(gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed)) return;
+    const canUsePrefetched =
+      prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0;
+    if (canUsePrefetched) setTop5Players(prefetchedTargetTop5);
+  }, [
+    top5Players.length,
+    gameMode,
+    gameWon,
+    showAnswer,
+    dailyAlreadyPlayed,
+    ballKnowledgeDailyAlreadyPlayed,
+    prefetchedTargetTop5For,
+    prefetchedTargetTop5,
+    targetPlayer,
+  ]);
 
   const filterPlayersForMode = (players, playerData, mode) => {
     if (mode === 'all' || mode === 'daily' || mode === 'ballKnowledgeDaily') {
@@ -928,7 +954,7 @@ const NBAGuessGame = () => {
           display: 'grid',
           placeItems: 'center',
           color: '#e0f2fe',
-          fontWeight: 900,
+          fontWeight: 700,
           fontSize: Math.max(11, Math.round(size * 0.28)),
           textTransform: 'uppercase'
         }}
@@ -1247,7 +1273,7 @@ const NBAGuessGame = () => {
     return parts.map((part, idx) => {
       const isMatch = part.toLowerCase() === qLower;
       return isMatch ? (
-        <span key={`${part}-${idx}`} style={{ color: '#93c5fd', fontWeight: 900 }}>
+        <span key={`${part}-${idx}`} style={{ color: '#93c5fd', fontWeight: 700 }}>
           {part}
         </span>
       ) : (
@@ -1371,7 +1397,7 @@ const NBAGuessGame = () => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '18px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 900, margin: 0, letterSpacing: '0.5px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
+            <h1 style={{ fontSize: '2.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '32px' }}>🎯</span>
           </div>
 
@@ -1387,7 +1413,7 @@ const NBAGuessGame = () => {
               {targetMaxSimilar != null ? (
                 <>
                   The closest any other player gets to this mystery player is about{' '}
-                  <span style={{ fontWeight: 800 }}>{targetMaxSimilar}/100</span>.
+                  <span style={{ fontWeight: 700 }}>{targetMaxSimilar}/100</span>.
                 </>
               ) : (
                 <>Calculating closest-player ceiling…</>
@@ -1429,7 +1455,7 @@ const NBAGuessGame = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                fontWeight: 900
+                fontWeight: 700
               }}
               title="View your favorite players"
             >
@@ -1462,7 +1488,7 @@ const NBAGuessGame = () => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  fontWeight: 800,
+                  fontWeight: 700,
                 }}
                 title="Clears your saved history and reloads"
               >
@@ -1657,7 +1683,7 @@ const NBAGuessGame = () => {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <div>
-                      <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1.05rem' }}>
+                      <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '1.05rem' }}>
                         Play a past {gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'daily'}
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '2px' }}>
@@ -1687,7 +1713,7 @@ const NBAGuessGame = () => {
                         backgroundColor: selectedDailyIndexOverride == null ? 'rgba(59, 130, 246, 0.14)' : 'rgba(15, 23, 42, 0.4)',
                         color: '#e5e7eb',
                         cursor: 'pointer',
-                        fontWeight: 800,
+                        fontWeight: 700,
                         fontSize: '0.9rem',
                       }}
                     >
@@ -1731,7 +1757,7 @@ const NBAGuessGame = () => {
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
-                            <div style={{ fontWeight: 800 }}>Daily #{num}</div>
+                            <div style={{ fontWeight: 700 }}>Daily #{num}</div>
                             <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{displayDate}</div>
                           </div>
                           <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1798,7 +1824,7 @@ const NBAGuessGame = () => {
                       🏆
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#e9d5ff', fontWeight: 900, fontSize: '14px', lineHeight: 1.2 }}>
+                      <div style={{ color: '#e9d5ff', fontWeight: 700, fontSize: '14px', lineHeight: 1.2 }}>
                         Your daily mantles
                         <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '12px', marginLeft: '8px' }}>
                           {Object.keys(dailyCompletions).length} played
@@ -1810,10 +1836,10 @@ const NBAGuessGame = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
-                    <span style={{ color: '#c4b5fd', fontWeight: 900, fontSize: '12px' }}>
+                    <span style={{ color: '#c4b5fd', fontWeight: 700, fontSize: '12px' }}>
                       {showDailyHistoryPanel ? 'Hide' : 'Show'}
                     </span>
-                    <div style={{ color: '#c4b5fd', fontWeight: 900, fontSize: '18px', lineHeight: 1 }}>
+                    <div style={{ color: '#c4b5fd', fontWeight: 700, fontSize: '18px', lineHeight: 1 }}>
                       {showDailyHistoryPanel ? '▾' : '▸'}
                     </div>
                   </div>
@@ -2012,7 +2038,7 @@ const NBAGuessGame = () => {
                       🧠
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#fef3c7', fontWeight: 900, fontSize: '14px', lineHeight: 1.2 }}>
+                      <div style={{ color: '#fef3c7', fontWeight: 700, fontSize: '14px', lineHeight: 1.2 }}>
                         Your hardcore dailies
                         <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '12px', marginLeft: '8px' }}>
                           {Object.keys(ballKnowledgeDailyCompletions).length} played
@@ -2024,10 +2050,10 @@ const NBAGuessGame = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '0 0 auto' }}>
-                    <span style={{ color: '#fcd34d', fontWeight: 900, fontSize: '12px' }}>
+                    <span style={{ color: '#fcd34d', fontWeight: 700, fontSize: '12px' }}>
                       {showHardcoreHistoryPanel ? 'Hide' : 'Show'}
                     </span>
-                    <div style={{ color: '#fcd34d', fontWeight: 900, fontSize: '18px', lineHeight: 1 }}>
+                    <div style={{ color: '#fcd34d', fontWeight: 700, fontSize: '18px', lineHeight: 1 }}>
                       {showHardcoreHistoryPanel ? '▾' : '▸'}
                     </div>
                   </div>
@@ -2284,19 +2310,19 @@ const NBAGuessGame = () => {
                   <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>⚡ How it works</div>
                   <div style={{ display: 'grid', gap: '8px' }}>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#1d4ed8', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>1</div>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#1d4ed8', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>1</div>
                       <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
                         Type a player and hit <strong>Submit Guess</strong>.
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#7c3aed', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>2</div>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#7c3aed', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>2</div>
                       <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
                         Use the <strong>breakdown</strong> to see what made them similar.
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#059669', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '12px' }}>3</div>
+                      <div style={{ width: '22px', height: '22px', borderRadius: '8px', backgroundColor: '#059669', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '12px' }}>3</div>
                       <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.45 }}>
                         Adjust your next guess. <strong>Higher score = closer</strong>.
                       </div>
@@ -2485,7 +2511,7 @@ const NBAGuessGame = () => {
                     border: '1px solid rgba(248, 113, 113, 0.35)',
                     backgroundColor: 'rgba(127, 29, 29, 0.25)',
                     color: '#fecaca',
-                    fontWeight: 900,
+                    fontWeight: 700,
                     cursor: 'pointer',
                     font: 'inherit'
                   }}
@@ -2522,7 +2548,7 @@ const NBAGuessGame = () => {
                         }}
                       >
                         {renderPlayerAvatar(name, { size: 40, radius: 8 })}
-                        <div style={{ fontWeight: 900, color: '#f1f5f9', flex: 1, minWidth: 0 }}>{name}</div>
+                        <div style={{ fontWeight: 700, color: '#f1f5f9', flex: 1, minWidth: 0 }}>{name}</div>
                         <button
                           type="button"
                           onClick={() => toggleFavoritePlayer(name)}
@@ -2533,7 +2559,7 @@ const NBAGuessGame = () => {
                             cursor: 'pointer',
                             fontSize: '18px',
                             padding: 0,
-                            fontWeight: 900
+                            fontWeight: 700
                           }}
                           aria-label={`Remove ${name} from favorites`}
                           title="Unfavorite"
@@ -2604,7 +2630,7 @@ const NBAGuessGame = () => {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '8px' }}>
-                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1rem' }}>👋 About the creator</div>
+                  <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '1rem' }}>👋 About the creator</div>
                   <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: '0.85rem' }}>Beta</div>
                 </div>
                 <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.5 }}>
@@ -3107,7 +3133,7 @@ const NBAGuessGame = () => {
                     backgroundColor: guessHistorySort === 'score' ? 'rgba(59,130,246,0.18)' : 'rgba(15,23,42,0.35)',
                     color: guessHistorySort === 'score' ? '#93c5fd' : '#94a3b8',
                     cursor: 'pointer',
-                    fontWeight: 900,
+                    fontWeight: 700,
                     font: 'inherit',
                     fontSize: '12px'
                   }}
@@ -3125,7 +3151,7 @@ const NBAGuessGame = () => {
                     backgroundColor: guessHistorySort === 'chronological' ? 'rgba(52,211,153,0.16)' : 'rgba(15,23,42,0.35)',
                     color: guessHistorySort === 'chronological' ? '#6ee7b7' : '#94a3b8',
                     cursor: 'pointer',
-                    fontWeight: 900,
+                    fontWeight: 700,
                     font: 'inherit',
                     fontSize: '12px'
                   }}
@@ -3230,7 +3256,7 @@ const NBAGuessGame = () => {
                                   maxWidth: '100%'
                                 }}
                               >
-                                <span style={{ fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {formatBreakdownKey(key)}
                                 </span>
                                 <span style={{ color: '#10b981', fontWeight: 'bold', marginLeft: 'auto', flex: '0 0 auto' }}>
