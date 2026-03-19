@@ -16,6 +16,8 @@ export const DAILY_PUZZLE_EPOCH = '2026-03-18';
 
 // Bump this when you want to reshuffle the rotation for everyone.
 export const ROTATION_SHUFFLE_VERSION = 'shuffle-v1';
+// Keep shuffle seed stable even if the displayed epoch date changes.
+const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-19';
 
 const hashSeed = (str) => {
   // FNV-1a 32-bit
@@ -427,5 +429,5 @@ const BASE_DAILY_PLAYERS = [
 
 export const DAILY_PLAYERS = shuffleDeterministic(
   BASE_DAILY_PLAYERS,
-  `${DAILY_PUZZLE_EPOCH}-${ROTATION_SHUFFLE_VERSION}-daily`
+  `${ROTATION_SHUFFLE_SEED_EPOCH}-${ROTATION_SHUFFLE_VERSION}-daily`
 );
