@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
-import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
-import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
+import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS_WITH_FIXED_DAY1 as DAILY_PLAYERS } from './data/dailyPlayers';
+import { HARDCORE_DAILY_PLAYERS_WITH_FIXED_DAY1 as BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
 const NBAGuessGame = () => {
@@ -33,7 +33,7 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
-  const STORAGE_RESET_VERSION = 'v9'; // bump to force fresh local storage for everyone
+  const STORAGE_RESET_VERSION = 'v11'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const bestPrevRef = useRef(null);

@@ -15,9 +15,12 @@
 export const DAILY_PUZZLE_EPOCH = '2026-03-18';
 
 // Bump this when you want to reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v4';
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v6';
 // Keep shuffle seed stable even if the displayed epoch date changes.
 export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-19';
+
+// Keep Day 1 (index 0) approachable for onboarding (but not a mega-obvious gimme).
+const FIXED_DAY1_DAILY_PLAYER = 'Allen Iverson';
 
 const hashSeed = (str) => {
   // FNV-1a 32-bit
@@ -431,3 +434,8 @@ export const DAILY_PLAYERS = shuffleDeterministic(
   BASE_DAILY_PLAYERS,
   `${ROTATION_SHUFFLE_SEED_EPOCH}-${ROTATION_SHUFFLE_VERSION}-daily`
 );
+
+export const DAILY_PLAYERS_WITH_FIXED_DAY1 = [
+  FIXED_DAY1_DAILY_PLAYER,
+  ...DAILY_PLAYERS.filter((n) => n !== FIXED_DAY1_DAILY_PLAYER),
+];
