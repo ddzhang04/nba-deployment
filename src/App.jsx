@@ -766,6 +766,7 @@ const NBAGuessGame = () => {
   };
 
   const fetchTargetMaxSimilarity = async (playerName) => {
+    const reqId = (fetchTargetMaxSimilarity._reqId = (fetchTargetMaxSimilarity._reqId || 0) + 1);
     if (!playerName) {
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
@@ -794,6 +795,9 @@ const NBAGuessGame = () => {
         { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
       );
 
+      // Ignore stale responses (e.g., mode switched to Daily/Hardcore).
+      if (reqId !== fetchTargetMaxSimilarity._reqId) return;
+
       const top5 = result?.top_5 || [];
       setPrefetchedTargetTop5(Array.isArray(top5) ? top5 : []);
       if (Array.isArray(top5) && top5.length > 0) {
@@ -803,10 +807,12 @@ const NBAGuessGame = () => {
         setTargetMaxSimilar(null);
       }
     } catch (e) {
+      if (reqId !== fetchTargetMaxSimilarity._reqId) return;
       setTargetMaxSimilar(null);
       setPrefetchedTargetTop5([]);
       setPrefetchedTargetTop5For(null);
     } finally {
+      if (reqId !== fetchTargetMaxSimilarity._reqId) return;
       setPrefetchedTargetTop5Loading(false);
     }
   };
@@ -1095,6 +1101,8 @@ const NBAGuessGame = () => {
 
   const fetchDailyCeiling = async () => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    // Invalidate any in-flight non-daily ceiling prefetches.
+    fetchTargetMaxSimilarity._reqId = (fetchTargetMaxSimilarity._reqId || 0) + 1;
     setTargetMaxSimilar(null);
     try {
       const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
