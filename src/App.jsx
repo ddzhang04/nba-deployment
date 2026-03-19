@@ -2311,7 +2311,7 @@ const NBAGuessGame = () => {
                             font: 'inherit'
                           }}
                         >
-                          <span style={{ color: '#f59e0b', fontWeight: '600' }}>BKD #{num}</span>
+                          <span style={{ color: '#f59e0b', fontWeight: '600' }}>Hardcore #{num}</span>
                           {entry?.answer && (
                             <>
                               <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
@@ -2747,11 +2747,11 @@ const NBAGuessGame = () => {
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
                     {pill('Daily wins', dailyWins, dailyTint)}
-                    {pill('Ball Knowledge wins', bkdWins, bkdTint)}
+                    {pill('Hardcore wins', bkdWins, bkdTint)}
                     {pill('Daily streak', dailyStats.currentStreak, dailyTint)}
-                    {pill('Ball Knowledge streak', bkdStats.currentStreak, bkdTint)}
+                    {pill('Hardcore streak', bkdStats.currentStreak, bkdTint)}
                     {pill('Daily best streak', dailyStats.maxStreak, dailyTint)}
-                    {pill('Ball Knowledge best streak', bkdStats.maxStreak, bkdTint)}
+                    {pill('Hardcore best streak', bkdStats.maxStreak, bkdTint)}
                   </div>
                 );
               })()}
