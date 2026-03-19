@@ -352,6 +352,98 @@ const NBAGuessGame = () => {
     return raw;
   };
 
+  const computeDailyStats = (completions, todayIdx) => {
+    const entries = Object.entries(completions || {});
+    const totalPlayed = entries.length;
+
+    const wonEntries = entries
+      .map(([num, entry]) => ({ num: Number(num), entry }))
+      .filter(({ num }) => Number.isFinite(num) && num > 0)
+      .filter(({ entry }) => typeof entry === 'object' && entry != null && entry?.won !== false && entry?.guesses != null);
+
+    const wins = wonEntries.length;
+    const avgGuesses =
+      wins > 0
+        ? wonEntries.reduce((sum, { entry }) => sum + (Number(entry.guesses) || 0), 0) / wins
+        : null;
+
+    const reveals = entries.filter(([, entry]) => typeof entry === 'object' && entry != null && entry?.won === false).length;
+
+    const hasWonToday = (() => {
+      const num = todayIdx + 1;
+      const e = completions?.[String(num)];
+      return typeof e === 'object' && e != null && e?.won !== false;
+    })();
+
+    const streakStartIdx = hasWonToday ? todayIdx : todayIdx - 1;
+    let currentStreak = 0;
+    for (let idx = streakStartIdx; idx >= 0; idx--) {
+      const num = idx + 1;
+      const e = completions?.[String(num)];
+      const won = typeof e === 'object' && e != null && e?.won !== false;
+      if (!won) break;
+      currentStreak++;
+    }
+
+    let maxStreak = 0;
+    let run = 0;
+    for (let idx = 0; idx <= todayIdx; idx++) {
+      const num = idx + 1;
+      const e = completions?.[String(num)];
+      const won = typeof e === 'object' && e != null && e?.won !== false;
+      if (won) {
+        run++;
+        if (run > maxStreak) maxStreak = run;
+      } else {
+        run = 0;
+      }
+    }
+
+    const recent = [];
+    const start = Math.max(0, todayIdx - 9);
+    for (let idx = start; idx <= todayIdx; idx++) {
+      const num = idx + 1;
+      const e = completions?.[String(num)];
+      const guesses = typeof e === 'object' && e != null && e?.won !== false ? Number(e?.guesses) : null;
+      recent.push({ num, guesses: Number.isFinite(guesses) ? guesses : null });
+    }
+
+    return { totalPlayed, wins, reveals, avgGuesses, currentStreak, maxStreak, recent };
+  };
+
+  const renderSparkline = (points, { width = 140, height = 30, stroke = '#a78bfa' } = {}) => {
+    const values = (points || []).map((p) => p?.guesses).filter((v) => typeof v === 'number' && Number.isFinite(v));
+    if (!values.length) return null;
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = Math.max(1e-9, max - min);
+    const pad = 2;
+    const w = width;
+    const h = height;
+
+    const xFor = (i, n) => (n <= 1 ? w / 2 : (i / (n - 1)) * (w - pad * 2) + pad);
+    const yFor = (v) => ((max - v) / range) * (h - pad * 2) + pad;
+
+    const path = (points || [])
+      .map((p, i) => {
+        const v = p?.guesses;
+        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+        const x = xFor(i, points.length);
+        const y = yFor(v);
+        return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .filter(Boolean)
+      .join(' ');
+
+    if (!path) return null;
+    return (
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ display: 'block' }}>
+        <path d={path} fill="none" stroke={stroke} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
+      </svg>
+    );
+  };
+
   // Next daily puzzle time (UTC midnight rollover).
   useEffect(() => {
     const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
@@ -1116,7 +1208,15 @@ const NBAGuessGame = () => {
           }
         } else {
           setError('You have already guessed this player!');
+          setPulseGuessName(newGuess.name);
+          setTimeout(() => setPulseGuessName(null), 900);
           triggerInputShake();
+          // Scroll to the existing card and highlight it.
+          setTimeout(() => {
+            try {
+              pulseGuessCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch {}
+          }, 50);
         }
 
         setGuess('');
@@ -1932,6 +2032,70 @@ const NBAGuessGame = () => {
                 </div>
               </div>
             )}
+
+            {(() => {
+              const show = (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0);
+              if (!show) return null;
+              const dailyStats = computeDailyStats(dailyCompletions, todayDailyIndex);
+              const hardcoreStats = computeDailyStats(ballKnowledgeDailyCompletions, todayDailyIndex);
+              return (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '14px 16px',
+                    background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.10), rgba(59, 130, 246, 0.06))',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(59, 130, 246, 0.28)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>📊 Daily stats</div>
+                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                        Streaks count <strong>wins</strong> only.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ color: '#cbd5e1', fontSize: '12px', textAlign: 'right' }}>
+                        <div style={{ fontWeight: 800, color: '#93c5fd' }}>Last 10 wins</div>
+                        <div style={{ opacity: 0.85 }}>guesses</div>
+                      </div>
+                      {renderSparkline(dailyStats.recent, { stroke: '#a78bfa' }) || (
+                        <div style={{ color: '#64748b', fontSize: '12px' }}>—</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginTop: '12px' }}>
+                    {[
+                      ['Daily streak', `${dailyStats.currentStreak}`],
+                      ['Daily max', `${dailyStats.maxStreak}`],
+                      ['Daily avg guesses', dailyStats.avgGuesses != null ? dailyStats.avgGuesses.toFixed(2) : '—'],
+                      ['Daily played', `${dailyStats.totalPlayed}`],
+                      ['Hardcore streak', `${hardcoreStats.currentStreak}`],
+                      ['Hardcore max', `${hardcoreStats.maxStreak}`],
+                      ['Hardcore avg guesses', hardcoreStats.avgGuesses != null ? hardcoreStats.avgGuesses.toFixed(2) : '—'],
+                      ['Hardcore played', `${hardcoreStats.totalPlayed}`],
+                    ].map(([label, val]) => (
+                      <div
+                        key={label}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '12px',
+                          backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                          border: '1px solid rgba(51, 65, 85, 0.9)',
+                        }}
+                      >
+                        <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, letterSpacing: '0.2px' }}>{label}</div>
+                        <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '18px', marginTop: '3px' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {Object.keys(dailyCompletions).length > 0 && (
               <div style={{
                 marginTop: '14px',
