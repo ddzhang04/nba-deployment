@@ -645,12 +645,13 @@ const NBAGuessGame = () => {
     setShowAnswer(!won);
 
     const top5 = Array.isArray(completion?.top5) ? completion.top5 : [];
-    if (top5.length) {
-      setTop5Players(top5);
-      return;
-    }
+    const answerMissing = !completion?.answer;
+    const top5Missing = top5.length === 0;
+    if (!answerMissing) setTargetPlayer(completion.answer);
+    if (!top5Missing) setTop5Players(top5);
+    if (!answerMissing && !top5Missing) return;
 
-    // Fallback: if older saves don't have top5, re-fetch it from the server rotation.
+    // Fallback: if older saves don't have answer/top5, re-fetch from the server rotation.
     const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
     setRestoringTop5(true);
     // Important: protect against async responses from the *previous* daily mode/daily.
@@ -670,11 +671,43 @@ const NBAGuessGame = () => {
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
         );
         const fetchedTop5 = Array.isArray(result?.top_5) ? result.top_5 : [];
+        const fetchedAnswer = typeof result?.answer === 'string' ? result.answer : '';
         if (cancelled) return;
         if (modeAtStart !== gameMode) return;
         if (activeDailyNumberAtStart !== activeDailyNumber) return;
         if (fetchedTop5.length) setTop5Players(fetchedTop5);
-        if (typeof result?.answer === 'string' && result.answer && !targetPlayer) setTargetPlayer(result.answer);
+        if (fetchedAnswer) setTargetPlayer(fetchedAnswer);
+
+        // Patch missing fields into local history so refreshes always show them.
+        if (gameMode === 'daily') {
+          setDailyCompletions((prev) => {
+            const next = { ...(prev || {}) };
+            const cur = next[String(activeDailyNumberAtStart)];
+            if (typeof cur === 'object' && cur != null) {
+              next[String(activeDailyNumberAtStart)] = {
+                ...cur,
+                answer: cur.answer || fetchedAnswer || '',
+                top5: (Array.isArray(cur.top5) && cur.top5.length) ? cur.top5 : fetchedTop5,
+              };
+              try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next)); } catch {}
+            }
+            return next;
+          });
+        } else if (gameMode === 'ballKnowledgeDaily') {
+          setBallKnowledgeDailyCompletions((prev) => {
+            const next = { ...(prev || {}) };
+            const cur = next[String(activeDailyNumberAtStart)];
+            if (typeof cur === 'object' && cur != null) {
+              next[String(activeDailyNumberAtStart)] = {
+                ...cur,
+                answer: cur.answer || fetchedAnswer || '',
+                top5: (Array.isArray(cur.top5) && cur.top5.length) ? cur.top5 : fetchedTop5,
+              };
+              try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next)); } catch {}
+            }
+            return next;
+          });
+        }
       } catch {}
       finally {
         if (!cancelled) setRestoringTop5(false);
