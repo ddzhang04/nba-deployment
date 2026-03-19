@@ -315,7 +315,9 @@ const NBAGuessGame = () => {
         Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
         Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
       );
-      const d = new Date(epochUTC + index * 86400000);
+      // Display-only offset: the calendar label was showing one day ahead.
+      // Keep the same daily index/player; just shift the shown date back 1 day.
+      const d = new Date(epochUTC + (index - 1) * 86400000);
       return d.toISOString().slice(0, 10);
     } catch {
       return new Date().toISOString().slice(0, 10);
