@@ -2741,14 +2741,17 @@ const NBAGuessGame = () => {
                   </div>
                 );
 
+                const dailyTint = { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' };
+                const bkdTint = { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' };
+
                 return (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
-                    {pill('Daily ✅', dailyWins, { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' })}
-                    {pill('BKD ✅', bkdWins, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' })}
-                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
-                    {pill('BKD streak', bkdStats.currentStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
-                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
-                    {pill('BKD best', bkdStats.maxStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                    {pill('Daily wins', dailyWins, dailyTint)}
+                    {pill('Ball Knowledge wins', bkdWins, bkdTint)}
+                    {pill('Daily streak', dailyStats.currentStreak, dailyTint)}
+                    {pill('Ball Knowledge streak', bkdStats.currentStreak, bkdTint)}
+                    {pill('Daily best streak', dailyStats.maxStreak, dailyTint)}
+                    {pill('Ball Knowledge best streak', bkdStats.maxStreak, bkdTint)}
                   </div>
                 );
               })()}
