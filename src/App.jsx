@@ -1169,42 +1169,47 @@ const NBAGuessGame = () => {
     return '#ef4444';
   };
 
-  const ScoreBar = ({ score, showLabel = true, animate = false }) => {
+  const ScoreBar = ({ score, showLabel = true }) => {
     const percentage = Math.max(0, Math.min(100, score));
     const color = getScoreColor(score);
     
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-        <div className={animate ? 'nm-scorebar-animate' : ''}>
-          <div className="nm-scorebar-track">
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '24px',
+            backgroundColor: '#f3f4f6',
+            borderRadius: '12px',
+            overflow: 'hidden'
+          }}
+        >
+          <div
+            style={{
+              width: `${percentage}%`,
+              height: '100%',
+              background: `linear-gradient(90deg, ${color}dd, ${color})`,
+              boxShadow: `0 0 10px ${color}40`,
+              transition: 'width 0.3s ease'
+            }}
+          />
+          {showLabel && (
             <div
-              className="nm-scorebar-fill"
               style={{
-                width: `${percentage}%`,
-                height: '100%',
-                background: `linear-gradient(90deg, ${color}dd, ${color})`,
-                boxShadow: `0 0 10px ${color}40`,
-                transition: 'width 0.3s ease',
-                transform: 'translateZ(0)'
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                color: percentage > 30 ? 'white' : color,
+                textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none',
+                fontWeight: 'bold',
+                fontSize: '12px'
               }}
-            />
-            {showLabel && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  color: percentage > 30 ? 'white' : color,
-                  textShadow: percentage > 30 ? '0 1px 2px rgba(0,0,0,0.8)' : 'none',
-                  fontWeight: 'bold',
-                  fontSize: '12px'
-                }}
-              >
-                {score}
-              </div>
-            )}
-          </div>
+            >
+              {score}
+            </div>
+          )}
         </div>
         <div
           style={{
