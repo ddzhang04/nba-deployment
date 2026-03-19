@@ -1,7 +1,7 @@
 const ONRENDER_API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
-import { DAILY_PLAYERS_WITH_FIXED_DAY1 as DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
-import { HARDCORE_DAILY_PLAYERS_WITH_FIXED_DAY1 as BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
+import { DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
+import { BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
 
 function json(res, status, body) {
   res.statusCode = status;

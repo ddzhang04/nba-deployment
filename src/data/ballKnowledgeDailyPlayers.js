@@ -8,9 +8,6 @@ import { DAILY_PUZZLE_EPOCH, ROTATION_SHUFFLE_SEED_EPOCH, ROTATION_SHUFFLE_VERSI
 
 export { DAILY_PUZZLE_EPOCH };
 
-// Keep Day 1 (index 0) a true hardcore player (deep cut).
-const FIXED_DAY1_HARDCORE_PLAYER = 'Brandon Knight';
-
 const BASE_HARDCORE_DAILY_PLAYERS = [
   "Bob Dandridge",
   "Denzel Valentine",
@@ -396,8 +393,3 @@ export const BALL_KNOWLEDGE_DAILY_PLAYERS = shuffleDeterministic(
   BASE_HARDCORE_DAILY_PLAYERS,
   `${ROTATION_SHUFFLE_SEED_EPOCH}-${ROTATION_SHUFFLE_VERSION}-hardcore`
 );
-
-export const HARDCORE_DAILY_PLAYERS_WITH_FIXED_DAY1 = [
-  FIXED_DAY1_HARDCORE_PLAYER,
-  ...BALL_KNOWLEDGE_DAILY_PLAYERS.filter((n) => n !== FIXED_DAY1_HARDCORE_PLAYER),
-];
