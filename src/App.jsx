@@ -32,7 +32,7 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
-  const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
+  const STORAGE_RESET_VERSION = 'v4'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const bestPrevRef = useRef(null);
@@ -315,41 +315,11 @@ const NBAGuessGame = () => {
         Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
         Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
       );
-      // Display-only offset: the calendar label was showing one day ahead.
-      // Keep the same daily index/player; just shift the shown date back 1 day.
-      const d = new Date(epochUTC + (index - 1) * 86400000);
+      const d = new Date(epochUTC + index * 86400000);
       return d.toISOString().slice(0, 10);
     } catch {
       return new Date().toISOString().slice(0, 10);
     }
-  };
-
-  const addDaysToIsoDate = (iso, days) => {
-    const s = String(iso || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
-    try {
-      const d = new Date(s + 'T12:00:00Z');
-      if (isNaN(d.getTime())) return '';
-      d.setUTCDate(d.getUTCDate() + Number(days || 0));
-      return d.toISOString().slice(0, 10);
-    } catch {
-      return '';
-    }
-  };
-
-  // Some older saved completions stored a date that was 1 day ahead.
-  // Normalize for display (but don't mutate storage).
-  const normalizeCompletionIsoForDisplay = (storedIso, dailyNumber) => {
-    const raw = String(storedIso || '').slice(0, 10);
-    if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-    const num = Number(dailyNumber);
-    if (!Number.isFinite(num) || num <= 0) return raw;
-    const expected = getISODateForDailyIndex(num - 1);
-    if (!expected) return raw;
-    if (raw === expected) return raw;
-    const minusOne = addDaysToIsoDate(raw, -1);
-    if (minusOne && minusOne === expected) return expected;
-    return raw;
   };
 
   const computeDailyStats = (completions, todayIdx) => {
@@ -411,38 +381,8 @@ const NBAGuessGame = () => {
     return { totalPlayed, wins, reveals, avgGuesses, currentStreak, maxStreak, recent };
   };
 
-  const renderSparkline = (points, { width = 140, height = 30, stroke = '#a78bfa' } = {}) => {
-    const values = (points || []).map((p) => p?.guesses).filter((v) => typeof v === 'number' && Number.isFinite(v));
-    if (!values.length) return null;
-
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const range = Math.max(1e-9, max - min);
-    const pad = 2;
-    const w = width;
-    const h = height;
-
-    const xFor = (i, n) => (n <= 1 ? w / 2 : (i / (n - 1)) * (w - pad * 2) + pad);
-    const yFor = (v) => ((max - v) / range) * (h - pad * 2) + pad;
-
-    const path = (points || [])
-      .map((p, i) => {
-        const v = p?.guesses;
-        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
-        const x = xFor(i, points.length);
-        const y = yFor(v);
-        return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
-      })
-      .filter(Boolean)
-      .join(' ');
-
-    if (!path) return null;
-    return (
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ display: 'block' }}>
-        <path d={path} fill="none" stroke={stroke} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
-      </svg>
-    );
-  };
+  const getWinsCount = (completions) =>
+    Object.values(completions || {}).filter((e) => typeof e === 'object' && e != null && e?.won !== false).length;
 
   // Next daily puzzle time (UTC midnight rollover).
   useEffect(() => {
@@ -1665,6 +1605,50 @@ const NBAGuessGame = () => {
             Data is current through the <strong>2024–2025</strong> NBA season (no current season yet).
           </div>
 
+          {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', margin: '0 auto 12px', maxWidth: '72ch' }}>
+              {(() => {
+                const dailyStats = computeDailyStats(dailyCompletions, todayDailyIndex);
+                const bkdStats = computeDailyStats(ballKnowledgeDailyCompletions, todayDailyIndex);
+                const dailyWins = getWinsCount(dailyCompletions);
+                const bkdWins = getWinsCount(ballKnowledgeDailyCompletions);
+
+                const pill = (label, value, tint) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 10px',
+                      borderRadius: '999px',
+                      border: `1px solid ${tint.border}`,
+                      backgroundColor: tint.bg,
+                      color: tint.fg,
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      lineHeight: 1,
+                    }}
+                  >
+                    <span style={{ opacity: 0.9 }}>{label}</span>
+                    <span style={{ color: 'white' }}>{value}</span>
+                  </div>
+                );
+
+                return (
+                  <>
+                    {pill('Daily ✅', dailyWins, { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' })}
+                    {pill('Daily streak', dailyStats.currentStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
+                    {pill('Daily best', dailyStats.maxStreak, { bg: 'rgba(59, 130, 246, 0.10)', border: 'rgba(59, 130, 246, 0.32)', fg: '#bfdbfe' })}
+                    {pill('BKD ✅', bkdWins, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' })}
+                    {pill('BKD streak', bkdStats.currentStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                    {pill('BKD best', bkdStats.maxStreak, { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fcd34d' })}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           <div style={{ minHeight: '26px', marginBottom: '16px' }}>
             <p style={{ color: '#f59e0b', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.55 }}>
               {targetMaxSimilar != null ? (
@@ -2033,69 +2017,6 @@ const NBAGuessGame = () => {
               </div>
             )}
 
-            {(() => {
-              const show = (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0);
-              if (!show) return null;
-              const dailyStats = computeDailyStats(dailyCompletions, todayDailyIndex);
-              const hardcoreStats = computeDailyStats(ballKnowledgeDailyCompletions, todayDailyIndex);
-              return (
-                <div
-                  style={{
-                    marginTop: '14px',
-                    padding: '14px 16px',
-                    background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.10), rgba(59, 130, 246, 0.06))',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(59, 130, 246, 0.28)',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '14px', lineHeight: 1.2 }}>📊 Daily stats</div>
-                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                        Streaks count <strong>wins</strong> only.
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <div style={{ color: '#cbd5e1', fontSize: '12px', textAlign: 'right' }}>
-                        <div style={{ fontWeight: 800, color: '#93c5fd' }}>Last 10 wins</div>
-                        <div style={{ opacity: 0.85 }}>guesses</div>
-                      </div>
-                      {renderSparkline(dailyStats.recent, { stroke: '#a78bfa' }) || (
-                        <div style={{ color: '#64748b', fontSize: '12px' }}>—</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginTop: '12px' }}>
-                    {[
-                      ['Daily streak', `${dailyStats.currentStreak}`],
-                      ['Daily max', `${dailyStats.maxStreak}`],
-                      ['Daily avg guesses', dailyStats.avgGuesses != null ? dailyStats.avgGuesses.toFixed(2) : '—'],
-                      ['Daily played', `${dailyStats.totalPlayed}`],
-                      ['Hardcore streak', `${hardcoreStats.currentStreak}`],
-                      ['Hardcore max', `${hardcoreStats.maxStreak}`],
-                      ['Hardcore avg guesses', hardcoreStats.avgGuesses != null ? hardcoreStats.avgGuesses.toFixed(2) : '—'],
-                      ['Hardcore played', `${hardcoreStats.totalPlayed}`],
-                    ].map(([label, val]) => (
-                      <div
-                        key={label}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          backgroundColor: 'rgba(15, 23, 42, 0.45)',
-                          border: '1px solid rgba(51, 65, 85, 0.9)',
-                        }}
-                      >
-                        <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800, letterSpacing: '0.2px' }}>{label}</div>
-                        <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '18px', marginTop: '3px' }}>{val}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-
             {Object.keys(dailyCompletions).length > 0 && (
               <div style={{
                 marginTop: '14px',
@@ -2170,8 +2091,7 @@ const NBAGuessGame = () => {
                   {Object.entries(dailyCompletions)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([num, entry]) => {
-                      const dateStrRaw = typeof entry === 'string' ? entry : entry?.date ?? '';
-                      const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, num);
+                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
                       const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
                       let displayDate = dateStr;
                       try {
@@ -2254,8 +2174,7 @@ const NBAGuessGame = () => {
                 >
                   {(() => {
                     const entry = dailyCompletions[selectedDailyDetail];
-                  const dateStrRaw = entry?.date ?? '';
-                  const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, selectedDailyDetail);
+                    const dateStr = entry?.date ?? '';
                     let displayDate = dateStr;
                     try {
                       const d = new Date(dateStr + 'T12:00:00');
@@ -2386,8 +2305,7 @@ const NBAGuessGame = () => {
                   {Object.entries(ballKnowledgeDailyCompletions)
                     .sort(([a], [b]) => Number(a) - Number(b))
                     .map(([num, entry]) => {
-                      const dateStrRaw = typeof entry === 'string' ? entry : entry?.date ?? '';
-                      const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, num);
+                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
                       const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
                       let displayDate = dateStr;
                       try {
@@ -2470,8 +2388,7 @@ const NBAGuessGame = () => {
                 >
                   {(() => {
                     const entry = ballKnowledgeDailyCompletions[selectedBallKnowledgeDetail];
-                    const dateStrRaw = entry?.date ?? '';
-                    const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, selectedBallKnowledgeDetail);
+                    const dateStr = entry?.date ?? '';
                     let displayDate = dateStr;
                     try {
                       const d = new Date(dateStr + 'T12:00:00');
@@ -3041,8 +2958,7 @@ const NBAGuessGame = () => {
 
                 const isHardcore = gameMode === 'ballKnowledgeDaily';
                 const completion = getActiveCompletionEntry();
-                const dateStrRaw = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
-                const dateStr = normalizeCompletionIsoForDisplay(dateStrRaw, activeDailyNumber);
+                const dateStr = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
                 let displayDate = dateStr;
                 try {
                   const d = new Date((dateStr ?? '') + 'T12:00:00');
