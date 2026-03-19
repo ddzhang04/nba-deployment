@@ -30,11 +30,16 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5, setPrefetchedTargetTop5] = useState([]); // top_5 for current target (prefetched)
   const [prefetchedTargetTop5Loading, setPrefetchedTargetTop5Loading] = useState(false);
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
+  const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
   const STORAGE_RESET_VERSION = 'v3'; // bump to force fresh local storage for everyone
   const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
   const bestPrevRef = useRef(null);
+  const guessSectionRef = useRef(null);
+  const guessInputRef = useRef(null);
+  const guessHistoryEndRef = useRef(null);
+  const pulseGuessCardRef = useRef(null);
   const [bestSoFar, setBestSoFar] = useState(null);
   const [bestDelta, setBestDelta] = useState(null);
 
@@ -756,6 +761,50 @@ const NBAGuessGame = () => {
     console.log('New game started with:', chosenPlayer, 'Mode:', gameMode);
   };
 
+  const isMobileViewport = () => {
+    try {
+      return typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+    } catch {
+      return false;
+    }
+  };
+
+  const maybeScrollAfterGuess = () => {
+    if (!isMobileViewport()) return;
+    const cardEl = pulseGuessCardRef.current;
+    const historyEl = guessHistoryEndRef.current;
+    const inputEl = guessSectionRef.current;
+    if (!inputEl || (!historyEl && !cardEl)) return;
+
+    // 1) Take them to the new guess result.
+    try {
+      if (cardEl) {
+        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        historyEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    } catch {}
+
+    // 2) Then bring them back up to keep guessing.
+    setTimeout(() => {
+      try {
+        inputEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch {}
+    }, 850);
+  };
+
+  const confirmNow = async () => {
+    const action = confirmAction;
+    setConfirmAction(null);
+    if (!action) return;
+
+    if (action === 'reveal') {
+      await revealAnswer();
+    } else if (action === 'newGame') {
+      startNewGame();
+    }
+  };
+
   const handleModeChange = (newMode) => {
     setGameMode(newMode);
     
@@ -1050,6 +1099,10 @@ const NBAGuessGame = () => {
         }
 
         setGuess('');
+        if (!alreadyGuessed && score !== 100) {
+          // On mobile: show the new guess card, then scroll back to the input.
+          setTimeout(() => maybeScrollAfterGuess(), 250);
+        }
     } catch (err) {
       setError(backendWarming ? 'Waking up the server… try again in a moment.' : 'Connection error. Please check your internet connection and try again.');
       console.error('API Error:', err);
@@ -1372,6 +1425,100 @@ const NBAGuessGame = () => {
       )}
 
       {confettiBurstId && <ConfettiBurst key={confettiBurstId} burstId={confettiBurstId} />}
+
+      {confirmAction && (
+        <div
+          onClick={() => setConfirmAction(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15,23,42,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 80,
+            padding: '16px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+              borderRadius: '16px',
+              padding: '18px',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+              border: '1px solid #334155'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+              <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '1.1rem' }}>Are you sure?</div>
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  padding: '4px 8px',
+                  borderRadius: '999px'
+                }}
+                aria-label="Close confirmation"
+              >
+                ×
+              </button>
+            </div>
+
+            {confirmAction === 'reveal' ? (
+              <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.5, marginBottom: '16px' }}>
+                Revealing will show the answer for this puzzle. Do you want to continue?
+              </div>
+            ) : (
+              <div style={{ color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.5, marginBottom: '16px' }}>
+                Start a new puzzle? Your current progress will be cleared.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid #334155',
+                  backgroundColor: 'rgba(15,23,42,0.55)',
+                  color: '#cbd5e1',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={confirmNow}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: confirmAction === 'reveal' ? '#f59e0b' : '#10b981',
+                  color: 'white',
+                  fontWeight: 800,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  opacity: loading ? 0.8 : 1
+                }}
+              >
+                {confirmAction === 'reveal' ? 'Reveal' : 'New Game'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
         {/* Header */}
@@ -2696,7 +2843,7 @@ const NBAGuessGame = () => {
               padding: '24px',
               marginBottom: '24px',
               border: '1px solid #334155'
-            }}>
+            }} ref={guessSectionRef}>
               <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
               
               {(() => {
@@ -2825,6 +2972,7 @@ const NBAGuessGame = () => {
                       }
                       className={shakeInput ? 'nm-shake' : ''}
                       value={guess}
+                      ref={guessInputRef}
                       onChange={(e) => {
                         const value = e.target.value;
                         setGuess(value);
@@ -2991,7 +3139,7 @@ const NBAGuessGame = () => {
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                 {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
-                    onClick={startNewGame}
+                    onClick={() => setConfirmAction('newGame')}
                     style={{
                       flex: 1,
                       padding: '12px 20px',
@@ -3010,7 +3158,7 @@ const NBAGuessGame = () => {
                 
                 {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
-                    onClick={revealAnswer}
+                    onClick={() => setConfirmAction('reveal')}
                     style={{
                       flex: 1,
                       padding: '12px 20px',
@@ -3178,6 +3326,7 @@ const NBAGuessGame = () => {
                 {(guessHistorySort === 'chronological' ? guessHistory : guessHistory.slice().sort((a, b) => b.score - a.score)).map((item, index) => (
                   <div
                     key={index}
+                    ref={item.name === pulseGuessName ? pulseGuessCardRef : null}
                     className={[
                       'nm-guess-card',
                       item.name === pulseGuessName ? 'nm-pulse' : '',
@@ -3259,6 +3408,7 @@ const NBAGuessGame = () => {
                     )}
                   </div>
                 ))}
+                <div ref={guessHistoryEndRef} />
               </div>
             )}
           </div>
