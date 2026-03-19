@@ -12,7 +12,7 @@
  * To change the "start" of the calendar: change DAILY_PUZZLE_EPOCH to the date you want to be Day 0 (Daily #1).
  */
 
-export const DAILY_PUZZLE_EPOCH = '2026-03-19';
+export const DAILY_PUZZLE_EPOCH = '2026-03-18';
 
 // Bump this when you want to reshuffle the rotation for everyone.
 export const ROTATION_SHUFFLE_VERSION = 'shuffle-v1';

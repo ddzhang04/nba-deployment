@@ -91,6 +91,8 @@ const NBAGuessGame = () => {
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
+  // Proxy for daily/hardcore guessing so the answer isn't in the client.
+  const SECURE_API_BASE = '/api';
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
@@ -281,7 +283,9 @@ const NBAGuessGame = () => {
     const epoch = new Date(DAILY_PUZZLE_EPOCH + 'T00:00:00.000Z').getTime();
     const now = new Date();
     const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000));
+    // We moved the displayed epoch back one day (Mar 18) but want to keep the
+    // current puzzle number/history stable for existing players.
+    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) - 1);
   };
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
@@ -609,12 +613,8 @@ const NBAGuessGame = () => {
   // Sync daily targets when you pick a past day (this was the main "past mantles" bug).
   useEffect(() => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
-    const correctTarget =
-      gameMode === 'daily'
-        ? getDailyPlayerForIndex(activeDailyIndex)
-        : getBallKnowledgeDailyPlayer(activeDailyIndex);
-    setTargetPlayer(correctTarget);
-    fetchTargetMaxSimilarity(correctTarget);
+    // Keep daily/hardcore answers server-side (prevents casual console peeking).
+    setTargetPlayer('');
     resetPuzzleState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyIndex]);
@@ -639,15 +639,8 @@ const NBAGuessGame = () => {
       return;
     }
 
-    // Fallback: if older saves don't have top5, re-fetch it based on answer/target.
-    // Note: on reload, `targetPlayer` may not be set yet (effects race), so compute it from the daily index too.
-    const computedDailyTarget =
-      gameMode === 'daily'
-        ? getDailyPlayerForIndex(activeDailyIndex)
-        : getBallKnowledgeDailyPlayer(activeDailyIndex);
-
-    const answer = completion?.answer || computedDailyTarget || targetPlayer;
-    if (!answer) return;
+    // Fallback: if older saves don't have top5, re-fetch it from the server rotation.
+    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
     setRestoringTop5(true);
     // Important: protect against async responses from the *previous* daily mode/daily.
     // This prevents showing Daily Top 5 on Hardcore Daily after a quick switch.
@@ -657,11 +650,11 @@ const NBAGuessGame = () => {
     (async () => {
       try {
         const result = await fetchJsonWithRetry(
-          `${API_BASE}/guess`,
+          `${SECURE_API_BASE}/reveal`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ guess: answer, target: answer }),
+            body: JSON.stringify({ mode: modeKey, dailyNumber: activeDailyNumberAtStart }),
           },
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
         );
@@ -670,6 +663,7 @@ const NBAGuessGame = () => {
         if (modeAtStart !== gameMode) return;
         if (activeDailyNumberAtStart !== activeDailyNumber) return;
         if (fetchedTop5.length) setTop5Players(fetchedTop5);
+        if (typeof result?.answer === 'string' && result.answer && !targetPlayer) setTargetPlayer(result.answer);
       } catch {}
       finally {
         if (!cancelled) setRestoringTop5(false);
@@ -1094,22 +1088,27 @@ const NBAGuessGame = () => {
     setError('');
 
     try {
+      const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
       const result = await fetchJsonWithRetry(
-        `${API_BASE}/guess`,
+        isDailyLike ? `${SECURE_API_BASE}/guess` : `${API_BASE}/guess`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
           },
-          body: JSON.stringify({
-            guess: guess.trim(),
-            target: targetPlayer,
-          }),
+          body: JSON.stringify(
+            isDailyLike
+              ? { guess: guess.trim(), mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily', dailyNumber: activeDailyNumber }
+              : { guess: guess.trim(), target: targetPlayer }
+          ),
         },
         { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
       );
 
       const { score, matched_name, breakdown, top_5 } = result;
+      if (score === 100 && typeof result?.answer === 'string' && result.answer) {
+        setTargetPlayer(result.answer);
+      }
 
         const newGuess = {
           name: matched_name || guess.trim(),
@@ -1184,13 +1183,26 @@ const NBAGuessGame = () => {
   };
 
   const revealAnswer = async () => {
-    if (!targetPlayer) return;
+    const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
+    if (!isDailyLike && !targetPlayer) return;
     
     setLoading(true);
     let top5Now = [];
     try {
-      if (prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
+      if (!isDailyLike && prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
         top5Now = prefetchedTargetTop5;
+      } else if (isDailyLike) {
+        const r = await fetchJsonWithRetry(
+          `${SECURE_API_BASE}/reveal`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily', dailyNumber: activeDailyNumber }),
+          },
+          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+        );
+        if (typeof r?.answer === 'string' && r.answer) setTargetPlayer(r.answer);
+        top5Now = Array.isArray(r?.top_5) ? r.top_5 : [];
       } else {
         const result = await fetchJsonWithRetry(
           `${API_BASE}/guess`,
@@ -1441,7 +1453,7 @@ const NBAGuessGame = () => {
       shared_teammates: 'Shared Teammates',
       shared_teams: 'Shared Franchises',
       position_match: 'Position Similarity',
-      era_similarity: 'Era Overlap',
+      era_similarity: 'Start Year Similarity',
       career_length_similarity: 'Career Length Similarity',
       all_star_overlap: 'All-Star Overlap',
       all_nba_overlap: 'All-NBA Overlap',
@@ -2606,7 +2618,7 @@ const NBAGuessGame = () => {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
                     <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem' }}>🧩 Breakdown clues</div>
-                    <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>More overlap → higher score</div>
+                    <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Closer match → higher score</div>
                   </div>
 
                   <div
@@ -2621,7 +2633,7 @@ const NBAGuessGame = () => {
                       ['Shared teammates', 'Shared teammate overlap: 0–5 (more shared teammates = higher).'],
                       ['Shared franchises', 'Shared franchise overlap: 0–10 (same orgs = higher).'],
                       ['Position', 'Position similarity: 0–10 (closer roles on the court = higher).'],
-                      ['Era', 'Start year overlap: 0–10 (closer start years = higher).'],
+                      ['Start year', 'Start-year similarity: 0–10 (closer start years = higher).'],
                       ['Career length', 'Career-length similarity: 0–6 (closer career span = higher).'],
                       ['Accolades', 'Awards/recognition overlap: All-Star / All-NBA / All-Defense / All-Rookie (and similar). Higher = more shared honors.'],
                     ].map(([title, desc]) => (
@@ -2645,7 +2657,7 @@ const NBAGuessGame = () => {
                   </div>
 
                   <div style={{ marginTop: '10px', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: 1.45 }}>
-                    Tip: start broad (same era / same position), then use team + teammate overlap to zoom in.
+                    Tip: start broad (similar start year / similar position), then use team + teammate overlap to zoom in.
                   </div>
                   <div style={{ marginTop: '6px', color: '#94a3b8', fontSize: '0.85rem' }}>
                     You can always press <strong>Reveal</strong> to see the answer and the top 5 closest players.
@@ -3300,16 +3312,16 @@ const NBAGuessGame = () => {
                   
                   <button
                     onClick={makeGuess}
-                    disabled={loading || !guess.trim() || !targetPlayer}
+                    disabled={loading || !guess.trim() || ((gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') && !targetPlayer)}
                     style={{
                       width: '100%',
                       padding: '12px 24px',
                       borderRadius: '8px',
                       border: 'none',
-                      backgroundColor: loading || !guess.trim() || !targetPlayer ? '#475569' : '#3b82f6',
+                      backgroundColor: loading || !guess.trim() || ((gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') && !targetPlayer) ? '#475569' : '#3b82f6',
                       color: 'white',
                       fontWeight: 'bold',
-                      cursor: loading || !guess.trim() || !targetPlayer ? 'not-allowed' : 'pointer',
+                      cursor: loading || !guess.trim() || ((gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') && !targetPlayer) ? 'not-allowed' : 'pointer',
                       fontSize: '16px'
                     }}
                   >
