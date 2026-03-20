@@ -459,7 +459,6 @@ Rk\tPlayer\tTot\tNBA\tABA
 398\tLen Chappell\t1\t1\t0
 399\tNat Clifton\t1\t1\t0
 400\tDerrick Coleman\t1\t1\t0
-401\tJack Coleman\t1\t1\t0
 402\tMike Conley\t1\t1\t0
 403\tAntonio Davis\t1\t1\t0
 404\tDale Davis\t1\t1\t0
