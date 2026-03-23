@@ -1223,9 +1223,25 @@ const NBAGuessGame = () => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
     // Invalidate any in-flight non-daily ceiling prefetches.
     fetchTargetMaxSimilarity._reqId = (fetchTargetMaxSimilarity._reqId || 0) + 1;
-    setTargetMaxSimilar(null);
+    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+    const ceilingCacheKey = key(`nba-mantle-daily-ceiling-${modeKey}-${activeDailyNumber}`);
+    // Daily answers are deterministic, so cached ceilings are safe to reuse.
     try {
-      const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+      const raw = localStorage.getItem(ceilingCacheKey);
+      if (raw != null) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed?.ceiling === 'number') {
+          setTargetMaxSimilar(parsed.ceiling);
+        } else {
+          setTargetMaxSimilar(null);
+        }
+      } else {
+        setTargetMaxSimilar(null);
+      }
+    } catch {
+      setTargetMaxSimilar(null);
+    }
+    try {
       const r = await fetchJsonWithRetry(
         `${SECURE_API_BASE}/ceiling`,
         {
@@ -1237,6 +1253,7 @@ const NBAGuessGame = () => {
       );
       const ceiling = typeof r?.ceiling === 'number' ? r.ceiling : null;
       setTargetMaxSimilar(ceiling);
+      try { localStorage.setItem(ceilingCacheKey, JSON.stringify({ ceiling })); } catch {}
     } catch {
       setTargetMaxSimilar(null);
     }
