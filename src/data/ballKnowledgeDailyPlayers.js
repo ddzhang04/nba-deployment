@@ -184,7 +184,7 @@ const BASE_HARDCORE_DAILY_PLAYERS = [
   "Mason Plumlee",
   "Aaron Nesmith",
   "John Starks",
-  "Dino Rađa",
+  "Dino Radja",
   "Isaiah Rider",
   "Delonte West",
   "Taurean Prince",
