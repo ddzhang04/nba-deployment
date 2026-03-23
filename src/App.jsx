@@ -1243,6 +1243,11 @@ const NBAGuessGame = () => {
     } catch {
       setTargetMaxSimilar(null);
     }
+
+    // If we already have a deterministic cached ceiling for this day+mode,
+    // avoid re-requesting a flaky upstream and keep startup instant.
+    if (typeof cachedCeiling === 'number') return;
+
     try {
       const r = await fetchJsonWithRetry(
         `${SECURE_API_BASE}/ceiling`,
