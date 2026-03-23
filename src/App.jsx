@@ -132,6 +132,12 @@ const NBAGuessGame = () => {
     if (!Array.isArray(list) || list.length === 0) return '';
     return String(list[idx % list.length] ?? '');
   };
+  const toApiSafePlayerName = (name) =>
+    String(name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u2019/g, "'")
+      .trim();
 
   const getOrCreateAnalyticsId = () => {
     try {
@@ -742,6 +748,7 @@ const NBAGuessGame = () => {
     (async () => {
       try {
         const fetchedAnswer = resolveDailyTarget(modeKey, activeDailyNumberAtStart);
+        const fetchedAnswerApi = toApiSafePlayerName(fetchedAnswer);
         let result = null;
         try {
           result = await fetchJsonWithRetry(
@@ -749,7 +756,7 @@ const NBAGuessGame = () => {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json; charset=utf-8' },
-              body: JSON.stringify({ guess: fetchedAnswer, target: fetchedAnswer }),
+              body: JSON.stringify({ guess: fetchedAnswerApi, target: fetchedAnswerApi }),
             },
             { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
           );
@@ -1274,6 +1281,7 @@ const NBAGuessGame = () => {
 
     try {
       const answer = resolveDailyTarget(modeKey, activeDailyNumber);
+      const answerApi = toApiSafePlayerName(answer);
       if (!answer) throw new Error('Missing daily target');
       let ceiling = null;
       try {
@@ -1282,7 +1290,7 @@ const NBAGuessGame = () => {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ guess: answer, target: answer }),
+            body: JSON.stringify({ guess: answerApi, target: answerApi }),
           },
           { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
         );
@@ -1325,6 +1333,8 @@ const NBAGuessGame = () => {
       const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
       const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
       const dailyTarget = isDailyLike ? resolveDailyTarget(modeKey, activeDailyNumber) : '';
+      const dailyTargetApi = isDailyLike ? toApiSafePlayerName(dailyTarget) : '';
+      const targetPlayerApi = !isDailyLike ? toApiSafePlayerName(targetPlayer) : '';
       let result = null;
       try {
         result = await fetchJsonWithRetry(
@@ -1336,8 +1346,8 @@ const NBAGuessGame = () => {
             },
             body: JSON.stringify(
               isDailyLike
-                ? { guess: guess.trim(), target: dailyTarget }
-                : { guess: guess.trim(), target: targetPlayer }
+              ? { guess: guess.trim(), target: dailyTargetApi }
+              : { guess: guess.trim(), target: targetPlayerApi }
             ),
           },
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
@@ -1447,6 +1457,7 @@ const NBAGuessGame = () => {
       } else if (isDailyLike) {
         const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
         revealedAnswer = resolveDailyTarget(modeKey, activeDailyNumber);
+        const revealedAnswerApi = toApiSafePlayerName(revealedAnswer);
         let r = null;
         try {
           r = await fetchJsonWithRetry(
@@ -1454,7 +1465,7 @@ const NBAGuessGame = () => {
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json; charset=utf-8' },
-              body: JSON.stringify({ guess: revealedAnswer, target: revealedAnswer }),
+              body: JSON.stringify({ guess: revealedAnswerApi, target: revealedAnswerApi }),
             },
             { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
           );
@@ -1473,6 +1484,7 @@ const NBAGuessGame = () => {
         if (revealedAnswer) setTargetPlayer(revealedAnswer);
         top5Now = Array.isArray(r?.top_5) ? r.top_5 : [];
       } else {
+        const targetApi = toApiSafePlayerName(targetPlayer);
         const result = await fetchJsonWithRetry(
           `${API_BASE}/guess`,
           {
@@ -1481,8 +1493,8 @@ const NBAGuessGame = () => {
               'Content-Type': 'application/json; charset=utf-8',
             },
             body: JSON.stringify({
-              guess: targetPlayer,
-              target: targetPlayer,
+              guess: targetApi,
+              target: targetApi,
             }),
           },
           { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
