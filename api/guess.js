@@ -26,6 +26,35 @@ function resolveDailyTarget({ mode, dailyNumber }) {
   return String(list[idx % list.length] ?? '');
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function postUpstreamGuessWithRetry(payload, { attempts = 3, timeoutMs = 12000, retryDelayMs = 500 } = {}) {
+  let lastStatus = null;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(`${ONRENDER_API_BASE}/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const data = await r.json().catch(() => null);
+      if (r.ok && data) return { ok: true, status: r.status, data };
+      lastStatus = r.status;
+      lastError = new Error(`Upstream status ${r.status}`);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (attempt < attempts - 1) await sleep(retryDelayMs * (attempt + 1));
+  }
+  return { ok: false, status: lastStatus, error: lastError };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -46,19 +75,24 @@ export default async function handler(req, res) {
   if (!target) return json(res, 400, { error: 'Missing target' });
 
   try {
-    const r = await fetch(`${ONRENDER_API_BASE}/guess`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ guess, target }),
-    });
-    const data = await r.json().catch(() => null);
-    if (!r.ok || !data) return json(res, 502, { error: 'Upstream error' });
+    const upstream = await postUpstreamGuessWithRetry({ guess, target });
+    if (!upstream.ok) {
+      return json(res, 502, {
+        error: 'Upstream error',
+        upstreamStatus: upstream.status ?? null,
+        message: upstream.error?.message || 'Unknown upstream failure',
+      });
+    }
+    const data = upstream.data;
 
     // Only reveal answer on an exact hit (score 100).
     if (data?.score === 100) return json(res, 200, { ...data, answer: target });
     return json(res, 200, data);
-  } catch {
-    return json(res, 502, { error: 'Upstream unreachable' });
+  } catch (error) {
+    return json(res, 502, {
+      error: 'Upstream unreachable',
+      message: error?.message || 'Unknown upstream failure',
+    });
   }
 }
 

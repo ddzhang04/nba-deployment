@@ -26,6 +26,35 @@ function resolveDailyTarget({ mode, dailyNumber }) {
   return String(list[idx % list.length] ?? '');
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function postUpstreamGuessWithRetry(payload, { attempts = 3, timeoutMs = 12000, retryDelayMs = 500 } = {}) {
+  let lastStatus = null;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(`${ONRENDER_API_BASE}/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      const data = await r.json().catch(() => null);
+      if (r.ok && data) return { ok: true, status: r.status, data };
+      lastStatus = r.status;
+      lastError = new Error(`Upstream status ${r.status}`);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (attempt < attempts - 1) await sleep(retryDelayMs * (attempt + 1));
+  }
+  return { ok: false, status: lastStatus, error: lastError };
+}
+
 export default async function handler(req, res) {
   const startedAt = Date.now();
   if (req.method !== 'POST') {
@@ -45,28 +74,29 @@ export default async function handler(req, res) {
   try {
     // Ask upstream for top_5 by doing a self-guess, then compute the closest ceiling.
     const upstreamStartedAt = Date.now();
-    const r = await fetch(`${ONRENDER_API_BASE}/guess`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify({ guess: answer, target: answer }),
-    });
-    const data = await r.json().catch(() => null);
-    if (!r.ok || !data) {
+    const upstream = await postUpstreamGuessWithRetry({ guess: answer, target: answer });
+    if (!upstream.ok) {
       console.error('[api/ceiling] upstream error', {
         mode,
         dailyNumber,
-        status: r.status,
+        status: upstream.status ?? null,
         upstreamMs: Date.now() - upstreamStartedAt,
         totalMs: Date.now() - startedAt,
+        message: upstream.error?.message || 'Unknown upstream failure',
       });
-      return json(res, 502, { error: 'Upstream error' });
+      return json(res, 502, {
+        error: 'Upstream error',
+        upstreamStatus: upstream.status ?? null,
+        message: upstream.error?.message || 'Unknown upstream failure',
+      });
     }
+    const data = upstream.data;
     const top5 = Array.isArray(data?.top_5) ? data.top_5 : [];
     const ceiling = Array.isArray(top5?.[0]) ? top5[0][1] : null;
     console.log('[api/ceiling] success', {
       mode,
       dailyNumber,
-      status: r.status,
+      status: upstream.status ?? null,
       top5Count: top5.length,
       upstreamMs: Date.now() - upstreamStartedAt,
       totalMs: Date.now() - startedAt,
