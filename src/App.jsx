@@ -122,6 +122,7 @@ const NBAGuessGame = () => {
     }
     throw lastErr || new Error('Request failed');
   };
+  const isHttpStatusError = (err, status) => String(err?.message || '').includes(`HTTP ${status}`);
 
   const resolveDailyTarget = (mode, dailyNumber) => {
     const n = Number(dailyNumber);
@@ -741,15 +742,29 @@ const NBAGuessGame = () => {
     (async () => {
       try {
         const fetchedAnswer = resolveDailyTarget(modeKey, activeDailyNumberAtStart);
-        const result = await fetchJsonWithRetry(
-          `${API_BASE}/guess`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ guess: fetchedAnswer, target: fetchedAnswer }),
-          },
-          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
-        );
+        let result = null;
+        try {
+          result = await fetchJsonWithRetry(
+            `${API_BASE}/guess`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({ guess: fetchedAnswer, target: fetchedAnswer }),
+            },
+            { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+          );
+        } catch (err) {
+          if (!isHttpStatusError(err, 400)) throw err;
+          result = await fetchJsonWithRetry(
+            `${SECURE_API_BASE}/reveal`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({ mode: modeKey, dailyNumber: activeDailyNumberAtStart }),
+            },
+            { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+          );
+        }
         const fetchedTop5 = Array.isArray(result?.top_5) ? result.top_5 : [];
         if (cancelled) return;
         if (modeAtStart !== gameMode) return;
@@ -1260,17 +1275,32 @@ const NBAGuessGame = () => {
     try {
       const answer = resolveDailyTarget(modeKey, activeDailyNumber);
       if (!answer) throw new Error('Missing daily target');
-      const r = await fetchJsonWithRetry(
-        `${API_BASE}/guess`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ guess: answer, target: answer }),
-        },
-        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
-      );
-      const top5 = Array.isArray(r?.top_5) ? r.top_5 : [];
-      const ceiling = Array.isArray(top5?.[0]) && typeof top5[0][1] === 'number' ? top5[0][1] : null;
+      let ceiling = null;
+      try {
+        const r = await fetchJsonWithRetry(
+          `${API_BASE}/guess`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ guess: answer, target: answer }),
+          },
+          { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+        );
+        const top5 = Array.isArray(r?.top_5) ? r.top_5 : [];
+        ceiling = Array.isArray(top5?.[0]) && typeof top5[0][1] === 'number' ? top5[0][1] : null;
+      } catch (err) {
+        if (!isHttpStatusError(err, 400)) throw err;
+        const r = await fetchJsonWithRetry(
+          `${SECURE_API_BASE}/ceiling`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ mode: modeKey, dailyNumber: activeDailyNumber }),
+          },
+          { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+        );
+        ceiling = typeof r?.ceiling === 'number' ? r.ceiling : null;
+      }
       setTargetMaxSimilar(ceiling);
       try { localStorage.setItem(ceilingCacheKey, JSON.stringify({ ceiling })); } catch {}
     } catch {
@@ -1295,21 +1325,35 @@ const NBAGuessGame = () => {
       const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
       const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
       const dailyTarget = isDailyLike ? resolveDailyTarget(modeKey, activeDailyNumber) : '';
-      const result = await fetchJsonWithRetry(
-        `${API_BASE}/guess`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json; charset=utf-8',
+      let result = null;
+      try {
+        result = await fetchJsonWithRetry(
+          `${API_BASE}/guess`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: JSON.stringify(
+              isDailyLike
+                ? { guess: guess.trim(), target: dailyTarget }
+                : { guess: guess.trim(), target: targetPlayer }
+            ),
           },
-          body: JSON.stringify(
-            isDailyLike
-              ? { guess: guess.trim(), target: dailyTarget }
-              : { guess: guess.trim(), target: targetPlayer }
-          ),
-        },
-        { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
-      );
+          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+        );
+      } catch (err) {
+        if (!(isDailyLike && isHttpStatusError(err, 400))) throw err;
+        result = await fetchJsonWithRetry(
+          `${SECURE_API_BASE}/guess`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({ guess: guess.trim(), mode: modeKey, dailyNumber: activeDailyNumber }),
+          },
+          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+        );
+      }
 
       const { score, matched_name, breakdown, top_5 } = result;
       const resolvedAnswerFromResult = typeof result?.answer === 'string' ? result.answer : '';
@@ -1403,15 +1447,29 @@ const NBAGuessGame = () => {
       } else if (isDailyLike) {
         const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
         revealedAnswer = resolveDailyTarget(modeKey, activeDailyNumber);
-        const r = await fetchJsonWithRetry(
-          `${API_BASE}/guess`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({ guess: revealedAnswer, target: revealedAnswer }),
-          },
-          { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
-        );
+        let r = null;
+        try {
+          r = await fetchJsonWithRetry(
+            `${API_BASE}/guess`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({ guess: revealedAnswer, target: revealedAnswer }),
+            },
+            { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+          );
+        } catch (err) {
+          if (!isHttpStatusError(err, 400)) throw err;
+          r = await fetchJsonWithRetry(
+            `${SECURE_API_BASE}/reveal`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({ mode: modeKey, dailyNumber: activeDailyNumber }),
+            },
+            { timeoutMs: 25000, retries: 1, retryDelayMs: 800 }
+          );
+        }
         if (revealedAnswer) setTargetPlayer(revealedAnswer);
         top5Now = Array.isArray(r?.top_5) ? r.top_5 : [];
       } else {
