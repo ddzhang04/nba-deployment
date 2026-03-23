@@ -1022,8 +1022,8 @@ const NBAGuessGame = () => {
     const loadPlayerNames = async () => {
       // 1) Render instantly from cache (if present), then refresh from API.
       const cached = readPlayersCache();
+      const sortedCached = cached?.length ? [...cached].sort() : [];
       if (cached?.length) {
-        const sortedCached = [...cached].sort();
         setAllPlayers(sortedCached);
         setFilteredPlayers(filterPlayersForMode(sortedCached, playersData, gameMode));
       }
@@ -1041,9 +1041,26 @@ const NBAGuessGame = () => {
         }
       }
 
+      // Fast path: if both caches are warm, render instantly.
+      // Then do a silent background refresh (stale-while-revalidate).
+      const hasWarmCache = sortedCached.length && cachedPlayersData;
+      if (hasWarmCache) {
+        const filtered = filterPlayersForMode(sortedCached, cachedPlayersData, gameMode);
+        const pool = filtered.length ? filtered : sortedCached;
+        setFilteredPlayers(pool);
+        if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
+          setTargetPlayer('');
+          setTargetMaxSimilar(null);
+        } else {
+          setTargetPlayer((prev) => (pool.includes(prev) ? prev : pool[Math.floor(Math.random() * pool.length)]));
+        }
+        setBackendWarming(false);
+      }
+
       try {
         // 2) Load player names (fast endpoint) and update UI immediately.
-        setBackendWarming(true);
+        // Only show warming indicator when we don't already have a warm cache render.
+        if (!hasWarmCache) setBackendWarming(true);
         let playerNames = null;
         try {
           playerNames = await fetchJsonWithRetry(`${API_BASE}/players`, {}, { timeoutMs: 9000, retries: 1, retryDelayMs: 700 });
