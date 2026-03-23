@@ -2,6 +2,7 @@ const ONRENDER_API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
 import { DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
+import { canonicalizePlayerName } from './_canonicalize.js';
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -75,7 +76,9 @@ export default async function handler(req, res) {
   if (!target) return json(res, 400, { error: 'Missing target' });
 
   try {
-    const upstream = await postUpstreamGuessWithRetry({ guess, target });
+    const safeGuess = await canonicalizePlayerName(guess);
+    const safeTarget = await canonicalizePlayerName(target);
+    const upstream = await postUpstreamGuessWithRetry({ guess: safeGuess, target: safeTarget });
     if (!upstream.ok) {
       return json(res, 502, {
         error: 'Upstream error',

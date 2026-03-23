@@ -2,6 +2,7 @@ const ONRENDER_API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
 import { DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
+import { canonicalizePlayerName } from './_canonicalize.js';
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -74,7 +75,8 @@ export default async function handler(req, res) {
   try {
     // Ask upstream for top_5 by doing a self-guess, then compute the closest ceiling.
     const upstreamStartedAt = Date.now();
-    const upstream = await postUpstreamGuessWithRetry({ guess: answer, target: answer });
+    const safeAnswer = await canonicalizePlayerName(answer);
+    const upstream = await postUpstreamGuessWithRetry({ guess: safeAnswer, target: safeAnswer });
     if (!upstream.ok) {
       console.error('[api/ceiling] upstream error', {
         mode,
@@ -84,11 +86,8 @@ export default async function handler(req, res) {
         totalMs: Date.now() - startedAt,
         message: upstream.error?.message || 'Unknown upstream failure',
       });
-      return json(res, 502, {
-        error: 'Upstream error',
-        upstreamStatus: upstream.status ?? null,
-        message: upstream.error?.message || 'Unknown upstream failure',
-      });
+      // Graceful fallback for UI startup: don't hard-fail the whole screen on ceiling.
+      return json(res, 200, { ceiling: null });
     }
     const data = upstream.data;
     const top5 = Array.isArray(data?.top_5) ? data.top_5 : [];
