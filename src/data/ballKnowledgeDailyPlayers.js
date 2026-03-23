@@ -150,7 +150,7 @@ const BASE_HARDCORE_DAILY_PLAYERS = [
   "Amir Johnson",
   "Nic Claxton",
   "Josh McRoberts",
-  "Al Thornton",
+  "Santi Aldama",
   "Jose Calderon",
   "Terry Cummings",
   "Jarred Vanderbilt",
