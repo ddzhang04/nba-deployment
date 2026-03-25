@@ -1,222 +1,179 @@
-# NBA-MANTLE Frontend 🏀
+# NBA Mantle
 
-A React-based guessing game where players try to identify a mystery NBA player by finding similar players. Similar to Wordle, but for basketball fans!
+NBA player guessing game inspired by Wordle. Guess a player, get a similarity score, and work toward the exact match.
 
-## 🎮 How to Play
+Live app: [https://nba-deployment.vercel.app/](https://nba-deployment.vercel.app/)
 
-1. **Mystery Player**: Each game features a randomly selected NBA player
-2. **Make Guesses**: Type in NBA player names to see how similar they are to the mystery player
-3. **Similarity Scoring**: Each guess receives a score from 0-100 based on various factors
-4. **Win Condition**: Score 100 points by guessing the exact mystery player
-5. **Learn**: View the breakdown of similarity factors and discover connections between players
+## Stack
 
-## 🎯 Similarity Factors
+- React 19 + Vite
+- Supabase (auth + stats storage)
+- Vercel serverless API routes in `api/`
 
-The game calculates similarity based on multiple factors:
+## Game Modes
 
-- **Shared Seasons** (up to 50 pts): Played in the same seasons
-- **Streak Bonus** (up to 10 pts): Consecutive seasons together
-- **Teammate Years** (up to 15 pts): Actual teammates
-- **Team Overlap** (2 pts per shared team): Played for same franchises
-- **Tenure Bonus** (up to 3 pts per team): Overlapping years on same teams
-- **Position Match** (8 pts exact, 2 pts similar): Playing position
-- **Draft Era** (4 pts close, 2 pts same decade): When they entered the league
-- **All-Star** (2 pts): Selected in same All-Star games
-- **All-Team** (2 pts): Made All-NBA/All-Defense/All-Rookie same year
-- **Awards** (1 pt): Won same awards
+- `Daily` - one shared puzzle per day
+- `Hardcore Daily` - separate daily rotation, same daily cadence
+- `All Stars 1986+` (`easy`)
+- `Classic` (2011+ debut with minimum career length checks)
+- `All` (full pool)
 
-## 🚀 Getting Started
+## Current Features
+
+- Autocomplete search + keyboard navigation
+- Guess history with similarity breakdowns
+- Daily/Hardcore completion persistence
+- Account sign-in (email/password + Google OAuth)
+- Cross-device sync of daily/hardcore history after sign-in
+- Top-5 reveal/end-screen flow
+- Favorites + UI preference persistence in localStorage
+- Daily stats/averages and streak-style history views
+
+## Project Structure
+
+- `src/App.jsx` - main UI and gameplay state
+- `src/data/dailyPlayers.js` - daily rotation + epoch
+- `src/data/ballKnowledgeDailyPlayers.js` - hardcore daily rotation
+- `api/` - serverless routes used by the app
+- `scripts/` - data/image helper scripts
+
+## Local Development
 
 ### Prerequisites
 
-- Node.js (v14 or higher)
-- npm or yarn
-- Backend API running (see backend README)
+- Node.js 18+
+- npm
 
-### Installation
+### Install
 
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd nba-mantle-frontend
-```
-
-2. Install dependencies
 ```bash
 npm install
-# or
-yarn install
 ```
 
-3. Update API configuration
-```javascript
-// In App.jsx, update the API_BASE constant
-const API_BASE = 'http://localhost:5000/api'; // For local development
-// or
-const API_BASE = 'https://your-backend-url.com/api'; // For production
-```
+### Environment
 
-4. Start the development server
+Create `.env.local` (or equivalent for your host) with:
+
 ```bash
-npm start
-# or
-yarn start
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_SUPABASE_OAUTH_REDIRECT_TO=https://your-app-url-or-localhost-callback
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+Serverless routes in `api/` use server-side env vars:
 
-## 🏗️ Building for Production
+```bash
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+### Run
+
+```bash
+npm run dev
+```
+
+Default Vite URL: [http://localhost:5173](http://localhost:5173)
+
+### Build / Preview
 
 ```bash
 npm run build
-# or
-yarn build
+npm run preview
 ```
 
-This creates a `build` folder with optimized production files.
+## API Routes (in this repo)
 
-## 🎨 Features
+- `POST /api/guess` - secure daily/hardcore guess scoring
+- `POST /api/reveal` - secure daily/hardcore answer reveal
+- `POST /api/ceiling` - score ceiling for the active daily puzzle
+- `GET /api/stats/averages` - global average guesses by mode/daily number
+- `POST /api/stats/submit` - save completion records
+- `GET /api/leaderboard` - leaderboard data
+- `GET /api/profile` - profile summary data
 
-### Core Gameplay
-- **Smart Search**: Autocomplete suggestions as you type player names
-- **Guess History**: Track all your guesses with scores and breakdowns
-- **Top 5 Similar**: See the most similar players when you win or reveal
-- **Score Visualization**: Color-coded progress bars for easy score reading
+The frontend also calls external/backend endpoints via `API_BASE` in `src/App.jsx` (players list/data and non-daily guess paths).
 
-### User Experience
-- **Responsive Design**: Works on desktop and mobile devices
-- **Keyboard Navigation**: Arrow keys and Enter for autocomplete
-- **Error Handling**: Graceful fallbacks and user-friendly error messages
-- **Loading States**: Visual feedback during API calls
+## Daily Rotation Configuration
 
-### Game Features
-- **New Game**: Start fresh with a new mystery player
-- **Reveal Answer**: Give up and see the answer with top similar players
-- **Guess Validation**: Prevents duplicate guesses
-- **Fallback Mode**: Works offline with a curated list of modern players
+Edit:
 
-## 🔧 Configuration
+- `src/data/dailyPlayers.js`
+  - `DAILY_PLAYERS`
+  - `DAILY_PUZZLE_EPOCH`
+- `src/data/ballKnowledgeDailyPlayers.js`
+  - hardcore daily rotation list
 
-### Editing the daily puzzle (who’s the mystery player each day)
+## Account Sync Notes
 
-The daily uses the **calendar date**: everyone gets the same puzzle on the same day.
+- Runs are stored in `mantle_runs` with `mode`, `daily_number`, `anon_id`, and optionally `user_id`, `guess_history`, `top5`.
+- On sign-in, the app hydrates progress by:
+  - account `user_id` (primary), and
+  - linked/current `anon_id` values (fallback/back-compat)
+- Signing out clears account-local daily/hardcore progress from local storage and resets visible puzzle state.
 
-- **File to edit:** `src/data/dailyPlayers.js`
-- **What to change:**
-  - **`DAILY_PLAYERS`** — Array of player names in order. Day 0 = first name, Day 1 = second, etc. Add or remove names; the list cycles if there are more days than names.
-  - **`DAILY_PUZZLE_EPOCH`** — The date that counts as “Day 0” (e.g. `'2025-03-13'`). Change this to shift which calendar day is Daily #1.
-- Save the file; the next build or refresh will use the new list.
+## Supabase Schema Requirements
 
-### API Endpoints
+Minimum tables used by this app:
 
-The frontend expects these backend endpoints:
+### `mantle_runs`
 
-- `GET /api/players` - Get list of all players
-- `GET /api/players_data` - Per-player fields (e.g. `start_year`, `seasons_count`). **All Stars Only** mode requires each player object to include `is_all_star: true` for players who have made an All-Star team.
-- `GET /api/player_awards` - Alternative endpoint for player list (fallback when `/players` fails)
-- `POST /api/guess` - Submit a guess and get similarity score
-- `GET /api/health` - Health check
+Required columns:
+- `anon_id` `text` (not null)
+- `mode` `text` (expects `daily` or `hardcore`)
+- `daily_number` `int` (not null)
+- `date` `text` or `date`
+- `answer` `text`
+- `guesses` `int`
+- `won` `boolean`
+- `created_at` timestamp (recommended default `now()`)
 
-### Fallback Players
+Used by newer sync/features (recommended):
+- `user_id` `uuid` (nullable, links run to account)
+- `guess_history` `jsonb` (nullable)
+- `top5` `jsonb` (nullable)
 
-If the API is unavailable, the game uses a curated list of modern NBA stars:
+Recommended uniqueness:
+- unique index on `("anon_id","mode","daily_number")`
 
-```javascript
-const modernPlayers = [
-  'LeBron James', 'Stephen Curry', 'Kevin Durant', 
-  'Giannis Antetokounmpo', 'Luka Dončić', 'Jayson Tatum',
-  // ... more players
-];
-```
+Recommended performance indexes:
+- index on `("user_id","mode","daily_number")`
+- index on `("anon_id","mode","daily_number")`
 
-## 📱 Responsive Design
+### `anon_links`
 
-The game is fully responsive and works on:
-- Desktop browsers (Chrome, Firefox, Safari, Edge)
-- Tablets (iPad, Android tablets)
-- Mobile phones (iOS Safari, Android Chrome)
+Required columns:
+- `anon_id` `text` (primary key or unique)
+- `user_id` `uuid`
+- `created_at` timestamp
 
-## 🎨 Styling
+### `profiles`
 
-The game uses custom CSS with:
-- CSS Grid and Flexbox for layout
-- CSS custom properties for theming
-- Smooth animations and transitions
-- Dark theme optimized for long gaming sessions
+Required columns:
+- `user_id` `uuid` (primary key or unique)
+- `display_name` `text`
+- `avatar_url` `text`
+- `is_verified` `boolean`
+- `updated_at` timestamp
 
-## 🔍 Component Structure
+### RLS / Permissions (high level)
 
-```
-App.jsx (Main game component)
-├── Header (Title, subtitle, game stats)
-├── Left Panel
-│   ├── Input Section (Search, autocomplete, submit)
-│   ├── Game Messages (Win/reveal messages)
-│   ├── Control Buttons (New game, reveal)
-│   └── Top 5 Similar (Shown after win/reveal)
-└── Right Panel
-    └── Guess History (All guesses with scores and breakdowns)
-```
+- Client-side app reads/writes `mantle_runs`, `anon_links`, and `profiles` through the anon key, so your RLS policies must allow the intended operations for authenticated users.
+- Serverless routes in `api/` use `SUPABASE_SERVICE_ROLE_KEY` and bypass RLS; keep this key server-side only.
+- If account sync fails, check policy denials first (Supabase logs) before debugging frontend code.
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### Common Issues
+**Signed in but daily/hardcore history is missing**
+- Verify same account on both devices
+- Check Supabase tables: `mantle_runs`, `anon_links`, `profiles`
+- Confirm `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+- Look for `Account progress sync error` in console
 
 **Players not loading**
-- Check if backend is running
-- Verify API_BASE URL is correct
-- Check browser console for network errors
+- Verify backend/player endpoints configured in `API_BASE`
+- Check browser network failures and CORS
 
-**Autocomplete not working**
-- Ensure player data loaded successfully
-- Check for JavaScript errors in console
+## Scripts
 
-**Scores not calculating**
-- Verify backend /api/guess endpoint is working
-- Check request/response format in Network tab
-
-### Development Tips
-
-1. **Enable browser developer tools** for debugging
-2. **Check console logs** for helpful game state information
-3. **Use network tab** to inspect API calls
-4. **Test offline mode** by stopping the backend
-
-## 🚀 Deployment
-
-### Netlify/Vercel
-1. Build the project: `npm run build`
-2. Deploy the `build` folder
-3. Update API_BASE to production backend URL
-
-### Docker
-```dockerfile
-FROM node:16-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🎯 Future Enhancements
-
-- [ ] Player statistics comparison
-- [ ] Historical eras filtering
-- [ ] Multiplayer mode
-- [ ] Daily challenges
-- [ ] Achievement system
-- [ ] Player images and photos
-- [ ] Advanced filtering options
-- [ ] Game statistics tracking
-
----
-
-**Enjoy playing NBA-MANTLE! 🏀🎯**
-https://nba-deployment.vercel.app/
+See `scripts/README.md` for image/data helper scripts (including NBA player image generation).

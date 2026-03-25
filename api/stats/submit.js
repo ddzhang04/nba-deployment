@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   }
 
   const anon_id = typeof body.anon_id === 'string' ? body.anon_id.trim() : '';
+  const user_id = typeof body.user_id === 'string' ? body.user_id.trim() : null;
   const modeRaw = typeof body.mode === 'string' ? body.mode : '';
   const mode = modeRaw === 'hardcore' ? 'hardcore' : modeRaw === 'daily' ? 'daily' : '';
   const daily_number = Number.isFinite(Number(body.dailyNumber)) ? Number(body.dailyNumber) : null;
@@ -34,6 +35,8 @@ export default async function handler(req, res) {
   const answer = typeof body.answer === 'string' ? body.answer.trim() : '';
   const guesses = Number.isFinite(Number(body.guesses)) ? Number(body.guesses) : null;
   const won = typeof body.won === 'boolean' ? body.won : null;
+  const guess_history = Array.isArray(body.guessHistory) ? body.guessHistory : [];
+  const top5 = Array.isArray(body.top5) ? body.top5 : [];
 
   if (!anon_id || !mode || !daily_number || daily_number < 1 || !date || !answer || guesses == null || guesses < 0 || won == null) {
     return res.status(400).json({ error: 'Missing or invalid fields' });
@@ -46,12 +49,15 @@ export default async function handler(req, res) {
       .upsert(
         {
           anon_id,
+          user_id,
           mode,
           daily_number,
           date,
           answer,
           guesses,
           won,
+          guess_history,
+          top5,
         },
         { onConflict: 'anon_id,mode,daily_number' }
       );

@@ -997,40 +997,63 @@ const NBAGuessGame = () => {
 
     (async () => {
       try {
-        // Get all anon_ids linked to this account.
-        const { data: links, error: linksErr } = await supabase
-          .from('anon_links')
-          .select('anon_id')
-          .eq('user_id', userId)
-          .limit(200);
-        if (linksErr) throw linksErr;
+        // Get all anon_ids linked to this account (best-effort). We also include the
+        // current device anonId below, so a missing link row does not block hydration.
+        let linkedAnonIds = [];
+        try {
+          const { data: links, error: linksErr } = await supabase
+            .from('anon_links')
+            .select('anon_id')
+            .eq('user_id', userId)
+            .limit(200);
+          if (!linksErr) {
+            linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
+          }
+        } catch {}
 
-        // Important: include the *current device* anonId even if the anon_links upsert
-        // hasn't landed yet (or if row-level security hides it temporarily).
-        const anonIds = Array.from(
-          new Set(
-            [
-              ...(links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean),
-              String(anonId || '').trim(),
-            ].filter(Boolean)
-          )
-        );
-        if (!anonIds.length) return;
+        const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
 
         const detailsOk = mantleRunsDetailsSupported === true;
         const columns = detailsOk
           ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
           : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
 
-        // Pull all runs for these anon_ids (daily + hardcore).
-        const { data: runs, error: runsErr } = await supabase
-          .from('mantle_runs')
-          .select(columns)
-          .in('anon_id', anonIds)
-          .limit(5000);
-        if (runsErr) throw runsErr;
+        // Pull account runs primarily by user_id (most reliable for cross-device).
+        // Fallback query by anon_id keeps compatibility with older rows missing user_id.
+        const [byUserRes, byAnonRes] = await Promise.all([
+          supabase
+            .from('mantle_runs')
+            .select(columns)
+            .eq('user_id', userId)
+            .limit(5000),
+          anonIds.length
+            ? supabase
+                .from('mantle_runs')
+                .select(columns)
+                .in('anon_id', anonIds)
+                .limit(5000)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
 
-        const rows = Array.isArray(runs) ? runs : [];
+        const byUserErr = byUserRes?.error || null;
+        const byAnonErr = byAnonRes?.error || null;
+        if (byUserErr && byAnonErr) throw byUserErr;
+
+        const mergedRows = [
+          ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
+          ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
+        ];
+        const rowMap = new Map();
+        for (const r of mergedRows) {
+          const key = [
+            String(r?.anon_id || ''),
+            String(r?.mode || ''),
+            String(r?.daily_number || ''),
+            String(r?.created_at || ''),
+          ].join('|');
+          rowMap.set(key, r);
+        }
+        const rows = Array.from(rowMap.values());
 
         const toCompletionMap = (modeKey) => {
           const out = {};
