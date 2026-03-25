@@ -213,7 +213,8 @@ const NBAGuessGame = () => {
       .then(({ data }) => {
         setAuthSession(data.session ?? null);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Supabase getSession error:', err);
         setAuthSession(null);
       })
       .finally(() => setAuthLoading(false));
@@ -258,26 +259,36 @@ const NBAGuessGame = () => {
     setAuthError('');
 
     Promise.all([
-      supabase
-        .from('anon_links')
-        .upsert(
-          { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
-          { onConflict: 'anon_id' }
-        )
-        .catch(() => null),
-      supabase
-        .from('profiles')
-        .upsert(
-          {
-            user_id: userId,
-            display_name: displayName,
-            avatar_url: avatarUrl || null,
-            is_verified: false,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        )
-        .catch(() => null),
+      (async () => {
+        try {
+          await supabase
+            .from('anon_links')
+            .upsert(
+              { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
+              { onConflict: 'anon_id' }
+            );
+        } catch {
+          // Best-effort: linking failure should not block sign-in.
+        }
+      })(),
+      (async () => {
+        try {
+          await supabase
+            .from('profiles')
+            .upsert(
+              {
+                user_id: userId,
+                display_name: displayName,
+                avatar_url: avatarUrl || null,
+                is_verified: false,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+        } catch {
+          // Best-effort: profile failure should not block sign-in.
+        }
+      })(),
     ])
       .then(() => {
         setAccountDisplayName(displayName);
