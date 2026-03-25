@@ -92,10 +92,7 @@ const NBAGuessGame = () => {
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
-  const [leaderboardData, setLeaderboardData] = useState(null);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileData, setProfileData] = useState(null);
+  // (leaderboard/profile modal removed)
   const [authSession, setAuthSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -244,6 +241,21 @@ const NBAGuessGame = () => {
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthSession(session ?? null);
+      // If session is cleared (e.g. token expired), also clear account-local UI state.
+      if (!session) {
+        try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
+        try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+        setDailyCompletions({});
+        setBallKnowledgeDailyCompletions({});
+        setSelectedDailyDetail(null);
+        setSelectedBallKnowledgeDetail(null);
+        setAccountDisplayName('');
+        setAccountAvatarUrl('');
+        setAccountIsVerified(false);
+        setEditingDisplayName(false);
+        setDisplayNameDraft('');
+        setAuthNotice('');
+      }
     });
     unsub = data?.subscription || null;
 
@@ -477,6 +489,22 @@ const NBAGuessGame = () => {
     } catch (e) {
       setAuthError(e?.message || 'Sign out failed');
     } finally {
+      // Clear account-related local state + cached progress when signing out.
+      try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
+      try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+      setDailyCompletions({});
+      setBallKnowledgeDailyCompletions({});
+      setSelectedDailyDetail(null);
+      setSelectedBallKnowledgeDetail(null);
+      setAccountDisplayName('');
+      setAccountAvatarUrl('');
+      setAccountIsVerified(false);
+      setEditingDisplayName(false);
+      setDisplayNameDraft('');
+      setAuthEmail('');
+      setAuthPassword('');
+      setAuthResetEmail('');
+      setAuthNotice('');
       setAuthLoading(false);
     }
   };
@@ -747,44 +775,7 @@ const NBAGuessGame = () => {
   const activeDailyNumber = activeDailyIndex + 1;
   const isPastDailySelected = activeDailyIndex !== todayDailyIndex;
 
-  // Load public leaderboard + your profile when the "More / About" modal opens.
-  useEffect(() => {
-    if (!showMoreGames) return;
-    if (!identityInitialized) return;
-    if (!anonId) return;
-
-    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
-    const dailyNumber = activeDailyNumber;
-
-    setLeaderboardLoading(true);
-    setProfileLoading(true);
-
-    Promise.all([
-      fetchJsonWithRetry(
-        `${SECURE_API_BASE}/leaderboard?mode=${encodeURIComponent(modeKey)}&dailyNumber=${encodeURIComponent(dailyNumber)}&limit=10`,
-        {},
-        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
-      ),
-      fetchJsonWithRetry(
-        `${SECURE_API_BASE}/profile?mode=${encodeURIComponent(modeKey)}&anon_id=${encodeURIComponent(anonId)}&lookbackDays=60`,
-        {},
-        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
-      ),
-    ])
-      .then(([lb, prof]) => {
-        setLeaderboardData(lb);
-        setProfileData(prof);
-      })
-      .catch(() => {
-        setLeaderboardData(null);
-        setProfileData(null);
-      })
-      .finally(() => {
-        setLeaderboardLoading(false);
-        setProfileLoading(false);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showMoreGames, identityInitialized, anonId, gameMode, activeDailyNumber]);
+  // (leaderboard/profile modal removed)
 
   const formatHMS = useCallback((ms) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -4083,83 +4074,6 @@ const NBAGuessGame = () => {
                     Questions or bugs? DM me. Also—share it with friends.
                   </div>
                 </div>
-              </div>
-
-              <div
-                style={{
-                  padding: '14px 14px',
-                  borderRadius: '14px',
-                  border: '1px solid rgba(34, 197, 94, 0.35)',
-                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.35))',
-                  marginBottom: '14px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
-                  <div style={{ color: '#bbf7d0', fontWeight: 800, fontSize: '1rem' }}>🌍 Leaderboard + Profile</div>
-                  <div style={{ color: '#86efac', fontSize: '0.85rem', fontWeight: 800 }}>
-                    {gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Daily'} #{activeDailyNumber}
-                  </div>
-                </div>
-
-                {leaderboardLoading || profileLoading ? (
-                  <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading stats…</div>
-                ) : (
-                  <div style={{ display: 'grid', gap: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ color: '#e5e7eb', fontWeight: 800 }}>
-                        {profileData?.user ? (
-                          <>
-                            {profileData?.user}{' '}
-                            {profileData?.verified ? <span style={{ color: '#60a5fa' }}>✓ Verified</span> : null}
-                          </>
-                        ) : (
-                          'Your profile'
-                        )}
-                      </div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>
-                        Wins: {profileData?.wins ?? '—'} · Avg: {profileData?.avgGuesses != null ? Number(profileData.avgGuesses).toFixed(2) : '—'} · Streak: {profileData?.currentStreak ?? '—'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ color: '#e5e7eb', fontWeight: 900, marginBottom: '8px' }}>Top winners today</div>
-                      {Array.isArray(leaderboardData?.entries) && leaderboardData.entries.length > 0 ? (
-                        <div style={{ display: 'grid', gap: '8px' }}>
-                          {leaderboardData.entries.map((e, idx) => (
-                            <div
-                              key={e.anon_id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: '10px',
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(51, 65, 85, 0.85)',
-                                backgroundColor: '#0f172a',
-                              }}
-                            >
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ color: '#e5e7eb', fontWeight: 900 }}>
-                                  #{idx + 1} {e.user}{' '}
-                                  {e.verified ? <span style={{ color: '#60a5fa' }}>✓</span> : null}
-                                </div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 700 }}>
-                                  {e.wins} win{e.wins === 1 ? '' : 's'}
-                                </div>
-                              </div>
-                              <div style={{ color: '#bbf7d0', fontWeight: 1000 }}>
-                                Avg {Number(e.avgGuesses).toFixed(2)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div style={{ color: '#94a3b8' }}>No leaderboard data yet.</div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
               <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '12px', lineHeight: 1.5 }}>
