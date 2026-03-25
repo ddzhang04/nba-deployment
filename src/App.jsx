@@ -106,6 +106,8 @@ const NBAGuessGame = () => {
   const [accountDisplayName, setAccountDisplayName] = useState('');
   const [accountAvatarUrl, setAccountAvatarUrl] = useState('');
   const [accountIsVerified, setAccountIsVerified] = useState(false);
+  const [editingDisplayName, setEditingDisplayName] = useState(false);
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -369,13 +371,15 @@ const NBAGuessGame = () => {
     }
   };
 
-  const handleSaveDisplayName = async () => {
+  const handleSaveDisplayName = async (overrideDisplayName) => {
     if (!supabase) return;
     if (!authSession?.user) return;
     setAccountSaving(true);
     setAuthError('');
     try {
-      const displayName = accountDisplayName.trim();
+      const displayName =
+        String(overrideDisplayName ?? accountDisplayName)
+          .trim();
       const avatarUrl = accountAvatarUrl.trim() || null;
       const userId = authSession.user.id;
       const { error } = await supabase
@@ -383,6 +387,7 @@ const NBAGuessGame = () => {
         .update({ display_name: displayName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
         .eq('user_id', userId);
       if (error) throw error;
+      setAccountDisplayName(displayName);
       setAccountIsVerified(!!accountIsVerified);
     } catch (e) {
       setAuthError(e?.message || 'Could not save profile');
@@ -2308,58 +2313,126 @@ const NBAGuessGame = () => {
                   Signed in as {accountDisplayName || authSession.user.email}
                 </div>
 
-                <div style={{ display: 'grid', gap: '6px' }}>
-                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
-                  <input
-                    value={accountDisplayName}
-                    onChange={(e) => setAccountDisplayName(e.target.value)}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(51, 65, 85, 0.85)',
-                      backgroundColor: '#0b1220',
-                      color: 'white',
-                      width: '100%',
-                    }}
-                  />
-                </div>
+                    {editingDisplayName ? (
+                      <div style={{ display: 'grid', gap: '10px' }}>
+                        <div style={{ display: 'grid', gap: '6px' }}>
+                          <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>
+                            Display name
+                          </div>
+                          <input
+                            value={displayNameDraft}
+                            onChange={(e) => setDisplayNameDraft(e.target.value)}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '12px',
+                              border: '1px solid rgba(51, 65, 85, 0.85)',
+                              backgroundColor: '#0b1220',
+                              color: 'white',
+                              width: '100%',
+                            }}
+                          />
+                        </div>
 
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={handleSaveDisplayName}
-                    disabled={accountSaving}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: 'none',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      fontWeight: 900,
-                      cursor: accountSaving ? 'not-allowed' : 'pointer',
-                    }}
-                    title="Updates your public display name"
-                  >
-                    {accountSaving ? 'Saving…' : 'Save'}
-                  </button>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDisplayName(false);
+                              setDisplayNameDraft(accountDisplayName);
+                              setAuthError('');
+                            }}
+                            disabled={accountSaving}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '12px',
+                              border: '1px solid rgba(148, 163, 184, 0.55)',
+                              backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                              color: '#e2e8f0',
+                              fontWeight: 900,
+                              cursor: accountSaving ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            Cancel
+                          </button>
 
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    disabled={accountSaving}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(248, 113, 113, 0.55)',
-                      backgroundColor: 'rgba(127, 29, 29, 0.22)',
-                      color: '#fecaca',
-                      fontWeight: 900,
-                      cursor: accountSaving ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Sign out
-                  </button>
-                </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveDisplayName(displayNameDraft)}
+                            disabled={accountSaving}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '12px',
+                              border: 'none',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              fontWeight: 900,
+                              cursor: accountSaving ? 'not-allowed' : 'pointer',
+                            }}
+                            title="Updates your public display name"
+                          >
+                            {accountSaving ? 'Saving…' : 'Save'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleSignOut}
+                            disabled={accountSaving}
+                            style={{
+                              padding: '10px 12px',
+                              borderRadius: '12px',
+                              border: '1px solid rgba(248, 113, 113, 0.55)',
+                              backgroundColor: 'rgba(127, 29, 29, 0.22)',
+                              color: '#fecaca',
+                              fontWeight: 900,
+                              cursor: accountSaving ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            Sign out
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDisplayName(true);
+                            setDisplayNameDraft(accountDisplayName);
+                            setAuthError('');
+                          }}
+                          disabled={accountSaving}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(59, 130, 246, 0.35)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.10)',
+                            color: '#93c5fd',
+                            fontWeight: 900,
+                            cursor: accountSaving ? 'not-allowed' : 'pointer',
+                          }}
+                          title="Change your public display name"
+                        >
+                          Edit display name
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          disabled={accountSaving}
+                          style={{
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(248, 113, 113, 0.55)',
+                            backgroundColor: 'rgba(127, 29, 29, 0.22)',
+                            color: '#fecaca',
+                            fontWeight: 900,
+                            cursor: accountSaving ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          Sign out
+                        </button>
+                      </div>
+                    )}
 
                 {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
               </div>
