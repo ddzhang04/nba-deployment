@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getUserIdFromJwt } from '../_authUserFromJwt.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -50,37 +51,52 @@ export default async function handler(req, res) {
 
   try {
     const supabase = getSupabase();
-    // If a bearer token is present, trust *that* user as the run owner.
-    // This prevents spoofing `user_id` from the client.
-    let user_id = null;
     const token = getBearerToken(req);
-    if (token) {
-      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-      if (!userErr && userData?.user?.id) user_id = userData.user.id;
+    const user_id = token ? await getUserIdFromJwt(supabase, supabaseUrl, token) : null;
+
+    const rowFull = {
+      anon_id,
+      user_id,
+      mode,
+      daily_number,
+      date,
+      answer,
+      guesses,
+      won,
+      guess_history,
+      top5,
+    };
+
+    const rowMinimal = {
+      anon_id,
+      user_id,
+      mode,
+      daily_number,
+      date,
+      answer,
+      guesses,
+      won,
+    };
+
+    let { error } = await supabase.from('mantle_runs').upsert(rowFull, {
+      onConflict: 'anon_id,mode,daily_number',
+    });
+
+    if (error) {
+      const msg = String(error.message || '');
+      const maybeMissingJson = /guess_history|top5|user_id|column/i.test(msg);
+      if (maybeMissingJson) {
+        ({ error } = await supabase.from('mantle_runs').upsert(rowMinimal, {
+          onConflict: 'anon_id,mode,daily_number',
+        }));
+      }
     }
 
-    const { error } = await supabase
-      .from('mantle_runs')
-      .upsert(
-        {
-          anon_id,
-          user_id,
-          mode,
-          daily_number,
-          date,
-          answer,
-          guesses,
-          won,
-          guess_history,
-          top5,
-        },
-        { onConflict: 'anon_id,mode,daily_number' }
-      );
-
-    if (error) return res.status(500).json({ error: 'Failed to save run' });
+    if (error) {
+      return res.status(500).json({ error: 'Failed to save run', detail: error.message });
+    }
     return res.status(200).json({ ok: true });
   } catch (e) {
-    return res.status(500).json({ error: 'Server misconfigured' });
+    return res.status(500).json({ error: 'Server misconfigured', detail: String(e?.message || e) });
   }
 }
-

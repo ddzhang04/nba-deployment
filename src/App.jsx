@@ -130,8 +130,18 @@ const NBAGuessGame = () => {
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
-  // Proxy for daily/hardcore guessing so the answer isn't in the client.
-  const SECURE_API_BASE = '/api';
+  // Same-origin /api (Vercel serverless). Use absolute URL so subpath deploys still hit host /api.
+  // If the static app is hosted without functions (e.g. GitHub Pages), set VITE_STATS_API_ORIGIN to your API host.
+  const SECURE_API_BASE = useMemo(() => {
+    try {
+      const fromEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_STATS_API_ORIGIN;
+      if (fromEnv) return `${String(fromEnv).replace(/\/$/, '')}/api`;
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        return `${window.location.origin}/api`;
+      }
+    } catch {}
+    return '/api';
+  }, []);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
@@ -1093,7 +1103,9 @@ const NBAGuessGame = () => {
               { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
             );
             serverRuns = Array.isArray(r?.runs) ? r.runs : [];
-          } catch {}
+          } catch (e) {
+            console.warn('Account runs API failed (stats/runs):', e?.message || e);
+          }
         }
 
         // Fallback to client-side Supabase queries (may require permissive RLS).
@@ -1118,14 +1130,26 @@ const NBAGuessGame = () => {
           ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
         ];
         const rowMap = new Map();
+        const rowScore = (row) => {
+          const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
+          const t5 = Array.isArray(row?.top5) ? row.top5.length : 0;
+          const ca = typeof row?.created_at === 'string' ? row.created_at : '';
+          return { n: gh + t5, ca };
+        };
         for (const r of mergedRows) {
-          const key = [
-            String(r?.anon_id || ''),
-            String(r?.mode || ''),
-            String(r?.daily_number || ''),
-            String(r?.created_at || ''),
-          ].join('|');
-          rowMap.set(key, r);
+          const m = String(r?.mode || '');
+          const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+          const dn = Number(r?.daily_number);
+          if (!Number.isFinite(dn) || dn < 1) continue;
+          const logicalKey = `${normalizedMode}|${dn}`;
+          const prev = rowMap.get(logicalKey);
+          if (!prev) {
+            rowMap.set(logicalKey, r);
+            continue;
+          }
+          const a = rowScore(prev);
+          const b = rowScore(r);
+          if (b.n > a.n || (b.n === a.n && b.ca > a.ca)) rowMap.set(logicalKey, r);
         }
         const rows = Array.from(rowMap.values());
 

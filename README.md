@@ -65,7 +65,17 @@ Serverless routes in `api/` use server-side env vars:
 ```bash
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# Optional but recommended: used to validate JWTs via Auth REST if getUser() misbehaves in serverless
+SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+If the static app is hosted somewhere that **does not** serve `/api` (for example GitHub Pages), set the frontend env so stats calls hit your Vercel deployment:
+
+```bash
+VITE_STATS_API_ORIGIN=https://your-vercel-project.vercel.app
+```
+
+`npm run dev` does **not** run Vercel functions by default; use `vercel dev` or deploy to test `/api/stats/submit` and `/api/stats/runs` locally.
 
 ### Run
 
@@ -88,7 +98,8 @@ npm run preview
 - `POST /api/reveal` - secure daily/hardcore answer reveal
 - `POST /api/ceiling` - score ceiling for the active daily puzzle
 - `GET /api/stats/averages` - global average guesses by mode/daily number
-- `POST /api/stats/submit` - save completion records
+- `POST /api/stats/submit` - save completion records (Bearer token attaches `user_id`)
+- `GET /api/stats/runs` - list signed-in user’s runs (merges `user_id` rows + all `anon_id`s from `anon_links`)
 - `GET /api/leaderboard` - leaderboard data
 - `GET /api/profile` - profile summary data
 
@@ -108,9 +119,17 @@ Edit:
 
 - Runs are stored in `mantle_runs` with `mode`, `daily_number`, `anon_id`, and optionally `user_id`, `guess_history`, `top5`.
 - On sign-in, the app hydrates progress by:
-  - account `user_id` (primary), and
-  - linked/current `anon_id` values (fallback/back-compat)
+  - `GET /api/stats/runs` (server): returns runs for your account **and** every `anon_id` linked in `anon_links` (so rows saved before `user_id` was populated still show on other devices)
+  - direct Supabase reads as a fallback
+- You must sign in **once per device** so that device’s `anon_id` is written to `anon_links`; otherwise another device cannot see that device’s anonymous-only rows.
 - Signing out clears account-local daily/hardcore progress from local storage and resets visible puzzle state.
+
+### If cross-device still shows nothing
+
+- Confirm Vercel (or your host) has `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` set for serverless functions.
+- Open DevTools → Network: `stats/runs` should be **200** after sign-in (not 404/401/500).
+- 404 on `stats/*` usually means the static site is not the same deployment as the `api/` functions, or you need `VITE_STATS_API_ORIGIN`.
+- 401 means the bearer token was missing/invalid; set `SUPABASE_ANON_KEY` on the server env so JWT resolution can fall back to Auth REST.
 
 ## Supabase Schema Requirements
 
