@@ -82,6 +82,8 @@ const NBAGuessGame = () => {
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
   const [supabaseDebug, setSupabaseDebug] = useState({ lastSubmitOk: null, lastError: '' });
   const [backendWarming, setBackendWarming] = useState(false);
+  const backendWarmPromiseRef = useRef(null);
+  const backendLastWarmTsRef = useRef(0);
   const [shakeInput, setShakeInput] = useState(false);
   const [pulseGuessName, setPulseGuessName] = useState(null);
   const [confettiBurstId, setConfettiBurstId] = useState(null);
@@ -121,6 +123,32 @@ const NBAGuessGame = () => {
       }
     }
     throw lastErr || new Error('Request failed');
+  };
+  const warmBackend = async ({ force = false, background = false } = {}) => {
+    const now = Date.now();
+    if (!force && now - backendLastWarmTsRef.current < 1000 * 60 * 5) return true;
+    if (backendWarmPromiseRef.current) return backendWarmPromiseRef.current;
+
+    const run = (async () => {
+      if (!background) setBackendWarming(true);
+      try {
+        await fetchJsonWithRetry(
+          `${API_BASE}/players`,
+          {},
+          { timeoutMs: 20000, retries: 2, retryDelayMs: 1200 }
+        );
+        backendLastWarmTsRef.current = Date.now();
+        return true;
+      } catch {
+        return false;
+      } finally {
+        if (!background) setBackendWarming(false);
+        backendWarmPromiseRef.current = null;
+      }
+    })();
+
+    backendWarmPromiseRef.current = run;
+    return run;
   };
 
   const getOrCreateAnalyticsId = () => {
@@ -195,7 +223,7 @@ const NBAGuessGame = () => {
 
   // (intentionally no public "test write" in production UI)
 
-  const fetchGlobalDailyAverage = async ({ mode, dailyNumber }) => {
+  const fetchGlobalDailyAverage = async ({ mode, dailyNumber, forceRefresh = false }) => {
     // mode: 'daily' | 'hardcore'
     const m = mode === 'hardcore' ? 'hardcore' : 'daily';
     const n = Number(dailyNumber);
@@ -204,15 +232,17 @@ const NBAGuessGame = () => {
     // Cache per (mode,dailyNumber) so reloads don't recompute on every visit.
     const CACHE_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
     const cacheKey = key(`nba-mantle-global-daily-avg-${m}-${n}`);
-    try {
-      const raw = localStorage.getItem(cacheKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed?.ts && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= CACHE_TTL_MS) {
-          return parsed?.value ?? null;
+    if (!forceRefresh) {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.ts && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= CACHE_TTL_MS) {
+            return parsed?.value ?? null;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     // Prefer the server-side RPC (fast) that powers this endpoint: `api/stats/averages.js`.
     // If the shape ever changes, we fall back to the older Supabase row-scan method.
@@ -793,12 +823,13 @@ const NBAGuessGame = () => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
     if (!gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed) return;
     let cancelled = false;
+    let intervalId = null;
     const run = async () => {
       setPostWinGlobalDailyAverageLoading(true);
       try {
         if (cancelled) return;
         const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
-        const result = await fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber });
+        const result = await fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: false });
         if (cancelled) return;
         setPostWinGlobalDailyAverage(result);
       } catch {
@@ -808,6 +839,22 @@ const NBAGuessGame = () => {
       }
     };
     run();
+
+    // Keep it "live" while user is on the end screen:
+    // - other people finishing updates the global average,
+    // - without polling (or realtime) the UI stays stale.
+    // Keep polling moderate to avoid hammering backend.
+    intervalId = setInterval(() => {
+      if (cancelled) return;
+      const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+      fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: true })
+        .then((result) => {
+          if (cancelled) return;
+          setPostWinGlobalDailyAverage(result);
+        })
+        .catch(() => {});
+    }, 60 * 1000);
+
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameWon, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, targetPlayer, gameMode, activeDailyNumber]);
@@ -1064,6 +1111,7 @@ const NBAGuessGame = () => {
         let playerNames = null;
         try {
           playerNames = await fetchJsonWithRetry(`${API_BASE}/players`, {}, { timeoutMs: 9000, retries: 1, retryDelayMs: 700 });
+          backendLastWarmTsRef.current = Date.now();
         } catch {
           playerNames = await fetchJsonWithRetry(`${API_BASE}/player_awards`, {}, { timeoutMs: 9000, retries: 1, retryDelayMs: 700 });
         } finally {
@@ -1126,6 +1174,16 @@ const NBAGuessGame = () => {
     };
 
     loadPlayerNames();
+  }, []);
+
+  useEffect(() => {
+    warmBackend({ background: true }).catch(() => {});
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      warmBackend({ force: true, background: true }).catch(() => {});
+    }, 1000 * 60 * 4);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load player headshots (from public/player-images.json, built by scripts/fetch-nba-player-images.js)
@@ -1249,6 +1307,7 @@ const NBAGuessGame = () => {
     if (typeof cachedCeiling === 'number') return;
 
     try {
+      await warmBackend({ background: true });
       const r = await fetchJsonWithRetry(
         `${SECURE_API_BASE}/ceiling`,
         {
@@ -1281,6 +1340,7 @@ const NBAGuessGame = () => {
 
     try {
       const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
+      await warmBackend();
       const result = await fetchJsonWithRetry(
         isDailyLike ? `${SECURE_API_BASE}/guess` : `${API_BASE}/guess`,
         {
@@ -1384,6 +1444,7 @@ const NBAGuessGame = () => {
     let top5Now = [];
     let revealedAnswer = '';
     try {
+      await warmBackend({ background: true });
       if (!isDailyLike && prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
         top5Now = prefetchedTargetTop5;
       } else if (isDailyLike) {
