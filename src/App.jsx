@@ -1002,7 +1002,16 @@ const NBAGuessGame = () => {
           .limit(200);
         if (linksErr) throw linksErr;
 
-        const anonIds = Array.from(new Set((links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean)));
+        // Important: include the *current device* anonId even if the anon_links upsert
+        // hasn't landed yet (or if row-level security hides it temporarily).
+        const anonIds = Array.from(
+          new Set(
+            [
+              ...(links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean),
+              String(anonId || '').trim(),
+            ].filter(Boolean)
+          )
+        );
         if (!anonIds.length) return;
 
         const detailsOk = mantleRunsDetailsSupported === true;
@@ -1090,7 +1099,7 @@ const NBAGuessGame = () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authSession, identityInitialized, anonId]);
+  }, [authSession, identityInitialized, anonId, mantleRunsDetailsSupported]);
   useEffect(() => {
     // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
     try {
