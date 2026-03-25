@@ -146,4 +146,31 @@ AS $$
   ORDER BY mr.daily_number;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages(text) TO authenticated;
+-- Anyone can read global averages (same data the leaderboard uses).
+GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages(text) TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6) Your runs on any device (one RPC — no Vercel /api/stats/* needed)
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_my_mantle_runs() CASCADE;
+
+CREATE OR REPLACE FUNCTION public.get_my_mantle_runs()
+RETURNS SETOF public.mantle_runs
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT mr.*
+  FROM public.mantle_runs mr
+  WHERE auth.uid() IS NOT NULL
+    AND (
+      mr.user_id = auth.uid()
+      OR mr.anon_id IN (
+        SELECT al.anon_id FROM public.anon_links al WHERE al.user_id = auth.uid()
+      )
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.get_my_mantle_runs() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_my_mantle_runs() TO authenticated;

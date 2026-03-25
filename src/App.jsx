@@ -130,11 +130,10 @@ const NBAGuessGame = () => {
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
-  // Same-origin /api (Vercel serverless). Use absolute URL so subpath deploys still hit host /api.
-  // If the static app is hosted without functions (e.g. GitHub Pages), set VITE_STATS_API_ORIGIN to your API host.
+  // Same-origin /api — only daily/hardcore guess + reveal + ceiling (answers stay off the client).
   const SECURE_API_BASE = useMemo(() => {
     try {
-      const fromEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_STATS_API_ORIGIN;
+      const fromEnv = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_ORIGIN;
       if (fromEnv) return `${String(fromEnv).replace(/\/$/, '')}/api`;
       if (typeof window !== 'undefined' && window.location?.origin) {
         return `${window.location.origin}/api`;
@@ -558,101 +557,35 @@ const NBAGuessGame = () => {
 
   const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] }) => {
     try {
-      // Best-effort: never block gameplay UI on this.
       const anon_id = getOrCreateAnalyticsId();
       const user_id = authSession?.user?.id || null;
-      const token = authSession?.access_token || '';
       const detailsOk = mantleRunsDetailsSupported === true;
-
-      // Signed-in path: write via server so runs are definitely attached to account user_id.
-      if (token) {
-        try {
-          await fetchJsonWithRetry(
-            `${SECURE_API_BASE}/stats/submit`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                anon_id,
-                mode,
-                dailyNumber,
-                date,
-                answer,
-                guesses,
-                won,
-                guessHistory,
-                top5,
-              }),
-            },
-            { timeoutMs: 20000, retries: 1, retryDelayMs: 800 }
-          );
-          setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
-          return;
-        } catch (e) {
-          // Keep going and attempt direct write as a fallback.
-          console.error('Server submit fallback error:', e);
-        }
-      }
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
         return;
       }
 
-      {
-        // Frontend-first write. If RLS/policies block this on some clients,
-        // we fallback to the server route below.
-        const { error } = await supabase.from('mantle_runs').upsert(
-          {
-            anon_id,
-            user_id,
-            mode,
-            daily_number: dailyNumber,
-            date,
-            answer,
-            guesses,
-            won,
-            ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
-          },
-          { onConflict: 'anon_id,mode,daily_number' }
-        );
-        if (!error) {
-          setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
-          return;
-        }
+      const { error } = await supabase.from('mantle_runs').upsert(
+        {
+          anon_id,
+          user_id,
+          mode,
+          daily_number: dailyNumber,
+          date,
+          answer,
+          guesses,
+          won,
+          ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
+        },
+        { onConflict: 'anon_id,mode,daily_number' }
+      );
+      if (error) {
         console.error('Supabase submit error:', error);
+        setSupabaseDebug({ lastSubmitOk: false, lastError: error?.message || 'Save failed' });
+        return;
       }
-
-      // Server fallback path (service-role on backend). Keeps cross-device sync reliable.
-      try {
-        await fetchJsonWithRetry(
-          `${SECURE_API_BASE}/stats/submit`,
-          {
-            method: 'POST',
-            headers: token
-              ? { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` }
-              : { 'Content-Type': 'application/json; charset=utf-8' },
-            body: JSON.stringify({
-              anon_id,
-              mode,
-              dailyNumber,
-              date,
-              answer,
-              guesses,
-              won,
-              guessHistory,
-              top5,
-            }),
-          },
-          { timeoutMs: 20000, retries: 1, retryDelayMs: 800 }
-        );
-        setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
-      } catch (fallbackErr) {
-        setSupabaseDebug({ lastSubmitOk: false, lastError: fallbackErr?.message || 'Cloud submit failed' });
-      }
+      setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
     } catch {
       // ignore
     }
@@ -700,53 +633,42 @@ const NBAGuessGame = () => {
       } catch {}
     }
 
-    // Prefer the server-side RPC (fast) that powers this endpoint: `api/stats/averages.js`.
-    // If the shape ever changes, we fall back to the older Supabase row-scan method.
-    try {
-      const apiResult = await fetchJsonWithRetry(
-        `${SECURE_API_BASE}/stats/averages?mode=${encodeURIComponent(m)}`,
-        {},
-        { timeoutMs: 20000, retries: 1, retryDelayMs: 600 }
-      );
-
-      const list = Array.isArray(apiResult?.averages) ? apiResult.averages : [];
-      for (const item of list) {
-        // Common shape: { daily_number: number, avg: number, wins: number }
-        if (item && typeof item === 'object' && !Array.isArray(item)) {
-          const dn = Number(item.daily_number ?? item.dailyNumber ?? item.daily ?? NaN);
-          if (dn !== n) continue;
-
-          const avgRaw = item.avg ?? item.average ?? item.average_guess ?? item.guesses_avg ?? item.global_avg;
-          const winsRaw = item.wins ?? item.win_count ?? item.wins_count ?? item.winCount;
-
-          const avg = Number(avgRaw);
-          const wins = winsRaw == null ? null : Number(winsRaw);
-
-          if (Number.isFinite(avg)) {
-            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
+    // Global averages: Supabase RPC (same DB as the game — no separate stats API).
+    if (supabase) {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc('get_mantle_answer_averages', { p_mode: m });
+        if (!rpcErr && Array.isArray(rpcData)) {
+          for (const item of rpcData) {
+            if (item && typeof item === 'object' && !Array.isArray(item)) {
+              const dn = Number(item.daily_number ?? item.dailyNumber ?? NaN);
+              if (dn !== n) continue;
+              const avg = Number(item.avg);
+              const wins = item.wins == null ? null : Number(item.wins);
+              if (Number.isFinite(avg)) {
+                const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+                try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+                return value;
+              }
+            }
+            if (Array.isArray(item)) {
+              const dn = Number(item[0]);
+              if (dn !== n) continue;
+              const avg = Number(item[1]);
+              const wins = item.length > 2 ? Number(item[2]) : null;
+              if (Number.isFinite(avg)) {
+                const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+                try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+                return value;
+              }
+            }
           }
         }
-
-        // Alternate shape: [dailyNumber, avg, wins]
-        if (Array.isArray(item)) {
-          const dn = Number(item[0]);
-          if (dn !== n) continue;
-          const avg = Number(item[1]);
-          const wins = item.length > 2 ? Number(item[2]) : null;
-          if (Number.isFinite(avg)) {
-            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
-          }
-        }
+      } catch {
+        // fall through
       }
-    } catch {
-      // fall through to Supabase fallback
     }
 
-    // Fallback: older frontend-only approach.
+    // Fallback: scan winning rows (works if RPC not installed yet).
     if (!supabase) return null;
 
     const { data, count, error } = await supabase
@@ -1071,64 +993,42 @@ const NBAGuessGame = () => {
 
     (async () => {
       try {
-        // Get all anon_ids linked to this account (best-effort). We also include the
-        // current device anonId below, so a missing link row does not block hydration.
-        let linkedAnonIds = [];
-        try {
-          const { data: links, error: linksErr } = await supabase
-            .from('anon_links')
-            .select('anon_id')
-            .eq('user_id', userId)
-            .limit(200);
-          if (!linksErr) {
-            linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
-          }
-        } catch {}
-
-        const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
-
         const detailsOk = mantleRunsDetailsSupported === true;
-        const columns = detailsOk
-          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
-          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+        let mergedRows = [];
 
-        // Prefer server-side fetch (bypasses RLS issues) when we have an access token.
-        const token = authSession?.access_token || '';
-        let serverRuns = [];
-        if (token) {
+        // One RPC returns every run for this account (linked anon_ids + user_id). No Vercel stats route.
+        const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
+        if (!rpcErr && Array.isArray(rpcRows)) {
+          mergedRows = rpcRows;
+        } else {
+          let linkedAnonIds = [];
           try {
-            const r = await fetchJsonWithRetry(
-              `${SECURE_API_BASE}/stats/runs?details=${detailsOk ? '1' : '0'}`,
-              { headers: { Authorization: `Bearer ${token}` } },
-              { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
-            );
-            serverRuns = Array.isArray(r?.runs) ? r.runs : [];
-          } catch (e) {
-            console.warn('Account runs API failed (stats/runs):', e?.message || e);
-          }
+            const { data: links, error: linksErr } = await supabase
+              .from('anon_links')
+              .select('anon_id')
+              .eq('user_id', userId)
+              .limit(200);
+            if (!linksErr) {
+              linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
+            }
+          } catch {}
+
+          const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
+          const columns = detailsOk
+            ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
+            : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+
+          const [byUserRes, byAnonRes] = await Promise.all([
+            supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
+            anonIds.length
+              ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+          mergedRows = [
+            ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
+            ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
+          ];
         }
-
-        // Fallback to client-side Supabase queries (may require permissive RLS).
-        const [byUserRes, byAnonRes] = await Promise.all([
-          supabase
-            .from('mantle_runs')
-            .select(columns)
-            .eq('user_id', userId)
-            .limit(5000),
-          anonIds.length
-            ? supabase
-                .from('mantle_runs')
-                .select(columns)
-                .in('anon_id', anonIds)
-                .limit(5000)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-
-        const mergedRows = [
-          ...serverRuns,
-          ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
-          ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
-        ];
         const rowMap = new Map();
         const rowScore = (row) => {
           const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
