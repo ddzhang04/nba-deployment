@@ -51,6 +51,51 @@ function mergeRunRows(rows) {
   return Array.from(byKey.values());
 }
 
+function isMissingColumnError(err) {
+  const msg = String(err?.message || err?.hint || err || '');
+  return /column|schema|Could not find|42703|PGRST204/i.test(msg);
+}
+
+function isUserIdColumnError(err) {
+  const msg = String(err?.message || err || '');
+  return /user_id/i.test(msg) && isMissingColumnError(err);
+}
+
+async function fetchRunsForColumns(supabase, columns, userId, uniqueAnons, modeFilter) {
+  const rows = [];
+
+  const rUser = await (() => {
+    let q = supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000);
+    if (modeFilter) q = q.eq('mode', modeFilter);
+    return q;
+  })();
+
+  if (rUser.error) {
+    if (isUserIdColumnError(rUser.error)) {
+      // Table has no user_id — skip this leg
+    } else if (isMissingColumnError(rUser.error)) {
+      return { error: rUser.error };
+    } else {
+      return { error: rUser.error };
+    }
+  } else {
+    rows.push(...(Array.isArray(rUser.data) ? rUser.data : []));
+  }
+
+  if (uniqueAnons.length) {
+    let qAnon = supabase.from('mantle_runs').select(columns).in('anon_id', uniqueAnons).limit(5000);
+    if (modeFilter) qAnon = qAnon.eq('mode', modeFilter);
+    const rAnon = await qAnon;
+    if (rAnon.error) {
+      if (isMissingColumnError(rAnon.error)) return { error: rAnon.error };
+      return { error: rAnon.error };
+    }
+    rows.push(...(Array.isArray(rAnon.data) ? rAnon.data : []));
+  }
+
+  return { rows };
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
@@ -64,10 +109,14 @@ export default async function handler(req, res) {
 
     const details = String(req.query?.details || '') === '1';
     const modeRaw = typeof req.query?.mode === 'string' ? req.query.mode : '';
-    const mode = modeRaw === 'hardcore' ? 'hardcore' : modeRaw === 'daily' ? 'daily' : '';
+    const modeFilter = modeRaw === 'hardcore' || modeRaw === 'daily' ? modeRaw : '';
 
-    const baseColumns = 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
-    const columns = details ? `${baseColumns},guess_history,top5` : baseColumns;
+    const columnAttempts = details
+      ? [
+          'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5',
+          'anon_id,mode,daily_number,date,answer,guesses,won,created_at',
+        ]
+      : ['anon_id,mode,daily_number,date,answer,guesses,won,created_at'];
 
     let linkedAnonIds = [];
     try {
@@ -83,26 +132,20 @@ export default async function handler(req, res) {
 
     const uniqueAnons = Array.from(new Set(linkedAnonIds));
 
-    let qUser = supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000);
-    if (mode) qUser = qUser.eq('mode', mode);
-
-    const runQueries = [qUser];
-    if (uniqueAnons.length) {
-      let qAnon = supabase.from('mantle_runs').select(columns).in('anon_id', uniqueAnons).limit(5000);
-      if (mode) qAnon = qAnon.eq('mode', mode);
-      runQueries.push(qAnon);
+    let lastErr = null;
+    for (const columns of columnAttempts) {
+      const { rows, error } = await fetchRunsForColumns(supabase, columns, userId, uniqueAnons, modeFilter);
+      if (!error) {
+        const merged = mergeRunRows(rows);
+        return json(res, 200, { user_id: userId, runs: merged });
+      }
+      lastErr = error;
     }
 
-    const results = await Promise.all(runQueries);
-    for (const r of results) {
-      if (r?.error) return json(res, 500, { error: 'Failed to load runs', detail: r.error.message });
-    }
-
-    const merged = mergeRunRows(
-      results.flatMap((r) => (Array.isArray(r?.data) ? r.data : []))
-    );
-
-    return json(res, 200, { user_id: userId, runs: merged });
+    return json(res, 500, {
+      error: 'Failed to load runs',
+      detail: lastErr ? String(lastErr.message || lastErr) : 'unknown',
+    });
   } catch (e) {
     return json(res, 500, { error: 'Server misconfigured', detail: String(e?.message || e) });
   }
