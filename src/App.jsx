@@ -551,11 +551,48 @@ const NBAGuessGame = () => {
       // Best-effort: never block gameplay UI on this.
       const anon_id = getOrCreateAnalyticsId();
       const user_id = authSession?.user?.id || null;
+      const token = authSession?.access_token || '';
       const detailsOk = mantleRunsDetailsSupported === true;
+
+      // Signed-in path: write via server so runs are definitely attached to account user_id.
+      if (token) {
+        try {
+          await fetchJsonWithRetry(
+            `${SECURE_API_BASE}/stats/submit`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                anon_id,
+                mode,
+                dailyNumber,
+                date,
+                answer,
+                guesses,
+                won,
+                guessHistory,
+                top5,
+              }),
+            },
+            { timeoutMs: 20000, retries: 1, retryDelayMs: 800 }
+          );
+          setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
+          return;
+        } catch (e) {
+          // Keep going and attempt direct write as a fallback.
+          console.error('Server submit fallback error:', e);
+        }
+      }
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
-      } else {
+        return;
+      }
+
+      {
         // Frontend-first write. If RLS/policies block this on some clients,
         // we fallback to the server route below.
         const { error } = await supabase.from('mantle_runs').upsert(
@@ -570,7 +607,7 @@ const NBAGuessGame = () => {
             won,
             ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
           },
-          { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
+          { onConflict: 'anon_id,mode,daily_number' }
         );
         if (!error) {
           setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
@@ -581,13 +618,13 @@ const NBAGuessGame = () => {
 
       // Server fallback path (service-role on backend). Keeps cross-device sync reliable.
       try {
-        const token = authSession?.access_token || '';
         await fetchJsonWithRetry(
           `${SECURE_API_BASE}/stats/submit`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            ...(token ? { headers: { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` } } : {}),
+            headers: token
+              ? { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` }
+              : { 'Content-Type': 'application/json; charset=utf-8' },
             body: JSON.stringify({
               anon_id,
               mode,
