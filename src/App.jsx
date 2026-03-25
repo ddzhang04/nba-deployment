@@ -354,6 +354,33 @@ const NBAGuessGame = () => {
     }
   };
 
+  const handleResendSignupConfirmation = async () => {
+    if (!supabase) return;
+    const email = authEmail.trim();
+    if (!email) return;
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthNotice('');
+    try {
+      const configuredEmailRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
+      const payload = {
+        type: 'signup',
+        email,
+      };
+      if (configuredEmailRedirectTo) {
+        payload.options = { emailRedirectTo: configuredEmailRedirectTo };
+      }
+
+      const res = await supabase.auth.resend(payload);
+      if (res.error) throw res.error;
+      setAuthNotice('If the email is deliverable, you should receive another confirmation shortly.');
+    } catch (e) {
+      setAuthError(e?.message || 'Could not resend confirmation email');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleSignInWithGoogle = async () => {
     if (!supabase) return;
     setAuthLoading(true);
@@ -431,8 +458,10 @@ const NBAGuessGame = () => {
       if (error) throw error;
       setAccountDisplayName(displayName);
       setAccountIsVerified(!!accountIsVerified);
+      return true;
     } catch (e) {
       setAuthError(e?.message || 'Could not save profile');
+      return false;
     } finally {
       setAccountSaving(false);
     }
@@ -2399,7 +2428,13 @@ const NBAGuessGame = () => {
 
                           <button
                             type="button"
-                            onClick={() => handleSaveDisplayName(displayNameDraft)}
+                            onClick={async () => {
+                              const ok = await handleSaveDisplayName(displayNameDraft);
+                              if (ok) {
+                                setEditingDisplayName(false);
+                                setDisplayNameDraft('');
+                              }
+                            }}
                             disabled={accountSaving}
                             style={{
                               padding: '10px 12px',
@@ -2570,6 +2605,26 @@ const NBAGuessGame = () => {
                     }}
                   >
                     Continue with Google
+                  </button>
+                </div>
+
+                <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleResendSignupConfirmation}
+                    disabled={authLoading || !authEmail.trim()}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(148, 163, 184, 0.45)',
+                      backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                      color: '#e2e8f0',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Resend the email confirmation link"
+                  >
+                    Resend confirmation
                   </button>
                 </div>
 
