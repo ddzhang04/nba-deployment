@@ -133,6 +133,16 @@ Edit:
 
 ## Supabase Schema Requirements
 
+**One-shot setup:** open the Supabase SQL Editor for your project and run [`supabase/setup.sql`](supabase/setup.sql). It creates/updates `mantle_runs`, `anon_links`, `profiles`, the unique index upserts need, permissive RLS for gameplay, and an optional `get_mantle_answer_averages` RPC.
+
+**If you suspect Supabase is the problem, verify:**
+
+1. **Same project everywhere** — In Supabase: **Project Settings → API**. That **URL** must match `SUPABASE_URL` (Vercel) and `VITE_SUPABASE_URL` (frontend). The **anon** key matches `VITE_SUPABASE_ANON_KEY`; the **service_role** key matches `SUPABASE_SERVICE_ROLE_KEY` (server only, never in frontend).
+2. **Tables exist** — **Table Editor** should show `mantle_runs`, `anon_links`, `profiles`. If `mantle_runs` is missing columns (`user_id`, `guess_history`, `top5`), run `setup.sql` or add them manually.
+3. **Unique constraint** — Upserts require a unique constraint on `(anon_id, mode, daily_number)`. Without it, PostgREST upserts fail.
+4. **RLS** — If the **browser** cannot insert/update `mantle_runs`, check **Authentication → Policies** or run `setup.sql` policies. Denied requests appear in the browser Network tab as Supabase 401/403 JSON errors.
+5. **Logs** — **Supabase Dashboard → Logs** (Postgres/API) for errors when you play a daily or sign in.
+
 Minimum tables used by this app:
 
 ### `mantle_runs`

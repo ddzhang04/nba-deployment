@@ -3,6 +3,12 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function json(res, status, body) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
 function getSupabase() {
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -48,10 +54,11 @@ async function averagesFromTable(supabase, mode) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
-    return res.status(405).json({ error: 'Method not allowed' });
+    return json(res, 405, { error: 'Method not allowed' });
   }
 
-  const modeRaw = typeof req.query?.mode === 'string' ? req.query.mode : '';
+  const q = req.query || {};
+  const modeRaw = typeof q.mode === 'string' ? q.mode : '';
   const mode = modeRaw === 'hardcore' ? 'hardcore' : modeRaw === 'daily' ? 'daily' : 'daily';
 
   try {
@@ -60,21 +67,20 @@ export default async function handler(req, res) {
     const { data, error } = await supabase.rpc('get_mantle_answer_averages', { p_mode: mode });
     if (!error) {
       const list = Array.isArray(data) ? data : [];
-      return res.status(200).json({ averages: list });
+      return json(res, 200, { averages: list });
     }
 
-    // RPC missing or failed (e.g. function not defined in Supabase) — compute from table.
     try {
       const list = await averagesFromTable(supabase, mode);
-      return res.status(200).json({ averages: list });
+      return json(res, 200, { averages: list });
     } catch (fallbackErr) {
-      return res.status(500).json({
+      return json(res, 500, {
         error: 'Failed to compute averages',
         detail: String(fallbackErr?.message || error?.message || error),
       });
     }
   } catch (e) {
-    return res.status(500).json({
+    return json(res, 500, {
       error: 'Server misconfigured',
       detail: String(e?.message || e),
     });

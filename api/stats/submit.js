@@ -4,6 +4,12 @@ import { getUserIdFromJwt } from '../_authUserFromJwt.js';
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+function json(res, status, body) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
+}
+
 function getSupabase() {
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -20,18 +26,35 @@ function getBearerToken(req) {
   return m ? m[1].trim() : '';
 }
 
+async function readBody(req) {
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return null;
+    }
+  }
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+    return json(res, 405, { error: 'Method not allowed' });
   }
 
-  let body = req.body;
-  if (typeof body === 'string') {
-    try { body = JSON.parse(body); } catch { body = null; }
-  }
+  let body = await readBody(req);
   if (!body || typeof body !== 'object') {
-    return res.status(400).json({ error: 'Invalid JSON body' });
+    return json(res, 400, { error: 'Invalid JSON body' });
   }
 
   const anon_id = typeof body.anon_id === 'string' ? body.anon_id.trim() : '';
@@ -46,7 +69,7 @@ export default async function handler(req, res) {
   const top5 = Array.isArray(body.top5) ? body.top5 : [];
 
   if (!anon_id || !mode || !daily_number || daily_number < 1 || !date || !answer || guesses == null || guesses < 0 || won == null) {
-    return res.status(400).json({ error: 'Missing or invalid fields' });
+    return json(res, 400, { error: 'Missing or invalid fields' });
   }
 
   try {
@@ -93,10 +116,10 @@ export default async function handler(req, res) {
     }
 
     if (error) {
-      return res.status(500).json({ error: 'Failed to save run', detail: error.message });
+      return json(res, 500, { error: 'Failed to save run', detail: error.message });
     }
-    return res.status(200).json({ ok: true });
+    return json(res, 200, { ok: true });
   } catch (e) {
-    return res.status(500).json({ error: 'Server misconfigured', detail: String(e?.message || e) });
+    return json(res, 500, { error: 'Server misconfigured', detail: String(e?.message || e) });
   }
 }

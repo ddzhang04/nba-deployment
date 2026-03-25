@@ -107,8 +107,9 @@ export default async function handler(req, res) {
     const userId = await getUserIdFromJwt(supabase, supabaseUrl, token);
     if (!userId) return json(res, 401, { error: 'Invalid token' });
 
-    const details = String(req.query?.details || '') === '1';
-    const modeRaw = typeof req.query?.mode === 'string' ? req.query.mode : '';
+    const q = req.query || {};
+    const details = String(q.details || '') === '1';
+    const modeRaw = typeof q.mode === 'string' ? q.mode : '';
     const modeFilter = modeRaw === 'hardcore' || modeRaw === 'daily' ? modeRaw : '';
 
     const columnAttempts = details
