@@ -1,14 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { getUserIdFromJwt } from '../_authUserFromJwt.js';
+import { json } from '../_http.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-function json(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
 
 function getSupabase() {
   if (!supabaseUrl || !supabaseServiceRoleKey) {

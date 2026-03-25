@@ -97,6 +97,7 @@ npm run preview
 - `POST /api/guess` - secure daily/hardcore guess scoring
 - `POST /api/reveal` - secure daily/hardcore answer reveal
 - `POST /api/ceiling` - score ceiling for the active daily puzzle
+- `GET /api/stats/ping` - health check (env vars + `mantle_runs` readable); no auth
 - `GET /api/stats/averages` - global average guesses by mode/daily number
 - `POST /api/stats/submit` - save completion records (Bearer token attaches `user_id`)
 - `GET /api/stats/runs` - list signed-in user’s runs (merges `user_id` rows + all `anon_id`s from `anon_links`)

@@ -4,20 +4,23 @@
 -- ---------------------------------------------------------------------------
 -- 1) mantle_runs — daily / hardcore completions
 -- ---------------------------------------------------------------------------
+-- Base table (matches legacy installs that never had user_id / JSON columns).
 CREATE TABLE IF NOT EXISTS public.mantle_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   anon_id text NOT NULL,
-  user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL,
   mode text NOT NULL CHECK (mode IN ('daily', 'hardcore')),
   daily_number integer NOT NULL CHECK (daily_number >= 1),
   date text NOT NULL,
   answer text NOT NULL,
   guesses integer NOT NULL,
   won boolean NOT NULL DEFAULT true,
-  guess_history jsonb DEFAULT '[]'::jsonb,
-  top5 jsonb DEFAULT '[]'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- IMPORTANT: add columns BEFORE any index on user_id (42703 if index runs first).
+ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL;
+ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS guess_history jsonb DEFAULT '[]'::jsonb;
+ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS top5 jsonb DEFAULT '[]'::jsonb;
 
 -- Required for upserts from the app (anon_id + mode + daily_number)
 CREATE UNIQUE INDEX IF NOT EXISTS mantle_runs_anon_mode_daily_uidx
@@ -26,11 +29,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS mantle_runs_anon_mode_daily_uidx
 CREATE INDEX IF NOT EXISTS mantle_runs_user_id_idx ON public.mantle_runs (user_id);
 CREATE INDEX IF NOT EXISTS mantle_runs_anon_id_idx ON public.mantle_runs (anon_id);
 CREATE INDEX IF NOT EXISTS mantle_runs_mode_daily_idx ON public.mantle_runs (mode, daily_number);
-
--- If the table already existed without these columns, add them:
-ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users (id) ON DELETE SET NULL;
-ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS guess_history jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE public.mantle_runs ADD COLUMN IF NOT EXISTS top5 jsonb DEFAULT '[]'::jsonb;
 
 -- ---------------------------------------------------------------------------
 -- 2) anon_links — tie device anon_id → Supabase auth user
@@ -54,16 +52,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Supabase templates often use `id` as the FK to auth.users; policies below expect `user_id`.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'id'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'user_id'
+  ) THEN
+    ALTER TABLE public.profiles RENAME COLUMN id TO user_id;
+  END IF;
+END $$;
+
 -- ---------------------------------------------------------------------------
 -- 4) Row Level Security (RLS)
--- If the browser client cannot read/write, sync will fail even when Vercel API works.
--- Start permissive; tighten later if you want.
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.mantle_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.anon_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Drop old policies if re-running (names are stable)
 DROP POLICY IF EXISTS "mantle_runs_insert" ON public.mantle_runs;
 DROP POLICY IF EXISTS "mantle_runs_select" ON public.mantle_runs;
 DROP POLICY IF EXISTS "mantle_runs_update" ON public.mantle_runs;
@@ -76,7 +85,6 @@ DROP POLICY IF EXISTS "profiles_select_own" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_update_own" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
 
--- Game telemetry: guests (anon) and signed-in users both write runs from the browser.
 CREATE POLICY "mantle_runs_insert" ON public.mantle_runs
   FOR INSERT TO authenticated, anon
   WITH CHECK (true);
@@ -90,7 +98,6 @@ CREATE POLICY "mantle_runs_update" ON public.mantle_runs
   USING (true)
   WITH CHECK (true);
 
--- anon_links: only while signed in (needs auth.uid()).
 CREATE POLICY "anon_links_select_own" ON public.anon_links
   FOR SELECT TO authenticated
   USING (user_id = auth.uid());
@@ -120,6 +127,9 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 -- ---------------------------------------------------------------------------
 -- 5) Optional RPC for faster averages (app falls back if missing)
 -- ---------------------------------------------------------------------------
+-- Postgres cannot change OUT/RETURNS TABLE shape with CREATE OR REPLACE; drop first.
+DROP FUNCTION IF EXISTS public.get_mantle_answer_averages(text) CASCADE;
+
 CREATE OR REPLACE FUNCTION public.get_mantle_answer_averages(p_mode text)
 RETURNS TABLE (daily_number int, avg numeric, wins bigint)
 LANGUAGE sql
@@ -136,6 +146,4 @@ AS $$
   ORDER BY mr.daily_number;
 $$;
 
--- Serverless API uses the service role; it can call this without extra grants.
--- Expose to authenticated only if you ever call RPC from the browser.
 GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages(text) TO authenticated;

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getUserIdFromJwt } from '../_authUserFromJwt.js';
+import { json, parseQuery } from '../_http.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -9,12 +10,6 @@ function getSupabase() {
     throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   }
   return createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } });
-}
-
-function json(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
 }
 
 function getBearerToken(req) {
@@ -53,7 +48,7 @@ function mergeRunRows(rows) {
 
 function isMissingColumnError(err) {
   const msg = String(err?.message || err?.hint || err || '');
-  return /column|schema|Could not find|42703|PGRST204/i.test(msg);
+  return /column|schema|Could not find|42703|PGRST204|does not exist/i.test(msg);
 }
 
 function isUserIdColumnError(err) {
@@ -72,7 +67,7 @@ async function fetchRunsForColumns(supabase, columns, userId, uniqueAnons, modeF
 
   if (rUser.error) {
     if (isUserIdColumnError(rUser.error)) {
-      // Table has no user_id — skip this leg
+      // skip user leg
     } else if (isMissingColumnError(rUser.error)) {
       return { error: rUser.error };
     } else {
@@ -105,9 +100,14 @@ export default async function handler(req, res) {
 
     const supabase = getSupabase();
     const userId = await getUserIdFromJwt(supabase, supabaseUrl, token);
-    if (!userId) return json(res, 401, { error: 'Invalid token' });
+    if (!userId) {
+      return json(res, 401, {
+        error: 'Invalid token',
+        hint: 'Set SUPABASE_ANON_KEY on Vercel (same project as service role) so the API can resolve the session.',
+      });
+    }
 
-    const q = req.query || {};
+    const q = parseQuery(req);
     const details = String(q.details || '') === '1';
     const modeRaw = typeof q.mode === 'string' ? q.mode : '';
     const modeFilter = modeRaw === 'hardcore' || modeRaw === 'daily' ? modeRaw : '';
@@ -146,6 +146,7 @@ export default async function handler(req, res) {
     return json(res, 500, {
       error: 'Failed to load runs',
       detail: lastErr ? String(lastErr.message || lastErr) : 'unknown',
+      code: lastErr?.code || null,
     });
   } catch (e) {
     return json(res, 500, { error: 'Server misconfigured', detail: String(e?.message || e) });
