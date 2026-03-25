@@ -500,6 +500,9 @@ const NBAGuessGame = () => {
       setBallKnowledgeDailyCompletions({});
       setSelectedDailyDetail(null);
       setSelectedBallKnowledgeDetail(null);
+      // Also reset the visible puzzle state so a previous solved card
+      // (e.g. "answer was Luol Deng") does not linger after sign-out.
+      resetPuzzleState();
       setAccountDisplayName('');
       setAccountAvatarUrl('');
       setAccountIsVerified(false);
