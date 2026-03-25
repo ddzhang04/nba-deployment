@@ -108,6 +108,7 @@ const NBAGuessGame = () => {
   const [authNotice, setAuthNotice] = useState('');
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
+  const accountBackfillMarkerRef = useRef('');
 
   // Detect whether mantle_runs supports storing details like guess_history/top5.
   useEffect(() => {
@@ -550,34 +551,59 @@ const NBAGuessGame = () => {
       // Best-effort: never block gameplay UI on this.
       const anon_id = getOrCreateAnalyticsId();
       const user_id = authSession?.user?.id || null;
+      const detailsOk = mantleRunsDetailsSupported === true;
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
-        return;
+      } else {
+        // Frontend-first write. If RLS/policies block this on some clients,
+        // we fallback to the server route below.
+        const { error } = await supabase.from('mantle_runs').upsert(
+          {
+            anon_id,
+            user_id,
+            mode,
+            daily_number: dailyNumber,
+            date,
+            answer,
+            guesses,
+            won,
+            ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
+          },
+          { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
+        );
+        if (!error) {
+          setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
+          return;
+        }
+        console.error('Supabase submit error:', error);
       }
 
-      // Frontend-only approach: write directly to Supabase using anon key.
-      // Use "ignoreDuplicates" so we don't need UPDATE RLS policies.
-      const detailsOk = mantleRunsDetailsSupported === true;
-      const { error } = await supabase.from('mantle_runs').upsert(
-        {
-          anon_id,
-          user_id,
-          mode,
-          daily_number: dailyNumber,
-          date,
-          answer,
-          guesses,
-          won,
-          ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
-        },
-        { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
-      );
-      if (error) {
-        console.error('Supabase submit error:', error);
-        setSupabaseDebug({ lastSubmitOk: false, lastError: error?.message || 'Supabase submit failed' });
-      } else {
+      // Server fallback path (service-role on backend). Keeps cross-device sync reliable.
+      try {
+        await fetchJsonWithRetry(
+          `${SECURE_API_BASE}/stats/submit`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              anon_id,
+              user_id,
+              mode,
+              dailyNumber,
+              date,
+              answer,
+              guesses,
+              won,
+              guessHistory,
+              top5,
+            }),
+          },
+          { timeoutMs: 20000, retries: 1, retryDelayMs: 800 }
+        );
         setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
+      } catch (fallbackErr) {
+        setSupabaseDebug({ lastSubmitOk: false, lastError: fallbackErr?.message || 'Cloud submit failed' });
       }
     } catch {
       // ignore
@@ -1126,6 +1152,60 @@ const NBAGuessGame = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId, mantleRunsDetailsSupported]);
+
+  // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
+  // On sign-in, push local history once so it becomes available on other devices.
+  useEffect(() => {
+    if (!authSession?.user?.id) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+
+    const marker = `${authSession.user.id}:${anonId}`;
+    if (accountBackfillMarkerRef.current === marker) return;
+    accountBackfillMarkerRef.current = marker;
+
+    const dailyLocal = getDailyCompletionsFromStorage();
+    const hardcoreLocal = getBallKnowledgeDailyFromStorage();
+
+    const jobs = [];
+    for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
+      const n = Number(numStr);
+      if (!Number.isFinite(n) || n < 1) continue;
+      jobs.push(
+        submitCompletionToCloud({
+          mode: 'daily',
+          dailyNumber: n,
+          date: typeof entry?.date === 'string' ? entry.date : '',
+          answer: typeof entry?.answer === 'string' ? entry.answer : '',
+          guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+          won: entry?.won !== false,
+          guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+          top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+        })
+      );
+    }
+    for (const [numStr, entry] of Object.entries(hardcoreLocal || {})) {
+      const n = Number(numStr);
+      if (!Number.isFinite(n) || n < 1) continue;
+      jobs.push(
+        submitCompletionToCloud({
+          mode: 'hardcore',
+          dailyNumber: n,
+          date: typeof entry?.date === 'string' ? entry.date : '',
+          answer: typeof entry?.answer === 'string' ? entry.answer : '',
+          guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+          won: entry?.won !== false,
+          guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+          top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+        })
+      );
+    }
+
+    if (jobs.length) {
+      Promise.allSettled(jobs).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession, identityInitialized, anonId]);
   useEffect(() => {
     // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
     try {
