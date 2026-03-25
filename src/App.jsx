@@ -108,6 +108,7 @@ const NBAGuessGame = () => {
   const [accountIsVerified, setAccountIsVerified] = useState(false);
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -305,6 +306,7 @@ const NBAGuessGame = () => {
     if (!supabase) return;
     setAuthLoading(true);
     setAuthError('');
+    setAuthNotice('');
     try {
       const res = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       if (res.error) throw res.error;
@@ -316,10 +318,47 @@ const NBAGuessGame = () => {
     }
   };
 
+  const handleSignUpWithEmail = async () => {
+    if (!supabase) return;
+    setAuthLoading(true);
+    setAuthError('');
+    setAuthNotice('');
+    try {
+      const email = authEmail.trim();
+      const password = authPassword;
+      if (!email) throw new Error('Please enter your email.');
+      if (!password) throw new Error('Please enter your password.');
+
+      // Only provide emailRedirectTo when explicitly configured.
+      // Otherwise Supabase will use its configured Site URL.
+      const configuredEmailRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
+      const payload = {
+        email,
+        password,
+      };
+      if (configuredEmailRedirectTo) {
+        payload.options = { emailRedirectTo: configuredEmailRedirectTo };
+      }
+
+      const res = await supabase.auth.signUp(payload);
+      if (res.error) throw res.error;
+
+      // If email confirmations are enabled, there may be no session yet.
+      const nextSession = res.data?.session ?? null;
+      setAuthSession(nextSession);
+      setAuthNotice(nextSession ? 'Account created. You are signed in.' : 'Account created. Check your email to confirm your account.');
+    } catch (e) {
+      setAuthError(e?.message || 'Sign up failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleSignInWithGoogle = async () => {
     if (!supabase) return;
     setAuthLoading(true);
     setAuthError('');
+    setAuthNotice('');
     try {
       // Supabase will use its configured Site URL / redirect rules.
       // Only provide redirectTo when explicitly configured to avoid
@@ -347,9 +386,12 @@ const NBAGuessGame = () => {
     if (!email) return;
     setAuthLoading(true);
     setAuthError('');
+    setAuthNotice('');
     try {
-      const redirectTo = typeof window !== 'undefined' ? window.location.origin : '';
-      const res = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      const redirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
+      const res = redirectTo
+        ? await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+        : await supabase.auth.resetPasswordForEmail(email);
       if (res.error) throw res.error;
     } catch (e) {
       setAuthError(e?.message || 'Reset failed');
@@ -2497,6 +2539,24 @@ const NBAGuessGame = () => {
 
                   <button
                     type="button"
+                    onClick={handleSignUpWithEmail}
+                    disabled={authLoading}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(167, 139, 250, 0.55)',
+                      backgroundColor: 'rgba(167, 139, 250, 0.10)',
+                      color: '#ddd6fe',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Create an account using email + password"
+                  >
+                    Create account
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleSignInWithGoogle}
                     disabled={authLoading}
                     style={{
@@ -2546,7 +2606,11 @@ const NBAGuessGame = () => {
                   </button>
                 </div>
 
-                {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+                {authError ? (
+                  <div style={{ color: '#fecaca' }}>{authError}</div>
+                ) : authNotice ? (
+                  <div style={{ color: '#bbf7d0' }}>{authNotice}</div>
+                ) : null}
               </div>
             )}
           </div>
