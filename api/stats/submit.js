@@ -12,6 +12,13 @@ function getSupabase() {
   });
 }
 
+function getBearerToken(req) {
+  const h = req.headers?.authorization || req.headers?.Authorization || '';
+  const s = Array.isArray(h) ? h[0] : String(h || '');
+  const m = s.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -27,7 +34,6 @@ export default async function handler(req, res) {
   }
 
   const anon_id = typeof body.anon_id === 'string' ? body.anon_id.trim() : '';
-  const user_id = typeof body.user_id === 'string' ? body.user_id.trim() : null;
   const modeRaw = typeof body.mode === 'string' ? body.mode : '';
   const mode = modeRaw === 'hardcore' ? 'hardcore' : modeRaw === 'daily' ? 'daily' : '';
   const daily_number = Number.isFinite(Number(body.dailyNumber)) ? Number(body.dailyNumber) : null;
@@ -44,6 +50,15 @@ export default async function handler(req, res) {
 
   try {
     const supabase = getSupabase();
+    // If a bearer token is present, trust *that* user as the run owner.
+    // This prevents spoofing `user_id` from the client.
+    let user_id = null;
+    const token = getBearerToken(req);
+    if (token) {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+      if (!userErr && userData?.user?.id) user_id = userData.user.id;
+    }
+
     const { error } = await supabase
       .from('mantle_runs')
       .upsert(

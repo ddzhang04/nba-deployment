@@ -581,14 +581,15 @@ const NBAGuessGame = () => {
 
       // Server fallback path (service-role on backend). Keeps cross-device sync reliable.
       try {
+        const token = authSession?.access_token || '';
         await fetchJsonWithRetry(
           `${SECURE_API_BASE}/stats/submit`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            ...(token ? { headers: { 'Content-Type': 'application/json; charset=utf-8', Authorization: `Bearer ${token}` } } : {}),
             body: JSON.stringify({
               anon_id,
-              user_id,
               mode,
               dailyNumber,
               date,
@@ -1044,8 +1045,21 @@ const NBAGuessGame = () => {
           ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
           : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
 
-        // Pull account runs primarily by user_id (most reliable for cross-device).
-        // Fallback query by anon_id keeps compatibility with older rows missing user_id.
+        // Prefer server-side fetch (bypasses RLS issues) when we have an access token.
+        const token = authSession?.access_token || '';
+        let serverRuns = [];
+        if (token) {
+          try {
+            const r = await fetchJsonWithRetry(
+              `${SECURE_API_BASE}/stats/runs?details=${detailsOk ? '1' : '0'}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+              { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+            );
+            serverRuns = Array.isArray(r?.runs) ? r.runs : [];
+          } catch {}
+        }
+
+        // Fallback to client-side Supabase queries (may require permissive RLS).
         const [byUserRes, byAnonRes] = await Promise.all([
           supabase
             .from('mantle_runs')
@@ -1061,11 +1075,8 @@ const NBAGuessGame = () => {
             : Promise.resolve({ data: [], error: null }),
         ]);
 
-        const byUserErr = byUserRes?.error || null;
-        const byAnonErr = byAnonRes?.error || null;
-        if (byUserErr && byAnonErr) throw byUserErr;
-
         const mergedRows = [
+          ...serverRuns,
           ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
           ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
         ];
