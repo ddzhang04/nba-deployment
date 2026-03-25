@@ -110,6 +110,25 @@ const NBAGuessGame = () => {
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
+  const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
+
+  // Detect whether mantle_runs supports storing details like guess_history/top5.
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { error } = await supabase.from('mantle_runs').select('guess_history,top5').limit(1);
+        if (cancelled) return;
+        setMantleRunsDetailsSupported(!error);
+      } catch {
+        if (!cancelled) setMantleRunsDetailsSupported(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -248,7 +267,8 @@ const NBAGuessGame = () => {
     return String(md?.picture || md?.avatar_url || '').trim();
   };
 
-  // After login, link this user's guest anon_id to their account (so progress follows).
+  // After login, link this device's anon_id to the user, then load their profile.
+  // Important: do NOT overwrite an existing display_name every login.
   useEffect(() => {
     if (!supabase) return;
     if (!authSession?.user) return;
@@ -256,14 +276,16 @@ const NBAGuessGame = () => {
     if (!anonId) return;
 
     const userId = authSession.user.id;
-    const displayName = getDefaultDisplayNameForUser(authSession.user);
-    const avatarUrl = getDefaultAvatarForUser(authSession.user);
+    const fallbackDisplayName = getDefaultDisplayNameForUser(authSession.user);
+    const fallbackAvatarUrl = getDefaultAvatarForUser(authSession.user);
 
+    let cancelled = false;
     setAccountSaving(true);
     setAuthError('');
 
-    Promise.all([
-      (async () => {
+    (async () => {
+      try {
+        // 1) Link this device's anon_id to the signed-in user.
         try {
           await supabase
             .from('anon_links')
@@ -271,35 +293,53 @@ const NBAGuessGame = () => {
               { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
               { onConflict: 'anon_id' }
             );
-        } catch {
-          // Best-effort: linking failure should not block sign-in.
-        }
-      })(),
-      (async () => {
+        } catch {}
+
+        // 2) Load profile if it exists.
+        let profile = null;
         try {
-          await supabase
+          const { data } = await supabase
             .from('profiles')
-            .upsert(
-              {
-                user_id: userId,
-                display_name: displayName,
-                avatar_url: avatarUrl || null,
-                is_verified: false,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'user_id' }
-            );
-        } catch {
-          // Best-effort: profile failure should not block sign-in.
+            .select('display_name, avatar_url, is_verified')
+            .eq('user_id', userId)
+            .maybeSingle();
+          profile = data ?? null;
+        } catch {}
+
+        // 3) If no profile yet, create one using OAuth metadata defaults.
+        if (!profile) {
+          try {
+            await supabase
+              .from('profiles')
+              .upsert(
+                {
+                  user_id: userId,
+                  display_name: fallbackDisplayName,
+                  avatar_url: fallbackAvatarUrl || null,
+                  is_verified: false,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'user_id' }
+              );
+            profile = { display_name: fallbackDisplayName, avatar_url: fallbackAvatarUrl || null, is_verified: false };
+          } catch {}
         }
-      })(),
-    ])
-      .then(() => {
-        setAccountDisplayName(displayName);
-        setAccountAvatarUrl(avatarUrl || '');
-        setAccountIsVerified(false);
-      })
-      .finally(() => setAccountSaving(false));
+
+        if (cancelled) return;
+        const dn = typeof profile?.display_name === 'string' ? profile.display_name : fallbackDisplayName;
+        const av = typeof profile?.avatar_url === 'string' ? profile.avatar_url : (fallbackAvatarUrl || '');
+        const ver = !!profile?.is_verified;
+        setAccountDisplayName(dn);
+        setAccountAvatarUrl(av || '');
+        setAccountIsVerified(ver);
+      } finally {
+        if (!cancelled) setAccountSaving(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId]);
 
@@ -470,10 +510,11 @@ const NBAGuessGame = () => {
     }
   };
 
-  const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won }) => {
+  const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] }) => {
     try {
       // Best-effort: never block gameplay UI on this.
       const anon_id = getOrCreateAnalyticsId();
+      const user_id = authSession?.user?.id || null;
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
@@ -482,15 +523,18 @@ const NBAGuessGame = () => {
 
       // Frontend-only approach: write directly to Supabase using anon key.
       // Use "ignoreDuplicates" so we don't need UPDATE RLS policies.
+      const detailsOk = mantleRunsDetailsSupported === true;
       const { error } = await supabase.from('mantle_runs').upsert(
         {
           anon_id,
+          user_id,
           mode,
           daily_number: dailyNumber,
           date,
           answer,
           guesses,
           won,
+          ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
         },
         { onConflict: 'anon_id,mode,daily_number', ignoreDuplicates: true }
       );
@@ -942,6 +986,116 @@ const NBAGuessGame = () => {
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   // Lock out replaying any hardcore daily that already has a saved completion (today or past).
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
+
+  // When signed in, hydrate local daily completions from all devices linked to this account.
+  useEffect(() => {
+    if (!supabase) return;
+    if (!authSession?.user?.id) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+
+    let cancelled = false;
+    const userId = authSession.user.id;
+
+    (async () => {
+      try {
+        // Get all anon_ids linked to this account.
+        const { data: links, error: linksErr } = await supabase
+          .from('anon_links')
+          .select('anon_id')
+          .eq('user_id', userId)
+          .limit(200);
+        if (linksErr) throw linksErr;
+
+        const anonIds = Array.from(new Set((links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean)));
+        if (!anonIds.length) return;
+
+        const detailsOk = mantleRunsDetailsSupported === true;
+        const columns = detailsOk
+          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
+          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+
+        // Pull all runs for these anon_ids (daily + hardcore).
+        const { data: runs, error: runsErr } = await supabase
+          .from('mantle_runs')
+          .select(columns)
+          .in('anon_id', anonIds)
+          .limit(5000);
+        if (runsErr) throw runsErr;
+
+        const rows = Array.isArray(runs) ? runs : [];
+
+        const toCompletionMap = (modeKey) => {
+          const out = {};
+          for (const r of rows) {
+            const m = String(r?.mode || '');
+            const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+            if (normalizedMode !== modeKey) continue;
+
+            const n = Number(r?.daily_number);
+            if (!Number.isFinite(n) || n < 1) continue;
+            const keyNum = String(n);
+
+            const dateStr = typeof r?.date === 'string' ? r.date : '';
+            const completedAt = typeof r?.created_at === 'string' ? r.created_at : '';
+            const guesses = typeof r?.guesses === 'number' ? r.guesses : null;
+            const won = r?.won !== false;
+            const answer = typeof r?.answer === 'string' ? r.answer : '';
+            const guessHistory = detailsOk && Array.isArray(r?.guess_history) ? r.guess_history : [];
+            const top5 = detailsOk && Array.isArray(r?.top5) ? r.top5 : [];
+
+            // Keep the most recent completion per daily number.
+            const prev = out[keyNum];
+            if (!prev || (completedAt && prev.completedAt && completedAt > prev.completedAt) || (!prev.completedAt && completedAt)) {
+              out[keyNum] = { date: dateStr, completedAt, guesses, guessHistory, won, answer, top5 };
+            }
+          }
+          return out;
+        };
+
+        const dailyFromCloud = toCompletionMap('daily');
+        const hardcoreFromCloud = toCompletionMap('hardcore');
+
+        // Merge with local storage (keep any richer local data like guessHistory/top5 when present).
+        const merge = (local, cloud) => {
+          const next = { ...(local || {}) };
+          for (const [k, v] of Object.entries(cloud || {})) {
+            if (!next[k]) {
+              next[k] = v;
+              continue;
+            }
+            // Prefer local if it has guessHistory/top5; otherwise take cloud.
+            const localEntry = next[k];
+            const hasLocalDetails =
+              Array.isArray(localEntry?.guessHistory) && localEntry.guessHistory.length > 0
+                ? true
+                : Array.isArray(localEntry?.top5) && localEntry.top5.length > 0;
+            next[k] = hasLocalDetails ? { ...v, ...localEntry } : { ...localEntry, ...v };
+          }
+          return next;
+        };
+
+        const nextDaily = merge(getDailyCompletionsFromStorage(), dailyFromCloud);
+        const nextHardcore = merge(getBallKnowledgeDailyFromStorage(), hardcoreFromCloud);
+
+        if (cancelled) return;
+
+        try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(nextDaily)); } catch {}
+        try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(nextHardcore)); } catch {}
+
+        setDailyCompletions(nextDaily);
+        setBallKnowledgeDailyCompletions(nextHardcore);
+      } catch (e) {
+        // Best-effort sync; don't break gameplay.
+        console.error('Account progress sync error:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession, identityInitialized, anonId]);
   useEffect(() => {
     // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
     try {
@@ -1738,7 +1892,7 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true });
+                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore });
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -1748,7 +1902,7 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true });
+                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore });
               }
             }
           }
@@ -1833,7 +1987,7 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false });
+        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] });
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -1842,7 +1996,7 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setBallKnowledgeDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false });
+        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] });
       }
     }
     setLoading(false);
@@ -3965,38 +4119,6 @@ const NBAGuessGame = () => {
                       <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>
                         Wins: {profileData?.wins ?? '—'} · Avg: {profileData?.avgGuesses != null ? Number(profileData.avgGuesses).toFixed(2) : '—'} · Streak: {profileData?.currentStreak ?? '—'}
                       </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!anonId) return;
-                          try {
-                            const u = new URL(window.location.href);
-                            u.searchParams.set('sid', anonId);
-                            const copied = await copyToClipboardBestEffort(u.toString());
-                            if (copied) {
-                              setShowCopyToast(true);
-                              setTimeout(() => setShowCopyToast(false), 2500);
-                            }
-                          } catch {}
-                        }}
-                        style={{
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          border: '1px solid rgba(34, 197, 94, 0.35)',
-                          backgroundColor: 'rgba(34, 197, 94, 0.14)',
-                          color: '#bbf7d0',
-                          fontWeight: 900,
-                          cursor: 'pointer',
-                          fontSize: '0.9rem',
-                        }}
-                        disabled={!identityInitialized || !anonId}
-                        title="Copies a link that reuses your anon_id across browsers"
-                      >
-                        🔗 Share progress across browsers
-                      </button>
                     </div>
 
                     <div>
