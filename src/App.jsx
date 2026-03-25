@@ -239,10 +239,14 @@ const NBAGuessGame = () => {
       })
       .finally(() => setAuthLoading(false));
 
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthSession(session ?? null);
-      // If session is cleared (e.g. token expired), also clear account-local UI state.
-      if (!session) {
+      // Only clear account-local UI state on an explicit sign-out-like event.
+      // Supabase can emit transient null sessions during init/refresh; clearing here would
+      // incorrectly wipe local history when simply navigating/switching UI modes.
+      const shouldClear =
+        !session && (event === 'SIGNED_OUT' || event === 'USER_DELETED');
+      if (shouldClear) {
         try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
         try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
         setDailyCompletions({});
