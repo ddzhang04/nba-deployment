@@ -4171,6 +4171,24 @@ const NBAGuessGame = () => {
 
                     <button
                       type="button"
+                      onClick={handleSignUpWithEmail}
+                      disabled={authLoading}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(167, 139, 250, 0.55)',
+                        backgroundColor: 'rgba(167, 139, 250, 0.10)',
+                        color: '#ddd6fe',
+                        fontWeight: 900,
+                        cursor: authLoading ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Create an account using email + password"
+                    >
+                      Create account
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleSignInWithGoogle}
                       disabled={authLoading}
                       style={{
@@ -4220,7 +4238,11 @@ const NBAGuessGame = () => {
                     </button>
                   </div>
 
-                  {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+                  {authError ? (
+                    <div style={{ color: '#fecaca' }}>{authError}</div>
+                  ) : authNotice ? (
+                    <div style={{ color: '#bbf7d0' }}>{authNotice}</div>
+                  ) : null}
                 </div>
               )}
             </div>

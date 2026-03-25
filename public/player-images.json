@@ -2210,5 +2210,65 @@
   "Johan Petro": {
     "id": "101130",
     "imageUrl": "https://cdn.nba.com/headshots/nba/latest/260x190/101130.png"
+  },
+  "Spencer Hawes": {
+    "id": "hawessp01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/hawessp01.jpg"
+  },
+  "Thabo Sefolosha": {
+    "id": "sefolth01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/sefolth01.jpg"
+  },
+  "Tyler Johnson": {
+    "id": "johnsty01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/johnsty01.jpg"
+  },
+  "Corey Brewer": {
+    "id": "breweco01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/breweco01.jpg"
+  },
+  "Michael Beasley": {
+    "id": "beaslmi01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/beaslmi01.jpg"
+  },
+  "Troy Murphy": {
+    "id": "murphtr01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/murphtr01.jpg"
+  },
+  "Darko Miličić": {
+    "id": "milicda01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/milicda01.jpg"
+  },
+  "Evan Fournier": {
+    "id": "fournev01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/fournev01.jpg"
+  },
+  "Ian Mahinmi": {
+    "id": "mahinia01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/mahinia01.jpg"
+  },
+  "Timofey Mozgov": {
+    "id": "mozgoti01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/mozgoti01.jpg"
+  },
+  "Keith Van Horn": {
+    "id": "vanhoke01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/vanhoke01.jpg"
+  },
+  "Josh Childress": {
+    "id": "childjo01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/childjo01.jpg"
+  },
+  "Rodney Rogers": {
+    "id": "rogerro01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/rogerro01.jpg"
+  },
+  "Kelenna Azubuike": {
+    "id": "azubuke01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/azubuke01.jpg"
+  },
+  "Lonnie Walker IV": {
+    "id": "walkelo01",
+    "imageUrl": "https://cdn.ssref.net/scripts/image_resize.cgi?min=200&url=https://www.basketball-reference.com/req/202106291/images/headshots/walkelo01.jpg"
   }
 }
