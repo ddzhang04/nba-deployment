@@ -308,13 +308,21 @@ const NBAGuessGame = () => {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const redirectTo = typeof window !== 'undefined' ? window.location.origin : '';
-      const res = await supabase.auth.signInWithOAuth({
+      // Supabase will use its configured Site URL / redirect rules.
+      // Only provide redirectTo when explicitly configured to avoid
+      // "redirect_to parameter is not allowed" failures.
+      const configuredRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
+      const payload = {
         provider: 'google',
-        options: { redirectTo },
-      });
+      };
+      if (configuredRedirectTo) {
+        payload.options = { redirectTo: configuredRedirectTo };
+      }
+
+      const res = await supabase.auth.signInWithOAuth(payload);
       if (res.error) throw res.error;
     } catch (e) {
+      console.error('Google sign-in error:', e);
       setAuthError(e?.message || 'Google sign-in failed');
       setAuthLoading(false);
     }
@@ -2260,6 +2268,204 @@ const NBAGuessGame = () => {
             </button>
           </div>
 
+          {/* Account (optional) moved to main page */}
+          <div
+            style={{
+              maxWidth: '620px',
+              margin: '0 auto 24px',
+              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+              borderRadius: '16px',
+              padding: '18px',
+              border: '1px solid #334155',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '1rem' }}>🔐 Account (optional)</div>
+              {authSession?.user ? (
+                <div style={{ color: '#bbf7d0', fontWeight: 900, fontSize: '0.85rem' }}>Signed in</div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontWeight: 900, fontSize: '0.85rem' }}>Guest mode</div>
+              )}
+            </div>
+
+            {authLoading ? (
+              <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading…</div>
+            ) : authSession?.user ? (
+              <div style={{ display: 'grid', gap: '10px' }}>
+                <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
+                  Signed in as {accountDisplayName || authSession.user.email}
+                </div>
+
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
+                  <input
+                    value={accountDisplayName}
+                    onChange={(e) => setAccountDisplayName(e.target.value)}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(51, 65, 85, 0.85)',
+                      backgroundColor: '#0b1220',
+                      color: 'white',
+                      width: '100%',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveDisplayName}
+                    disabled={accountSaving}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: 'none',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      fontWeight: 900,
+                      cursor: accountSaving ? 'not-allowed' : 'pointer',
+                    }}
+                    title="Updates your public display name"
+                  >
+                    {accountSaving ? 'Saving…' : 'Save'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={accountSaving}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(248, 113, 113, 0.55)',
+                      backgroundColor: 'rgba(127, 29, 29, 0.22)',
+                      color: '#fecaca',
+                      fontWeight: 900,
+                      cursor: accountSaving ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </div>
+
+                {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '10px' }}>
+                <div style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.4 }}>
+                  Sign in to save progress across browsers. You can always keep playing as a guest.
+                </div>
+
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Email</div>
+                  <input
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(51, 65, 85, 0.85)',
+                      backgroundColor: '#0b1220',
+                      color: 'white',
+                      width: '100%',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Password</div>
+                  <input
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    type="password"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(51, 65, 85, 0.85)',
+                      backgroundColor: '#0b1220',
+                      color: 'white',
+                      width: '100%',
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleSignInWithEmail}
+                    disabled={authLoading}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: 'none',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Sign in
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSignInWithGoogle}
+                    disabled={authLoading}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(148, 163, 184, 0.55)',
+                      backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                      color: '#e2e8f0',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Continue with Google
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: '6px' }}>
+                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Reset password</div>
+                  <input
+                    value={authResetEmail}
+                    onChange={(e) => setAuthResetEmail(e.target.value)}
+                    placeholder="Email for reset"
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(51, 65, 85, 0.85)',
+                      backgroundColor: '#0b1220',
+                      color: 'white',
+                      width: '100%',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleResetPassword}
+                    disabled={authLoading}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(59, 130, 246, 0.55)',
+                      backgroundColor: 'rgba(59, 130, 246, 0.18)',
+                      color: '#dbeafe',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Send reset email
+                  </button>
+                </div>
+
+                {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+              </div>
+            )}
+          </div>
+
           {/* Game Mode Selection */}
           <div style={{ marginBottom: '20px' }}>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -3439,6 +3645,7 @@ const NBAGuessGame = () => {
               justifyContent: 'center',
               zIndex: 50,
               padding: '16px',
+              overflowY: 'auto',
             }}
           >
             <div
@@ -3451,6 +3658,8 @@ const NBAGuessGame = () => {
                 padding: '24px',
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
                 border: '1px solid #334155',
+                maxHeight: '85vh',
+                overflowY: 'auto',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -3581,193 +3790,6 @@ const NBAGuessGame = () => {
                       >
                         🔗 Share progress across browsers
                       </button>
-                    </div>
-
-                    <div
-                      style={{
-                        padding: '12px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(59, 130, 246, 0.35)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.10)',
-                        marginTop: '10px',
-                      }}
-                    >
-                      <div style={{ color: '#e5e7eb', fontWeight: 900, marginBottom: '10px' }}>
-                        Account (optional)
-                      </div>
-
-                      {authLoading ? (
-                        <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading…</div>
-                      ) : authSession?.user ? (
-                        <div style={{ display: 'grid', gap: '10px' }}>
-                          <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
-                            Signed in as {accountDisplayName || authSession.user.email}
-                          </div>
-
-                          <div style={{ display: 'grid', gap: '6px' }}>
-                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
-                            <input
-                              value={accountDisplayName}
-                              onChange={(e) => setAccountDisplayName(e.target.value)}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(51, 65, 85, 0.85)',
-                                backgroundColor: '#0b1220',
-                                color: 'white',
-                              }}
-                            />
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <button
-                              type="button"
-                              onClick={handleSaveDisplayName}
-                              disabled={accountSaving}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: 'none',
-                                backgroundColor: '#3b82f6',
-                                color: 'white',
-                                fontWeight: 900,
-                                cursor: accountSaving ? 'not-allowed' : 'pointer',
-                              }}
-                              title="Updates your public display name"
-                            >
-                              {accountSaving ? 'Saving…' : 'Save'}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleSignOut}
-                              disabled={accountSaving}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(248, 113, 113, 0.55)',
-                                backgroundColor: 'rgba(127, 29, 29, 0.22)',
-                                color: '#fecaca',
-                                fontWeight: 900,
-                                cursor: accountSaving ? 'not-allowed' : 'pointer',
-                              }}
-                            >
-                              Sign out
-                            </button>
-                          </div>
-
-                          {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
-                        </div>
-                      ) : (
-                        <div style={{ display: 'grid', gap: '10px' }}>
-                          <div style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.4 }}>
-                            Sign in to save progress across browsers. You can always keep playing as a guest.
-                          </div>
-
-                          <div style={{ display: 'grid', gap: '6px' }}>
-                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Email</div>
-                            <input
-                              value={authEmail}
-                              onChange={(e) => setAuthEmail(e.target.value)}
-                              placeholder="you@example.com"
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(51, 65, 85, 0.85)',
-                                backgroundColor: '#0b1220',
-                                color: 'white',
-                              }}
-                            />
-                          </div>
-
-                          <div style={{ display: 'grid', gap: '6px' }}>
-                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Password</div>
-                            <input
-                              value={authPassword}
-                              onChange={(e) => setAuthPassword(e.target.value)}
-                              placeholder="••••••••"
-                              type="password"
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(51, 65, 85, 0.85)',
-                                backgroundColor: '#0b1220',
-                                color: 'white',
-                              }}
-                            />
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                            <button
-                              type="button"
-                              onClick={handleSignInWithEmail}
-                              disabled={authLoading}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: 'none',
-                                backgroundColor: '#22c55e',
-                                color: 'white',
-                                fontWeight: 900,
-                                cursor: authLoading ? 'not-allowed' : 'pointer',
-                              }}
-                            >
-                              Sign in
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleSignInWithGoogle}
-                              disabled={authLoading}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(148, 163, 184, 0.55)',
-                                backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                                color: '#e2e8f0',
-                                fontWeight: 900,
-                                cursor: authLoading ? 'not-allowed' : 'pointer',
-                              }}
-                            >
-                              Continue with Google
-                            </button>
-                          </div>
-
-                          <div style={{ display: 'grid', gap: '6px' }}>
-                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Reset password</div>
-                            <input
-                              value={authResetEmail}
-                              onChange={(e) => setAuthResetEmail(e.target.value)}
-                              placeholder="Email for reset"
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(51, 65, 85, 0.85)',
-                                backgroundColor: '#0b1220',
-                                color: 'white',
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={handleResetPassword}
-                              disabled={authLoading}
-                              style={{
-                                padding: '10px 12px',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(59, 130, 246, 0.55)',
-                                backgroundColor: 'rgba(59, 130, 246, 0.18)',
-                                color: '#dbeafe',
-                                fontWeight: 900,
-                                cursor: authLoading ? 'not-allowed' : 'pointer',
-                              }}
-                            >
-                              Send reset email
-                            </button>
-                          </div>
-
-                          {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
-                        </div>
-                      )}
                     </div>
 
                     <div>
