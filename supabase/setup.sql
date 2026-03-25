@@ -124,6 +124,10 @@ CREATE POLICY "profiles_update_own" ON public.profiles
   USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
 
+-- Table privileges (RLS still applies; avoids edge cases where role lacked GRANT).
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.anon_links TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 5) Optional RPC for faster averages (app falls back if missing)
 -- ---------------------------------------------------------------------------

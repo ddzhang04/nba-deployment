@@ -311,15 +311,27 @@ const NBAGuessGame = () => {
 
     (async () => {
       try {
+        // Ensure the Supabase client has this JWT before RLS-checked writes.
+        // React state can update before the client's auth store does → requests look like `anon` → 403 on anon_links.
+        if (authSession?.access_token && authSession?.refresh_token) {
+          await supabase.auth.setSession({
+            access_token: authSession.access_token,
+            refresh_token: authSession.refresh_token,
+          });
+        }
+
         // 1) Link this device's anon_id to the signed-in user.
         try {
-          await supabase
+          const { error: linkErr } = await supabase
             .from('anon_links')
             .upsert(
               { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
               { onConflict: 'anon_id' }
             );
-        } catch {}
+          if (linkErr) console.warn('anon_links upsert:', linkErr.message || linkErr);
+        } catch (e) {
+          console.warn('anon_links upsert failed:', e?.message || e);
+        }
 
         // 2) Load profile if it exists.
         let profile = null;
