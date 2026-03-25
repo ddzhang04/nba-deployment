@@ -90,6 +90,22 @@ const NBAGuessGame = () => {
   const [showFavorites, setShowFavorites] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
   const [restoringTop5, setRestoringTop5] = useState(false);
+  const [identityInitialized, setIdentityInitialized] = useState(false);
+  const [anonId, setAnonId] = useState('');
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [authSession, setAuthSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authResetEmail, setAuthResetEmail] = useState('');
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountDisplayName, setAccountDisplayName] = useState('');
+  const [accountAvatarUrl, setAccountAvatarUrl] = useState('');
+  const [accountIsVerified, setAccountIsVerified] = useState(false);
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -164,6 +180,195 @@ const NBAGuessGame = () => {
       return id;
     } catch {
       return '';
+    }
+  };
+
+  // Cross-browser identity: if you open the app with `?sid=<anon_id>`,
+  // we reuse that anon_id in localStorage so history/leaderboards follow you.
+  useEffect(() => {
+    try {
+      const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const sid = qs ? (qs.get('sid') || '') : '';
+      if (typeof sid === 'string' && sid.trim()) {
+        const analyticsKey = key('nba-mantle-analytics-id');
+        localStorage.setItem(analyticsKey, sid.trim());
+      }
+      const id = getOrCreateAnalyticsId();
+      setAnonId(id);
+    } catch {
+      setAnonId('');
+    } finally {
+      setIdentityInitialized(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auth: load current session + listen for changes.
+  useEffect(() => {
+    if (!supabase) return;
+    let unsub = null;
+    setAuthLoading(true);
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setAuthSession(data.session ?? null);
+      })
+      .catch(() => {
+        setAuthSession(null);
+      })
+      .finally(() => setAuthLoading(false));
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session ?? null);
+    });
+    unsub = data?.subscription || null;
+
+    return () => {
+      try {
+        unsub?.unsubscribe?.();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getDefaultDisplayNameForUser = (user) => {
+    const md = user?.user_metadata || {};
+    return (
+      String(md?.name || md?.full_name || user?.email?.split('@')?.[0] || 'Player').trim() || 'Player'
+    );
+  };
+
+  const getDefaultAvatarForUser = (user) => {
+    const md = user?.user_metadata || {};
+    return String(md?.picture || md?.avatar_url || '').trim();
+  };
+
+  // After login, link this user's guest anon_id to their account (so progress follows).
+  useEffect(() => {
+    if (!supabase) return;
+    if (!authSession?.user) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+
+    const userId = authSession.user.id;
+    const displayName = getDefaultDisplayNameForUser(authSession.user);
+    const avatarUrl = getDefaultAvatarForUser(authSession.user);
+
+    setAccountSaving(true);
+    setAuthError('');
+
+    Promise.all([
+      supabase
+        .from('anon_links')
+        .upsert(
+          { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
+          { onConflict: 'anon_id' }
+        )
+        .catch(() => null),
+      supabase
+        .from('profiles')
+        .upsert(
+          {
+            user_id: userId,
+            display_name: displayName,
+            avatar_url: avatarUrl || null,
+            is_verified: false,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        )
+        .catch(() => null),
+    ])
+      .then(() => {
+        setAccountDisplayName(displayName);
+        setAccountAvatarUrl(avatarUrl || '');
+        setAccountIsVerified(false);
+      })
+      .finally(() => setAccountSaving(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authSession, identityInitialized, anonId]);
+
+  const handleSignInWithEmail = async () => {
+    if (!supabase) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+      if (res.error) throw res.error;
+      setAuthSession(res.data.session ?? null);
+    } catch (e) {
+      setAuthError(e?.message || 'Sign in failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignInWithGoogle = async () => {
+    if (!supabase) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const redirectTo = typeof window !== 'undefined' ? window.location.origin : '';
+      const res = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      });
+      if (res.error) throw res.error;
+    } catch (e) {
+      setAuthError(e?.message || 'Google sign-in failed');
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!supabase) return;
+    const email = authResetEmail.trim();
+    if (!email) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const redirectTo = typeof window !== 'undefined' ? window.location.origin : '';
+      const res = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (res.error) throw res.error;
+    } catch (e) {
+      setAuthError(e?.message || 'Reset failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      setAuthError(e?.message || 'Sign out failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    if (!supabase) return;
+    if (!authSession?.user) return;
+    setAccountSaving(true);
+    setAuthError('');
+    try {
+      const displayName = accountDisplayName.trim();
+      const avatarUrl = accountAvatarUrl.trim() || null;
+      const userId = authSession.user.id;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ display_name: displayName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+      if (error) throw error;
+      setAccountIsVerified(!!accountIsVerified);
+    } catch (e) {
+      setAuthError(e?.message || 'Could not save profile');
+    } finally {
+      setAccountSaving(false);
     }
   };
 
@@ -399,6 +604,45 @@ const NBAGuessGame = () => {
       : todayDailyIndex;
   const activeDailyNumber = activeDailyIndex + 1;
   const isPastDailySelected = activeDailyIndex !== todayDailyIndex;
+
+  // Load public leaderboard + your profile when the "More / About" modal opens.
+  useEffect(() => {
+    if (!showMoreGames) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+
+    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+    const dailyNumber = activeDailyNumber;
+
+    setLeaderboardLoading(true);
+    setProfileLoading(true);
+
+    Promise.all([
+      fetchJsonWithRetry(
+        `${SECURE_API_BASE}/leaderboard?mode=${encodeURIComponent(modeKey)}&dailyNumber=${encodeURIComponent(dailyNumber)}&limit=10`,
+        {},
+        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+      ),
+      fetchJsonWithRetry(
+        `${SECURE_API_BASE}/profile?mode=${encodeURIComponent(modeKey)}&anon_id=${encodeURIComponent(anonId)}&lookbackDays=60`,
+        {},
+        { timeoutMs: 20000, retries: 1, retryDelayMs: 700 }
+      ),
+    ])
+      .then(([lb, prof]) => {
+        setLeaderboardData(lb);
+        setProfileData(prof);
+      })
+      .catch(() => {
+        setLeaderboardData(null);
+        setProfileData(null);
+      })
+      .finally(() => {
+        setLeaderboardLoading(false);
+        setProfileLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMoreGames, identityInitialized, anonId, gameMode, activeDailyNumber]);
 
   const formatHMS = useCallback((ms) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -3269,6 +3513,302 @@ const NBAGuessGame = () => {
                     Questions or bugs? DM me. Also—share it with friends.
                   </div>
                 </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '14px 14px',
+                  borderRadius: '14px',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.35))',
+                  marginBottom: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
+                  <div style={{ color: '#bbf7d0', fontWeight: 800, fontSize: '1rem' }}>🌍 Leaderboard + Profile</div>
+                  <div style={{ color: '#86efac', fontSize: '0.85rem', fontWeight: 800 }}>
+                    {gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Daily'} #{activeDailyNumber}
+                  </div>
+                </div>
+
+                {leaderboardLoading || profileLoading ? (
+                  <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading stats…</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ color: '#e5e7eb', fontWeight: 800 }}>
+                        {profileData?.user ? (
+                          <>
+                            {profileData?.user}{' '}
+                            {profileData?.verified ? <span style={{ color: '#60a5fa' }}>✓ Verified</span> : null}
+                          </>
+                        ) : (
+                          'Your profile'
+                        )}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.9rem', fontWeight: 700 }}>
+                        Wins: {profileData?.wins ?? '—'} · Avg: {profileData?.avgGuesses != null ? Number(profileData.avgGuesses).toFixed(2) : '—'} · Streak: {profileData?.currentStreak ?? '—'}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!anonId) return;
+                          try {
+                            const u = new URL(window.location.href);
+                            u.searchParams.set('sid', anonId);
+                            const copied = await copyToClipboardBestEffort(u.toString());
+                            if (copied) {
+                              setShowCopyToast(true);
+                              setTimeout(() => setShowCopyToast(false), 2500);
+                            }
+                          } catch {}
+                        }}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(34, 197, 94, 0.35)',
+                          backgroundColor: 'rgba(34, 197, 94, 0.14)',
+                          color: '#bbf7d0',
+                          fontWeight: 900,
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                        }}
+                        disabled={!identityInitialized || !anonId}
+                        title="Copies a link that reuses your anon_id across browsers"
+                      >
+                        🔗 Share progress across browsers
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '12px 12px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.10)',
+                        marginTop: '10px',
+                      }}
+                    >
+                      <div style={{ color: '#e5e7eb', fontWeight: 900, marginBottom: '10px' }}>
+                        Account (optional)
+                      </div>
+
+                      {authLoading ? (
+                        <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading…</div>
+                      ) : authSession?.user ? (
+                        <div style={{ display: 'grid', gap: '10px' }}>
+                          <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
+                            Signed in as {accountDisplayName || authSession.user.email}
+                          </div>
+
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
+                            <input
+                              value={accountDisplayName}
+                              onChange={(e) => setAccountDisplayName(e.target.value)}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(51, 65, 85, 0.85)',
+                                backgroundColor: '#0b1220',
+                                color: 'white',
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={handleSaveDisplayName}
+                              disabled={accountSaving}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: 'none',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                fontWeight: 900,
+                                cursor: accountSaving ? 'not-allowed' : 'pointer',
+                              }}
+                              title="Updates your public display name"
+                            >
+                              {accountSaving ? 'Saving…' : 'Save'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleSignOut}
+                              disabled={accountSaving}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(248, 113, 113, 0.55)',
+                                backgroundColor: 'rgba(127, 29, 29, 0.22)',
+                                color: '#fecaca',
+                                fontWeight: 900,
+                                cursor: accountSaving ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              Sign out
+                            </button>
+                          </div>
+
+                          {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '10px' }}>
+                          <div style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.4 }}>
+                            Sign in to save progress across browsers. You can always keep playing as a guest.
+                          </div>
+
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Email</div>
+                            <input
+                              value={authEmail}
+                              onChange={(e) => setAuthEmail(e.target.value)}
+                              placeholder="you@example.com"
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(51, 65, 85, 0.85)',
+                                backgroundColor: '#0b1220',
+                                color: 'white',
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Password</div>
+                            <input
+                              value={authPassword}
+                              onChange={(e) => setAuthPassword(e.target.value)}
+                              placeholder="••••••••"
+                              type="password"
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(51, 65, 85, 0.85)',
+                                backgroundColor: '#0b1220',
+                                color: 'white',
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                              type="button"
+                              onClick={handleSignInWithEmail}
+                              disabled={authLoading}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: 'none',
+                                backgroundColor: '#22c55e',
+                                color: 'white',
+                                fontWeight: 900,
+                                cursor: authLoading ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              Sign in
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleSignInWithGoogle}
+                              disabled={authLoading}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(148, 163, 184, 0.55)',
+                                backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                                color: '#e2e8f0',
+                                fontWeight: 900,
+                                cursor: authLoading ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              Continue with Google
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                            <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Reset password</div>
+                            <input
+                              value={authResetEmail}
+                              onChange={(e) => setAuthResetEmail(e.target.value)}
+                              placeholder="Email for reset"
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(51, 65, 85, 0.85)',
+                                backgroundColor: '#0b1220',
+                                color: 'white',
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleResetPassword}
+                              disabled={authLoading}
+                              style={{
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(59, 130, 246, 0.55)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.18)',
+                                color: '#dbeafe',
+                                fontWeight: 900,
+                                cursor: authLoading ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              Send reset email
+                            </button>
+                          </div>
+
+                          {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div style={{ color: '#e5e7eb', fontWeight: 900, marginBottom: '8px' }}>Top winners today</div>
+                      {Array.isArray(leaderboardData?.entries) && leaderboardData.entries.length > 0 ? (
+                        <div style={{ display: 'grid', gap: '8px' }}>
+                          {leaderboardData.entries.map((e, idx) => (
+                            <div
+                              key={e.anon_id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px',
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(51, 65, 85, 0.85)',
+                                backgroundColor: '#0f172a',
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 900 }}>
+                                  #{idx + 1} {e.user}{' '}
+                                  {e.verified ? <span style={{ color: '#60a5fa' }}>✓</span> : null}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.85rem', fontWeight: 700 }}>
+                                  {e.wins} win{e.wins === 1 ? '' : 's'}
+                                </div>
+                              </div>
+                              <div style={{ color: '#bbf7d0', fontWeight: 1000 }}>
+                                Avg {Number(e.avgGuesses).toFixed(2)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#94a3b8' }}>No leaderboard data yet.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <p style={{ color: '#9ca3af', fontSize: '0.95rem', marginBottom: '12px', lineHeight: 1.5 }}>
