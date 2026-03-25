@@ -109,6 +109,7 @@ const NBAGuessGame = () => {
   const [editingDisplayName, setEditingDisplayName] = useState(false);
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [authNotice, setAuthNotice] = useState('');
+  const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
 
   // API base URL - updated to match your backend
   const API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
@@ -446,9 +447,11 @@ const NBAGuessGame = () => {
     setAccountSaving(true);
     setAuthError('');
     try {
-      const displayName =
-        String(overrideDisplayName ?? accountDisplayName)
-          .trim();
+      // If this handler is accidentally used directly as an `onClick` handler,
+      // React will pass the click event as the first argument. Guard against that.
+      const candidate =
+        typeof overrideDisplayName === 'string' ? overrideDisplayName : undefined;
+      const displayName = String(candidate ?? accountDisplayName).trim();
       const avatarUrl = accountAvatarUrl.trim() || null;
       const userId = authSession.user.id;
       const { error } = await supabase
@@ -2381,7 +2384,7 @@ const NBAGuessGame = () => {
             ) : authSession?.user ? (
               <div style={{ display: 'grid', gap: '10px' }}>
                 <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
-                  Signed in as {accountDisplayName || authSession.user.email}
+                  Signed in as {safeAccountDisplayName || authSession.user.email}
                 </div>
 
                     {editingDisplayName ? (
@@ -4107,13 +4110,13 @@ const NBAGuessGame = () => {
               ) : authSession?.user ? (
                 <div style={{ display: 'grid', gap: '10px' }}>
                   <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
-                    Signed in as {accountDisplayName || authSession.user.email}
+                    Signed in as {safeAccountDisplayName || authSession.user.email}
                   </div>
 
                   <div style={{ display: 'grid', gap: '6px' }}>
                     <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
                     <input
-                      value={accountDisplayName}
+                      value={safeAccountDisplayName}
                       onChange={(e) => setAccountDisplayName(e.target.value)}
                       style={{
                         padding: '10px 12px',
@@ -4257,6 +4260,26 @@ const NBAGuessGame = () => {
                       }}
                     >
                       Continue with Google
+                    </button>
+                  </div>
+
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleResendSignupConfirmation}
+                      disabled={authLoading || !authEmail.trim()}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(148, 163, 184, 0.45)',
+                        backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                        color: '#e2e8f0',
+                        fontWeight: 900,
+                        cursor: authLoading ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Resend the email confirmation link"
+                    >
+                      Resend confirmation
                     </button>
                   </div>
 
