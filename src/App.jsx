@@ -197,8 +197,17 @@ const NBAGuessGame = () => {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
+  const accountSyncHardTimeoutRef = useRef({ key: '', timer: null });
   /** Used to prevent a race: hydrate-from-cloud can run before anon_links upsert finishes on mobile. */
   const [anonLinksLinkedForDevice, setAnonLinksLinkedForDevice] = useState(false);
+  useEffect(() => {
+    // Component unmount safety: clear any pending unblock timer.
+    return () => {
+      try {
+        if (accountSyncHardTimeoutRef.current?.timer) clearTimeout(accountSyncHardTimeoutRef.current.timer);
+      } catch {}
+    };
+  }, []);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
   const [newRecoveryPassword2, setNewRecoveryPassword2] = useState('');
@@ -470,14 +479,25 @@ const NBAGuessGame = () => {
     setAuthError('');
 
     // Safety: if any of the network/auth calls hang, the UI must not stay in "Syncing…" forever.
-    const safetyTimer = setTimeout(() => {
+    // Use a ref-backed timer so it isn't cancelled/restarted by effect re-runs.
+    const accountSyncKey = `${userId}:${anonId}`;
+    if (accountSyncHardTimeoutRef.current.key !== accountSyncKey) {
       try {
-        if (!cancelled) {
+        if (accountSyncHardTimeoutRef.current.timer) clearTimeout(accountSyncHardTimeoutRef.current.timer);
+      } catch {}
+      accountSyncHardTimeoutRef.current.key = accountSyncKey;
+      const unblockMs = 7000;
+      accountSyncHardTimeoutRef.current.timer = setTimeout(() => {
+        try {
           setAccountSaving(false);
           setAnonLinksLinkedForDevice(true);
-        }
-      } catch {}
-    }, 9000);
+          // Show something immediately; profile will update when/if it finishes.
+          setAccountDisplayName(fallbackDisplayName);
+          setAccountAvatarUrl(fallbackAvatarUrl || '');
+          setAccountIsVerified(false);
+        } catch {}
+      }, unblockMs);
+    }
 
     (async () => {
       const timeoutMs = 5000;
@@ -582,7 +602,6 @@ const NBAGuessGame = () => {
         setAuthError(e?.message ? `Account sync failed: ${e.message}` : 'Account sync failed');
       } finally {
         if (!cancelled) setAccountSaving(false);
-        clearTimeout(safetyTimer);
       }
     })();
 
@@ -591,7 +610,6 @@ const NBAGuessGame = () => {
       // If this run is superseded or unmounted before the async work finishes, `finally`
       // skips clearing — without this, accountSaving stays true and Save / Sign out stay disabled.
       setAccountSaving(false);
-      clearTimeout(safetyTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId]);
