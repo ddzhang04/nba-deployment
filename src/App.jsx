@@ -198,6 +198,7 @@ const NBAGuessGame = () => {
   const [authPassword, setAuthPassword] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
   const accountSyncHardTimeoutRef = useRef({ key: '', timer: null });
+  const accountSavingStartedAtRef = useRef(0);
   /** Used to prevent a race: hydrate-from-cloud can run before anon_links upsert finishes on mobile. */
   const [anonLinksLinkedForDevice, setAnonLinksLinkedForDevice] = useState(false);
   useEffect(() => {
@@ -208,6 +209,26 @@ const NBAGuessGame = () => {
       } catch {}
     };
   }, []);
+
+  // Watchdog: if something goes wrong and `accountSaving` never clears, force it.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!accountSaving) return;
+      const startedAt = accountSavingStartedAtRef.current;
+      if (!startedAt) return;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > 10000) {
+        try {
+          setAccountSaving(false);
+          setAnonLinksLinkedForDevice(true);
+          setAccountDisplayName((d) => (d ? d : ''));
+          setAccountAvatarUrl((v) => v || '');
+          setAccountIsVerified(false);
+        } catch {}
+      }
+    }, 650);
+    return () => clearInterval(id);
+  }, [accountSaving]);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
   const [newRecoveryPassword2, setNewRecoveryPassword2] = useState('');
@@ -476,6 +497,7 @@ const NBAGuessGame = () => {
 
     let cancelled = false;
     setAccountSaving(true);
+    accountSavingStartedAtRef.current = Date.now();
     setAuthError('');
 
     // Safety: if any of the network/auth calls hang, the UI must not stay in "Syncing…" forever.
