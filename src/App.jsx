@@ -241,6 +241,7 @@ const NBAGuessGame = () => {
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
+  const accountDetailsSyncMarkerRef = useRef('');
   /** idle | saving | saved — drives Save name button + inline confirmation */
   const [profileSaveUi, setProfileSaveUi] = useState('idle');
   const [accountActivityToast, setAccountActivityToast] = useState(null); // { variant, message } | null
@@ -488,10 +489,15 @@ const NBAGuessGame = () => {
     if (!identityInitialized) return;
     if (!anonId) return;
 
+    const userId = authSession.user.id;
+    const syncKey = `${userId}:${anonId}`;
+    // Prevent "Syncing..." from re-triggering endlessly during mobile token refreshes.
+    if (accountDetailsSyncMarkerRef.current === syncKey && anonLinksLinkedForDevice) return;
+    accountDetailsSyncMarkerRef.current = syncKey;
+
     // Reset the gate each time we sign into a (potentially new) user or device anon_id.
     setAnonLinksLinkedForDevice(false);
 
-    const userId = authSession.user.id;
     const fallbackDisplayName = getDefaultDisplayNameForUser(authSession.user);
     const fallbackAvatarUrl = getDefaultAvatarForUser(authSession.user);
 
@@ -634,7 +640,7 @@ const NBAGuessGame = () => {
       setAccountSaving(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authSession, identityInitialized, anonId]);
+  }, [authSession?.user?.id, identityInitialized, anonId]);
 
   const handleSignInWithEmail = async () => {
     if (!supabase) return;
@@ -839,6 +845,7 @@ const NBAGuessGame = () => {
     setAuthError('');
     setAuthNotice('');
     setAnonLinksLinkedForDevice(false);
+    accountDetailsSyncMarkerRef.current = '';
     setPasswordRecoveryMode(false);
     setNewRecoveryPassword('');
     setNewRecoveryPassword2('');
