@@ -88,6 +88,7 @@ const NBAGuessGame = () => {
   const [pulseGuessName, setPulseGuessName] = useState(null);
   const [confettiBurstId, setConfettiBurstId] = useState(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
@@ -103,8 +104,6 @@ const NBAGuessGame = () => {
   const [accountDisplayName, setAccountDisplayName] = useState('');
   const [accountAvatarUrl, setAccountAvatarUrl] = useState('');
   const [accountIsVerified, setAccountIsVerified] = useState(false);
-  const [editingDisplayName, setEditingDisplayName] = useState(false);
-  const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [authNotice, setAuthNotice] = useState('');
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
@@ -390,6 +389,7 @@ const NBAGuessGame = () => {
       const res = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
       if (res.error) throw res.error;
       setAuthSession(res.data.session ?? null);
+      setShowAccountModal(false);
     } catch (e) {
       setAuthError(e?.message || 'Sign in failed');
     } finally {
@@ -426,6 +426,7 @@ const NBAGuessGame = () => {
       const nextSession = res.data?.session ?? null;
       setAuthSession(nextSession);
       setAuthNotice(nextSession ? 'Account created. You are signed in.' : 'Account created. Check your email to confirm your account.');
+      if (nextSession) setShowAccountModal(false);
     } catch (e) {
       setAuthError(e?.message || 'Sign up failed');
     } finally {
@@ -2512,6 +2513,28 @@ const NBAGuessGame = () => {
               <span>How to Play</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setShowAccountModal(true)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '10px',
+                border: '1px solid rgba(148, 163, 184, 0.45)',
+                backgroundColor: authSession?.user ? 'rgba(34, 197, 94, 0.12)' : '#111827',
+                color: authSession?.user ? '#bbf7d0' : '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 700,
+              }}
+              title={authSession?.user ? 'Account & sign out' : 'Sign in (optional)'}
+            >
+              <span>{authSession?.user ? '✓' : '🔐'}</span>
+              <span>{authSession?.user ? 'Account' : 'Sign in'}</span>
+            </button>
+
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <button
                 onClick={() => setShowStats(true)}
@@ -2605,321 +2628,6 @@ const NBAGuessGame = () => {
               <span>🎮</span>
               <span>More / About</span>
             </button>
-          </div>
-
-          {/* Account (optional) moved to main page */}
-          <div
-            style={{
-              display: 'none',
-              maxWidth: '620px',
-              margin: '0 auto 24px',
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-              borderRadius: '16px',
-              padding: '18px',
-              border: '1px solid #334155',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-              <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '1rem' }}>🔐 Account (optional)</div>
-              {authSession?.user ? (
-                <div style={{ color: '#bbf7d0', fontWeight: 900, fontSize: '0.85rem' }}>Signed in</div>
-              ) : (
-                <div style={{ color: '#94a3b8', fontWeight: 900, fontSize: '0.85rem' }}>Guest mode</div>
-              )}
-            </div>
-
-            {authLoading ? (
-              <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading…</div>
-            ) : authSession?.user ? (
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
-                  Signed in as {safeAccountDisplayName || authSession.user.email}
-                </div>
-
-                    {editingDisplayName ? (
-                      <div style={{ display: 'grid', gap: '10px' }}>
-                        <div style={{ display: 'grid', gap: '6px' }}>
-                          <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>
-                            Display name
-                          </div>
-                          <input
-                            value={displayNameDraft}
-                            onChange={(e) => setDisplayNameDraft(e.target.value)}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: '12px',
-                              border: '1px solid rgba(51, 65, 85, 0.85)',
-                              backgroundColor: '#0b1220',
-                              color: 'white',
-                              width: '100%',
-                            }}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDisplayName(false);
-                              setDisplayNameDraft(accountDisplayName);
-                              setAuthError('');
-                            }}
-                            disabled={accountSaving}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: '12px',
-                              border: '1px solid rgba(148, 163, 184, 0.55)',
-                              backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                              color: '#e2e8f0',
-                              fontWeight: 900,
-                              cursor: accountSaving ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            Cancel
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const ok = await handleSaveDisplayName(displayNameDraft);
-                              if (ok) {
-                                setEditingDisplayName(false);
-                                setDisplayNameDraft('');
-                              }
-                            }}
-                            disabled={accountSaving}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: '12px',
-                              border: 'none',
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              fontWeight: 900,
-                              cursor: accountSaving ? 'not-allowed' : 'pointer',
-                            }}
-                            title="Updates your public display name"
-                          >
-                            {accountSaving ? 'Saving…' : 'Save'}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={handleSignOut}
-                            disabled={accountSaving}
-                            style={{
-                              padding: '10px 12px',
-                              borderRadius: '12px',
-                              border: '1px solid rgba(248, 113, 113, 0.55)',
-                              backgroundColor: 'rgba(127, 29, 29, 0.22)',
-                              color: '#fecaca',
-                              fontWeight: 900,
-                              cursor: accountSaving ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            Sign out
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingDisplayName(true);
-                            setDisplayNameDraft(accountDisplayName);
-                            setAuthError('');
-                          }}
-                          disabled={accountSaving}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: '12px',
-                            border: '1px solid rgba(59, 130, 246, 0.35)',
-                            backgroundColor: 'rgba(59, 130, 246, 0.10)',
-                            color: '#93c5fd',
-                            fontWeight: 900,
-                            cursor: accountSaving ? 'not-allowed' : 'pointer',
-                          }}
-                          title="Change your public display name"
-                        >
-                          Edit display name
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleSignOut}
-                          disabled={accountSaving}
-                          style={{
-                            padding: '10px 12px',
-                            borderRadius: '12px',
-                            border: '1px solid rgba(248, 113, 113, 0.55)',
-                            backgroundColor: 'rgba(127, 29, 29, 0.22)',
-                            color: '#fecaca',
-                            fontWeight: 900,
-                            cursor: accountSaving ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          Sign out
-                        </button>
-                      </div>
-                    )}
-
-                {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <div style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.4 }}>
-                  Sign in to save progress across browsers. You can always keep playing as a guest.
-                </div>
-
-                <div style={{ display: 'grid', gap: '6px' }}>
-                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Email</div>
-                  <input
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(51, 65, 85, 0.85)',
-                      backgroundColor: '#0b1220',
-                      color: 'white',
-                      width: '100%',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gap: '6px' }}>
-                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Password</div>
-                  <input
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    placeholder="••••••••"
-                    type="password"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(51, 65, 85, 0.85)',
-                      backgroundColor: '#0b1220',
-                      color: 'white',
-                      width: '100%',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={handleSignInWithEmail}
-                    disabled={authLoading}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: 'none',
-                      backgroundColor: '#22c55e',
-                      color: 'white',
-                      fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Sign in
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSignUpWithEmail}
-                    disabled={authLoading}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(167, 139, 250, 0.55)',
-                      backgroundColor: 'rgba(167, 139, 250, 0.10)',
-                      color: '#ddd6fe',
-                      fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                    }}
-                    title="Create an account using email + password"
-                  >
-                    Create account
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSignInWithGoogle}
-                    disabled={authLoading}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(148, 163, 184, 0.55)',
-                      backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                      color: '#e2e8f0',
-                      fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Continue with Google
-                  </button>
-                </div>
-
-                <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={handleResendSignupConfirmation}
-                    disabled={authLoading || !authEmail.trim()}
-                    style={{
-                      padding: '8px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(148, 163, 184, 0.45)',
-                      backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                      color: '#e2e8f0',
-                      fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                    }}
-                    title="Resend the email confirmation link"
-                  >
-                    Resend confirmation
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gap: '6px' }}>
-                  <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Reset password</div>
-                  <input
-                    value={authResetEmail}
-                    onChange={(e) => setAuthResetEmail(e.target.value)}
-                    placeholder="Email for reset"
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(51, 65, 85, 0.85)',
-                      backgroundColor: '#0b1220',
-                      color: 'white',
-                      width: '100%',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleResetPassword}
-                    disabled={authLoading}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(59, 130, 246, 0.55)',
-                      backgroundColor: 'rgba(59, 130, 246, 0.18)',
-                      color: '#dbeafe',
-                      fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    Send reset email
-                  </button>
-                </div>
-
-                {authError ? (
-                  <div style={{ color: '#fecaca' }}>{authError}</div>
-                ) : authNotice ? (
-                  <div style={{ color: '#bbf7d0' }}>{authNotice}</div>
-                ) : null}
-              </div>
-            )}
           </div>
 
           {/* Game Mode Selection */}
@@ -4213,18 +3921,36 @@ const NBAGuessGame = () => {
           </div>
         )}
 
-        <div className="main-layout">
-          {/* Left Panel */}
-          <div>
-            {/* Account (optional) */}
+        {showAccountModal && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Account"
+            onClick={() => setShowAccountModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15,23,42,0.88)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 55,
+              padding: '16px',
+              overflowY: 'auto',
+            }}
+          >
             <div
+              onClick={(e) => e.stopPropagation()}
               style={{
                 width: '100%',
+                maxWidth: '440px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 borderRadius: '16px',
                 padding: '18px',
                 border: '1px solid #334155',
-                marginBottom: '24px',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
               }}
             >
               <div
@@ -4233,16 +3959,35 @@ const NBAGuessGame = () => {
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   gap: '12px',
-                  marginBottom: '12px',
+                  marginBottom: '14px',
                   flexWrap: 'wrap',
                 }}
               >
                 <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '1rem' }}>🔐 Account (optional)</div>
-                {authSession?.user ? (
-                  <div style={{ color: '#bbf7d0', fontWeight: 900, fontSize: '0.85rem' }}>Signed in</div>
-                ) : (
-                  <div style={{ color: '#94a3b8', fontWeight: 900, fontSize: '0.85rem' }}>Guest mode</div>
-                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  {authSession?.user ? (
+                    <div style={{ color: '#bbf7d0', fontWeight: 900, fontSize: '0.85rem' }}>Signed in</div>
+                  ) : (
+                    <div style={{ color: '#94a3b8', fontWeight: 900, fontSize: '0.85rem' }}>Guest mode</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAccountModal(false)}
+                    style={{
+                      border: 'none',
+                      background: 'rgba(15,23,42,0.65)',
+                      color: '#9ca3af',
+                      cursor: 'pointer',
+                      fontSize: '20px',
+                      lineHeight: 1,
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                    }}
+                    aria-label="Close account dialog"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
               {authLoading ? (
@@ -4464,16 +4209,20 @@ const NBAGuessGame = () => {
                 </div>
               )}
             </div>
+          </div>
+        )}
 
+        <div className="main-layout">
+          <div className="play-stage">
             {/* Input Section */}
             <div style={{ 
               background: 'linear-gradient(135deg, #1e293b, #334155)',
               borderRadius: '16px',
               padding: '24px',
-              marginBottom: '24px',
-              border: '1px solid #334155'
+              border: '1px solid #334155',
+              textAlign: 'center',
             }} ref={guessSectionRef}>
-              <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>🔍 Make Your Guess</h3>
+              <h3 style={{ fontSize: '1.35rem', marginBottom: '18px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
               
               {(() => {
                 const end = getEndScreenModel();
@@ -4586,8 +4335,8 @@ const NBAGuessGame = () => {
               })()}
               
               {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
-                <div>
-                  <div style={{ position: 'relative', marginBottom: '16px' }}>
+                <div style={{ width: '100%', maxWidth: '400px', marginLeft: 'auto', marginRight: 'auto' }}>
+                  <div style={{ position: 'relative', marginBottom: '16px', width: '100%' }}>
                     <input
                       type="text"
                       id="player-guess-input"
@@ -4694,7 +4443,8 @@ const NBAGuessGame = () => {
                         zIndex: 1000,
                         listStyle: 'none',
                         padding: 0,
-                        margin: 0
+                        margin: 0,
+                        textAlign: 'left',
                       }}
                       >
                         {suggestions.map((suggestion, index) => (
@@ -4756,7 +4506,11 @@ const NBAGuessGame = () => {
                   color: '#dc2626', 
                   padding: '12px', 
                   borderRadius: '8px', 
-                  marginTop: '16px' 
+                  marginTop: '16px',
+                  textAlign: 'left',
+                  maxWidth: '400px',
+                  marginLeft: 'auto',
+                  marginRight: 'auto',
                 }}
                 >
                   {error}
@@ -4879,15 +4633,12 @@ const NBAGuessGame = () => {
             )}
           </div>
 
-          {/* Right Panel - Guess History */}
-          <div style={{ 
-            background: 'linear-gradient(135deg, #1e293b, #334155)',
-            borderRadius: '16px',
-            padding: '24px',
-            border: '1px solid #334155'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-              <h3 style={{ fontSize: '1.3rem', margin: 0, color: '#f1f5f9' }}>👥 Guess History ({guessHistory.length})</h3>
+          {/* Guess history — secondary, scrollable strip */}
+          <div className="guess-history-aside">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: '0.95rem', margin: 0, color: '#94a3b8', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
+                Guesses ({guessHistory.length})
+              </h3>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
@@ -4945,13 +4696,13 @@ const NBAGuessGame = () => {
                   </div>
                 </div>
               ) : (
-                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '40px 20px' }}>
-                  <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🔍</div>
-                  <p>No guesses yet. Start by entering a player name!</p>
+                <div style={{ textAlign: 'center', color: '#64748b', padding: '20px 12px', fontSize: '0.88rem' }}>
+                  <div style={{ fontSize: '1.75rem', marginBottom: '8px', opacity: 0.85 }}>🔍</div>
+                  <p style={{ margin: 0 }}>No guesses yet.</p>
                 </div>
               )
             ) : (
-              <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              <div className="nm-guess-history-scroll">
                 {(guessHistorySort === 'chronological' ? guessHistory : guessHistory.slice().sort((a, b) => b.score - a.score)).map((item, index) => (
                   <div
                     key={index}
@@ -4963,15 +4714,16 @@ const NBAGuessGame = () => {
                       .filter(Boolean)
                       .join(' ')}
                     style={{ 
-                    backgroundColor: '#0f172a', 
-                    borderRadius: '12px', 
-                    padding: '16px', 
-                    marginBottom: '12px',
-                    border: '1px solid #334155'
+                    backgroundColor: 'rgba(15, 23, 42, 0.65)', 
+                    borderRadius: '10px', 
+                    padding: '12px', 
+                    marginBottom: '8px',
+                    border: '1px solid rgba(51, 65, 85, 0.75)',
+                    textAlign: 'left',
                   }}>
-                    <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {renderPlayerAvatar(item.name, { size: 40, radius: 8 })}
-                      <h4 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{item.name}</h4>
+                    <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {renderPlayerAvatar(item.name, { size: 34, radius: 8 })}
+                      <h4 style={{ margin: 0, color: '#e2e8f0', fontSize: '0.95rem', fontWeight: 700 }}>{item.name}</h4>
                       <button
                         type="button"
                         onClick={() => toggleFavoritePlayer(item.name)}
