@@ -146,7 +146,10 @@ const NBAGuessGame = () => {
   const [anonId, setAnonId] = useState('');
   // (leaderboard/profile modal removed)
   const [authSession, setAuthSession] = useState(null);
+  /** True only while the first `getSession()` runs on app load. */
   const [authLoading, setAuthLoading] = useState(false);
+  /** Which email-auth action is in flight (keeps form visible; null = idle). */
+  const [emailAuthAction, setEmailAuthAction] = useState(null); // 'signin' | 'signup' | 'google' | 'resend' | 'reset' | null
   const [authError, setAuthError] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -464,7 +467,7 @@ const NBAGuessGame = () => {
 
   const handleSignInWithEmail = async () => {
     if (!supabase) return;
-    setAuthLoading(true);
+    setEmailAuthAction('signin');
     setAuthError('');
     setAuthNotice('');
     try {
@@ -472,16 +475,17 @@ const NBAGuessGame = () => {
       if (res.error) throw res.error;
       setAuthSession(res.data.session ?? null);
       setShowAccountModal(false);
+      showAccountActivityToast('Signed in.', 'success');
     } catch (e) {
       setAuthError(e?.message || 'Sign in failed');
     } finally {
-      setAuthLoading(false);
+      setEmailAuthAction(null);
     }
   };
 
   const handleSignUpWithEmail = async () => {
     if (!supabase) return;
-    setAuthLoading(true);
+    setEmailAuthAction('signup');
     setAuthError('');
     setAuthNotice('');
     try {
@@ -504,15 +508,21 @@ const NBAGuessGame = () => {
       const res = await supabase.auth.signUp(payload);
       if (res.error) throw res.error;
 
-      // If email confirmations are enabled, there may be no session yet.
       const nextSession = res.data?.session ?? null;
       setAuthSession(nextSession);
-      setAuthNotice(nextSession ? 'Account created. You are signed in.' : 'Account created. Check your email to confirm your account.');
-      if (nextSession) setShowAccountModal(false);
+      setShowAccountModal(false);
+      if (nextSession) {
+        showAccountActivityToast('Account created — you are signed in.', 'success');
+      } else {
+        showAccountActivityToast(
+          'Check your email to confirm your account, then use Sign in here.',
+          'success'
+        );
+      }
     } catch (e) {
       setAuthError(e?.message || 'Sign up failed');
     } finally {
-      setAuthLoading(false);
+      setEmailAuthAction(null);
     }
   };
 
@@ -520,7 +530,7 @@ const NBAGuessGame = () => {
     if (!supabase) return;
     const email = authEmail.trim();
     if (!email) return;
-    setAuthLoading(true);
+    setEmailAuthAction('resend');
     setAuthError('');
     setAuthNotice('');
     try {
@@ -536,16 +546,17 @@ const NBAGuessGame = () => {
       const res = await supabase.auth.resend(payload);
       if (res.error) throw res.error;
       setAuthNotice('If the email is deliverable, you should receive another confirmation shortly.');
+      showAccountActivityToast('If that address is registered, a confirmation email is on the way.', 'success');
     } catch (e) {
       setAuthError(e?.message || 'Could not resend confirmation email');
     } finally {
-      setAuthLoading(false);
+      setEmailAuthAction(null);
     }
   };
 
   const handleSignInWithGoogle = async () => {
     if (!supabase) return;
-    setAuthLoading(true);
+    setEmailAuthAction('google');
     setAuthError('');
     setAuthNotice('');
     try {
@@ -565,7 +576,7 @@ const NBAGuessGame = () => {
     } catch (e) {
       console.error('Google sign-in error:', e);
       setAuthError(e?.message || 'Google sign-in failed');
-      setAuthLoading(false);
+      setEmailAuthAction(null);
     }
   };
 
@@ -576,7 +587,7 @@ const NBAGuessGame = () => {
       setAuthError('Enter the email you used to sign up.');
       return;
     }
-    setAuthLoading(true);
+    setEmailAuthAction('reset');
     setAuthError('');
     setAuthNotice('');
     try {
@@ -589,10 +600,11 @@ const NBAGuessGame = () => {
         'If that address has an account, we sent a reset link. Check your inbox and spam folder. The link opens this site so you can pick a new password.'
       );
       setShowForgotPassword(false);
+      showAccountActivityToast('If that email is registered, we sent a reset link.', 'success');
     } catch (e) {
       setAuthError(e?.message || 'Reset failed');
     } finally {
-      setAuthLoading(false);
+      setEmailAuthAction(null);
     }
   };
 
@@ -4117,7 +4129,7 @@ const NBAGuessGame = () => {
                     <button
                       type="button"
                       onClick={handleSignInWithEmail}
-                      disabled={authLoading}
+                      disabled={emailAuthAction !== null}
                       style={{
                         padding: '12px 18px',
                         borderRadius: '12px',
@@ -4125,15 +4137,15 @@ const NBAGuessGame = () => {
                         backgroundColor: '#22c55e',
                         color: 'white',
                         fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
+                        cursor: emailAuthAction !== null ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      Sign in
+                      {emailAuthAction === 'signin' ? 'Signing in…' : 'Sign in'}
                     </button>
                     <button
                       type="button"
                       onClick={handleSignUpWithEmail}
-                      disabled={authLoading}
+                      disabled={emailAuthAction !== null}
                       style={{
                         padding: '12px 18px',
                         borderRadius: '12px',
@@ -4141,18 +4153,18 @@ const NBAGuessGame = () => {
                         backgroundColor: 'rgba(167, 139, 250, 0.12)',
                         color: '#ddd6fe',
                         fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
+                        cursor: emailAuthAction !== null ? 'not-allowed' : 'pointer',
                       }}
                       title="Create an account using email + password"
                     >
-                      Create account
+                      {emailAuthAction === 'signup' ? 'Creating account…' : 'Create account'}
                     </button>
                   </div>
 
                   <button
                     type="button"
                     onClick={handleSignInWithGoogle}
-                    disabled={authLoading}
+                    disabled={emailAuthAction !== null}
                     style={{
                       width: '100%',
                       marginTop: '6px',
@@ -4162,10 +4174,10 @@ const NBAGuessGame = () => {
                       backgroundColor: 'rgba(148, 163, 184, 0.10)',
                       color: '#e2e8f0',
                       fontWeight: 900,
-                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                      cursor: emailAuthAction !== null ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    Continue with Google
+                    {emailAuthAction === 'google' ? 'Opening Google…' : 'Continue with Google'}
                   </button>
 
                   <div className="nm-account-modal__divider" />
@@ -4194,7 +4206,7 @@ const NBAGuessGame = () => {
                       <button
                         type="button"
                         onClick={handleResetPassword}
-                        disabled={authLoading || !authEmail.trim()}
+                        disabled={emailAuthAction !== null || !authEmail.trim()}
                         style={{
                           marginTop: '10px',
                           padding: '10px 16px',
@@ -4203,10 +4215,10 @@ const NBAGuessGame = () => {
                           backgroundColor: 'rgba(59, 130, 246, 0.2)',
                           color: '#dbeafe',
                           fontWeight: 900,
-                          cursor: authLoading || !authEmail.trim() ? 'not-allowed' : 'pointer',
+                          cursor: emailAuthAction !== null || !authEmail.trim() ? 'not-allowed' : 'pointer',
                         }}
                       >
-                        Email me a reset link
+                        {emailAuthAction === 'reset' ? 'Sending…' : 'Email me a reset link'}
                       </button>
                     </div>
                   ) : null}
@@ -4216,9 +4228,9 @@ const NBAGuessGame = () => {
                       type="button"
                       className="nm-account-modal__link-btn"
                       onClick={handleResendSignupConfirmation}
-                      disabled={authLoading || !authEmail.trim()}
+                      disabled={emailAuthAction !== null || !authEmail.trim()}
                     >
-                      Resend signup confirmation
+                      {emailAuthAction === 'resend' ? 'Sending…' : 'Resend signup confirmation'}
                     </button>
                     <span style={{ color: '#475569' }}> · </span>
                     <span>if you did not get the first email.</span>
