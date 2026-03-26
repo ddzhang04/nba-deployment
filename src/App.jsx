@@ -163,6 +163,8 @@ const NBAGuessGame = () => {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
+  /** Used to prevent a race: hydrate-from-cloud can run before anon_links upsert finishes on mobile. */
+  const [anonLinksLinkedForDevice, setAnonLinksLinkedForDevice] = useState(false);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
   const [newRecoveryPassword2, setNewRecoveryPassword2] = useState('');
@@ -359,6 +361,7 @@ const NBAGuessGame = () => {
       const shouldClear =
         !session && (event === 'SIGNED_OUT' || event === 'USER_DELETED');
       if (shouldClear) {
+        setAnonLinksLinkedForDevice(false);
         setPasswordRecoveryMode(false);
         setNewRecoveryPassword('');
         setNewRecoveryPassword2('');
@@ -415,6 +418,9 @@ const NBAGuessGame = () => {
     if (!identityInitialized) return;
     if (!anonId) return;
 
+    // Reset the gate each time we sign into a (potentially new) user or device anon_id.
+    setAnonLinksLinkedForDevice(false);
+
     const userId = authSession.user.id;
     const fallbackDisplayName = getDefaultDisplayNameForUser(authSession.user);
     const fallbackAvatarUrl = getDefaultAvatarForUser(authSession.user);
@@ -446,6 +452,10 @@ const NBAGuessGame = () => {
         } catch (e) {
           console.warn('anon_links upsert failed:', e?.message || e);
         }
+
+        // Important: unblock cloud hydration after anon_links is at least attempted.
+        // Even if linking fails, we don't want hydration stuck waiting forever.
+        if (!cancelled) setAnonLinksLinkedForDevice(true);
 
         // 2) Load profile if it exists.
         let profile = null;
@@ -682,6 +692,7 @@ const NBAGuessGame = () => {
     setShowAccountModal(false);
     setAuthError('');
     setAuthNotice('');
+    setAnonLinksLinkedForDevice(false);
     setPasswordRecoveryMode(false);
     setNewRecoveryPassword('');
     setNewRecoveryPassword2('');
@@ -1216,6 +1227,7 @@ const NBAGuessGame = () => {
     if (!authSession?.user?.id) return;
     if (!identityInitialized) return;
     if (!anonId) return;
+    if (!anonLinksLinkedForDevice) return;
 
     let cancelled = false;
     const userId = authSession.user.id;
@@ -1361,7 +1373,7 @@ const NBAGuessGame = () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authSession, identityInitialized, anonId, mantleRunsDetailsSupported]);
+  }, [authSession, identityInitialized, anonId, mantleRunsDetailsSupported, anonLinksLinkedForDevice]);
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
   // On sign-in, push local history once so it becomes available on other devices.
