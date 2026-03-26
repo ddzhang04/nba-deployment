@@ -464,24 +464,37 @@ const NBAGuessGame = () => {
     setAuthError('');
 
     (async () => {
+      const timeoutMs = 20000;
+      const withTimeout = (promise, label) =>
+        Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error(label)), timeoutMs)),
+        ]);
+
       try {
         // Ensure the Supabase client has this JWT before RLS-checked writes.
         // React state can update before the client's auth store does → requests look like `anon` → 403 on anon_links.
         if (authSession?.access_token && authSession?.refresh_token) {
-          await supabase.auth.setSession({
+          await withTimeout(
+            supabase.auth.setSession({
             access_token: authSession.access_token,
             refresh_token: authSession.refresh_token,
-          });
+            }),
+            'Supabase setSession timeout'
+          );
         }
 
         // 1) Link this device's anon_id to the signed-in user.
         try {
-          const { error: linkErr } = await supabase
-            .from('anon_links')
-            .upsert(
-              { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
-              { onConflict: 'anon_id' }
-            );
+          const { error: linkErr } = await withTimeout(
+            supabase
+              .from('anon_links')
+              .upsert(
+                { anon_id: anonId, user_id: userId, created_at: new Date().toISOString() },
+                { onConflict: 'anon_id' }
+              ),
+            'anon_links upsert timeout'
+          );
           if (linkErr) console.warn('anon_links upsert:', linkErr.message || linkErr);
         } catch (e) {
           console.warn('anon_links upsert failed:', e?.message || e);
@@ -494,29 +507,35 @@ const NBAGuessGame = () => {
         // 2) Load profile if it exists.
         let profile = null;
         try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('display_name, avatar_url, is_verified')
-            .eq('user_id', userId)
-            .maybeSingle();
+          const { data } = await withTimeout(
+            supabase
+              .from('profiles')
+              .select('display_name, avatar_url, is_verified')
+              .eq('user_id', userId)
+              .maybeSingle(),
+            'profiles select timeout'
+          );
           profile = data ?? null;
         } catch {}
 
         // 3) If no profile yet, create one using OAuth metadata defaults.
         if (!profile) {
           try {
-            await supabase
-              .from('profiles')
-              .upsert(
-                {
-                  user_id: userId,
-                  display_name: fallbackDisplayName,
-                  avatar_url: fallbackAvatarUrl || null,
-                  is_verified: false,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: 'user_id' }
-              );
+            await withTimeout(
+              supabase
+                .from('profiles')
+                .upsert(
+                  {
+                    user_id: userId,
+                    display_name: fallbackDisplayName,
+                    avatar_url: fallbackAvatarUrl || null,
+                    is_verified: false,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: 'user_id' }
+                ),
+              'profiles upsert timeout'
+            );
             profile = { display_name: fallbackDisplayName, avatar_url: fallbackAvatarUrl || null, is_verified: false };
           } catch {}
         }
@@ -528,6 +547,10 @@ const NBAGuessGame = () => {
         setAccountDisplayName(dn);
         setAccountAvatarUrl(av || '');
         setAccountIsVerified(ver);
+      } catch (e) {
+        // If network/auth calls hang, we still want to unblock the UI.
+        console.warn('Account sync timeout/error:', e?.message || e);
+        setAuthError(e?.message ? `Account sync failed: ${e.message}` : 'Account sync failed');
       } finally {
         if (!cancelled) setAccountSaving(false);
       }

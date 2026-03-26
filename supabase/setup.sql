@@ -128,6 +128,12 @@ CREATE POLICY "profiles_update_own" ON public.profiles
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.anon_links TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
 
+-- IMPORTANT: Without table privileges, RLS policies may not be enough.
+-- The app inserts/selects directly from `mantle_runs` (and via fallback queries),
+-- so both `anon` (guest) and `authenticated` roles need privileges.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.mantle_runs TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.mantle_runs TO authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 5) Optional RPC for faster averages (app falls back if missing)
 -- ---------------------------------------------------------------------------
