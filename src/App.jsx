@@ -962,7 +962,9 @@ const NBAGuessGame = () => {
 
   // Daily # uses the shared calendar timezone (America/New_York),
   // so rollover happens at midnight in Boston/ET.
-  const DAILY_PUZZLE_INDEX_OFFSET = 0;
+  // Offset so today's daily numbering matches the expected live rollout.
+  // If you see "Daily #2" before midnight for your timezone, this is the knob.
+  const DAILY_PUZZLE_INDEX_OFFSET = -1;
   const getDailyPuzzleIndex = () => getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET);
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
