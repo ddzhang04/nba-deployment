@@ -242,6 +242,8 @@ const NBAGuessGame = () => {
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
   const accountDetailsSyncMarkerRef = useRef('');
+  const cloudHydrateInFlightRef = useRef(false);
+  const cloudHydrateLastTsRef = useRef(0);
   /** idle | saving | saved — drives Save name button + inline confirmation */
   const [profileSaveUi, setProfileSaveUi] = useState('idle');
   const [accountActivityToast, setAccountActivityToast] = useState(null); // { variant, message } | null
@@ -981,10 +983,178 @@ const NBAGuessGame = () => {
       }
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
       if (uiNotify) showAccountActivityToast('Saved to cloud.', 'success');
+
+      // After a successful write, refresh cloud completions so stats/past games update immediately.
+      try {
+        cloudHydrateLastTsRef.current = 0;
+      } catch {}
     } catch {
       // ignore
     }
   };
+
+  const hydrateCompletionsFromCloud = useCallback(async ({ force = false } = {}) => {
+    if (!supabase) return false;
+    if (!authSession?.user?.id) return false;
+    if (!identityInitialized) return false;
+    if (!anonId) return false;
+    if (!anonLinksLinkedForDevice) return false;
+
+    const now = Date.now();
+    if (!force && now - cloudHydrateLastTsRef.current < 2500) return true;
+    if (cloudHydrateInFlightRef.current) return true;
+    cloudHydrateInFlightRef.current = true;
+    cloudHydrateLastTsRef.current = now;
+
+    try {
+      // Ensure auth context for RPC.
+      if (authSession?.access_token && authSession?.refresh_token) {
+        try {
+          await supabase.auth.setSession({
+            access_token: authSession.access_token,
+            refresh_token: authSession.refresh_token,
+          });
+        } catch {}
+      }
+
+      const userId = authSession.user.id;
+      const detailsOk = mantleRunsDetailsSupported === true;
+      let mergedRows = [];
+
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
+      if (!rpcErr && Array.isArray(rpcRows)) {
+        mergedRows = rpcRows;
+      } else {
+        let linkedAnonIds = [];
+        try {
+          const { data: links, error: linksErr } = await supabase
+            .from('anon_links')
+            .select('anon_id')
+            .eq('user_id', userId)
+            .limit(200);
+          if (!linksErr) {
+            linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
+          }
+        } catch {}
+
+        const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
+        const columns = detailsOk
+          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
+          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+
+        const [byUserRes, byAnonRes] = await Promise.all([
+          supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
+          anonIds.length
+            ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        mergedRows = [
+          ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
+          ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
+        ];
+      }
+
+      const rowMap = new Map();
+      const rowScore = (row) => {
+        const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
+        const t5 = Array.isArray(row?.top5) ? row.top5.length : 0;
+        const ca = typeof row?.created_at === 'string' ? row.created_at : '';
+        return { n: gh + t5, ca };
+      };
+      for (const r of mergedRows) {
+        const m = String(r?.mode || '');
+        const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+        const dn = Number(r?.daily_number);
+        if (!Number.isFinite(dn) || dn < 1) continue;
+        const logicalKey = `${normalizedMode}|${dn}`;
+        const prev = rowMap.get(logicalKey);
+        if (!prev) {
+          rowMap.set(logicalKey, r);
+          continue;
+        }
+        const a = rowScore(prev);
+        const b = rowScore(r);
+        if (b.n > a.n || (b.n === a.n && b.ca > a.ca)) rowMap.set(logicalKey, r);
+      }
+      const rows = Array.from(rowMap.values());
+
+      const toCompletionMap = (modeKey) => {
+        const out = {};
+        for (const r of rows) {
+          const m = String(r?.mode || '');
+          const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+          if (normalizedMode !== modeKey) continue;
+
+          const n = Number(r?.daily_number);
+          if (!Number.isFinite(n) || n < 1) continue;
+          const keyNum = String(n);
+
+          const dateStr = typeof r?.date === 'string' ? r.date : '';
+          const completedAt = typeof r?.created_at === 'string' ? r.created_at : '';
+          const guesses = typeof r?.guesses === 'number' ? r.guesses : null;
+          const won = r?.won !== false;
+          const answer = typeof r?.answer === 'string' ? r.answer : '';
+          const guessHistory = detailsOk && Array.isArray(r?.guess_history) ? r.guess_history : [];
+          const top5 = detailsOk && Array.isArray(r?.top5) ? r.top5 : [];
+
+          const prev = out[keyNum];
+          if (!prev || (completedAt && prev.completedAt && completedAt > prev.completedAt) || (!prev.completedAt && completedAt)) {
+            out[keyNum] = { date: dateStr, completedAt, guesses, guessHistory, won, answer, top5 };
+          }
+        }
+        return out;
+      };
+
+      const dailyFromCloud = toCompletionMap('daily');
+      const hardcoreFromCloud = toCompletionMap('hardcore');
+
+      const merge = (local, cloud) => {
+        const next = { ...(local || {}) };
+        for (const [k, v] of Object.entries(cloud || {})) {
+          if (!next[k]) {
+            next[k] = v;
+            continue;
+          }
+          const localEntry = next[k];
+          const hasLocalDetails =
+            Array.isArray(localEntry?.guessHistory) && localEntry.guessHistory.length > 0
+              ? true
+              : Array.isArray(localEntry?.top5) && localEntry.top5.length > 0;
+          next[k] = hasLocalDetails ? { ...v, ...localEntry } : { ...localEntry, ...v };
+        }
+        return next;
+      };
+
+      const nextDaily = merge(getDailyCompletionsFromStorage(), dailyFromCloud);
+      const nextHardcore = merge(getBallKnowledgeDailyFromStorage(), hardcoreFromCloud);
+
+      try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(nextDaily)); } catch {}
+      try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(nextHardcore)); } catch {}
+      setDailyCompletions(nextDaily);
+      setBallKnowledgeDailyCompletions(nextHardcore);
+      return true;
+    } catch (e) {
+      console.warn('Cloud hydrate failed:', e?.message || e);
+      return false;
+    } finally {
+      cloudHydrateInFlightRef.current = false;
+    }
+  }, [
+    anonId,
+    anonLinksLinkedForDevice,
+    authSession?.access_token,
+    authSession?.refresh_token,
+    authSession?.user?.id,
+    identityInitialized,
+    mantleRunsDetailsSupported,
+  ]);
+
+  const handleForceRefreshCloud = useCallback(() => {
+    void hydrateCompletionsFromCloud({ force: true }).then((ok) => {
+      if (ok) showAccountActivityToast('Cloud stats refreshed.', 'success');
+      else showAccountActivityToast('Could not refresh cloud stats yet.', 'error');
+    });
+  }, [hydrateCompletionsFromCloud, showAccountActivityToast]);
 
   const resetAllLocalDataNow = () => {
     try {
@@ -1387,157 +1557,20 @@ const NBAGuessGame = () => {
 
   // When signed in, hydrate local daily completions from all devices linked to this account.
   useEffect(() => {
-    if (!supabase) return;
+    void hydrateCompletionsFromCloud({ force: true });
+  }, [hydrateCompletionsFromCloud]);
+
+  // While signed in, periodically refresh so other-device progress shows without reload.
+  useEffect(() => {
     if (!authSession?.user?.id) return;
     if (!identityInitialized) return;
     if (!anonId) return;
     if (!anonLinksLinkedForDevice) return;
-
-    let cancelled = false;
-    const userId = authSession.user.id;
-
-    (async () => {
-      try {
-        // Ensure the Supabase client has this JWT before doing any auth-scoped RPCs.
-        // On mobile, state can update before the client's internal auth store does.
-        if (authSession?.access_token && authSession?.refresh_token) {
-          await supabase.auth.setSession({
-            access_token: authSession.access_token,
-            refresh_token: authSession.refresh_token,
-          });
-        }
-
-        const detailsOk = mantleRunsDetailsSupported === true;
-        let mergedRows = [];
-
-        // One RPC returns every run for this account (linked anon_ids + user_id). No Vercel stats route.
-        const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
-        if (!rpcErr && Array.isArray(rpcRows)) {
-          mergedRows = rpcRows;
-        } else {
-          let linkedAnonIds = [];
-          try {
-            const { data: links, error: linksErr } = await supabase
-              .from('anon_links')
-              .select('anon_id')
-              .eq('user_id', userId)
-              .limit(200);
-            if (!linksErr) {
-              linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
-            }
-          } catch {}
-
-          const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
-          const columns = detailsOk
-            ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
-            : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
-
-          const [byUserRes, byAnonRes] = await Promise.all([
-            supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
-            anonIds.length
-              ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
-              : Promise.resolve({ data: [], error: null }),
-          ]);
-          mergedRows = [
-            ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
-            ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
-          ];
-        }
-        const rowMap = new Map();
-        const rowScore = (row) => {
-          const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
-          const t5 = Array.isArray(row?.top5) ? row.top5.length : 0;
-          const ca = typeof row?.created_at === 'string' ? row.created_at : '';
-          return { n: gh + t5, ca };
-        };
-        for (const r of mergedRows) {
-          const m = String(r?.mode || '');
-          const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
-          const dn = Number(r?.daily_number);
-          if (!Number.isFinite(dn) || dn < 1) continue;
-          const logicalKey = `${normalizedMode}|${dn}`;
-          const prev = rowMap.get(logicalKey);
-          if (!prev) {
-            rowMap.set(logicalKey, r);
-            continue;
-          }
-          const a = rowScore(prev);
-          const b = rowScore(r);
-          if (b.n > a.n || (b.n === a.n && b.ca > a.ca)) rowMap.set(logicalKey, r);
-        }
-        const rows = Array.from(rowMap.values());
-
-        const toCompletionMap = (modeKey) => {
-          const out = {};
-          for (const r of rows) {
-            const m = String(r?.mode || '');
-            const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
-            if (normalizedMode !== modeKey) continue;
-
-            const n = Number(r?.daily_number);
-            if (!Number.isFinite(n) || n < 1) continue;
-            const keyNum = String(n);
-
-            const dateStr = typeof r?.date === 'string' ? r.date : '';
-            const completedAt = typeof r?.created_at === 'string' ? r.created_at : '';
-            const guesses = typeof r?.guesses === 'number' ? r.guesses : null;
-            const won = r?.won !== false;
-            const answer = typeof r?.answer === 'string' ? r.answer : '';
-            const guessHistory = detailsOk && Array.isArray(r?.guess_history) ? r.guess_history : [];
-            const top5 = detailsOk && Array.isArray(r?.top5) ? r.top5 : [];
-
-            // Keep the most recent completion per daily number.
-            const prev = out[keyNum];
-            if (!prev || (completedAt && prev.completedAt && completedAt > prev.completedAt) || (!prev.completedAt && completedAt)) {
-              out[keyNum] = { date: dateStr, completedAt, guesses, guessHistory, won, answer, top5 };
-            }
-          }
-          return out;
-        };
-
-        const dailyFromCloud = toCompletionMap('daily');
-        const hardcoreFromCloud = toCompletionMap('hardcore');
-
-        // Merge with local storage (keep any richer local data like guessHistory/top5 when present).
-        const merge = (local, cloud) => {
-          const next = { ...(local || {}) };
-          for (const [k, v] of Object.entries(cloud || {})) {
-            if (!next[k]) {
-              next[k] = v;
-              continue;
-            }
-            // Prefer local if it has guessHistory/top5; otherwise take cloud.
-            const localEntry = next[k];
-            const hasLocalDetails =
-              Array.isArray(localEntry?.guessHistory) && localEntry.guessHistory.length > 0
-                ? true
-                : Array.isArray(localEntry?.top5) && localEntry.top5.length > 0;
-            next[k] = hasLocalDetails ? { ...v, ...localEntry } : { ...localEntry, ...v };
-          }
-          return next;
-        };
-
-        const nextDaily = merge(getDailyCompletionsFromStorage(), dailyFromCloud);
-        const nextHardcore = merge(getBallKnowledgeDailyFromStorage(), hardcoreFromCloud);
-
-        if (cancelled) return;
-
-        try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(nextDaily)); } catch {}
-        try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(nextHardcore)); } catch {}
-
-        setDailyCompletions(nextDaily);
-        setBallKnowledgeDailyCompletions(nextHardcore);
-      } catch (e) {
-        // Best-effort sync; don't break gameplay.
-        console.error('Account progress sync error:', e);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authSession, identityInitialized, anonId, mantleRunsDetailsSupported, anonLinksLinkedForDevice]);
+    const id = setInterval(() => {
+      void hydrateCompletionsFromCloud();
+    }, 12000);
+    return () => clearInterval(id);
+  }, [authSession?.user?.id, identityInitialized, anonId, anonLinksLinkedForDevice, hydrateCompletionsFromCloud]);
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
   // On sign-in, push local history once so it becomes available on other devices.
@@ -4411,6 +4444,23 @@ const NBAGuessGame = () => {
                   ) : null}
 
                   <div className="nm-account-modal__row">
+                    <button
+                      type="button"
+                      onClick={handleForceRefreshCloud}
+                      disabled={accountSaving}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(148, 163, 184, 0.55)',
+                        backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                        color: '#e2e8f0',
+                        fontWeight: 900,
+                        cursor: accountSaving ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Force refresh cloud stats (mantle_runs)"
+                    >
+                      Refresh cloud stats
+                    </button>
                     <button
                       type="button"
                       onClick={handleSaveDisplayName}
