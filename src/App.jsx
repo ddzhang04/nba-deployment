@@ -492,7 +492,12 @@ const NBAGuessGame = () => {
     const userId = authSession.user.id;
     const syncKey = `${userId}:${anonId}`;
     // Prevent "Syncing..." from re-triggering endlessly during mobile token refreshes.
-    if (accountDetailsSyncMarkerRef.current === syncKey && anonLinksLinkedForDevice) return;
+    if (accountDetailsSyncMarkerRef.current === syncKey && anonLinksLinkedForDevice) {
+      // If we already linked and still show "Syncing...", it means we got stuck mid-flight.
+      // Force-unblock the UI rather than re-running the sync.
+      setAccountSaving(false);
+      return;
+    }
     accountDetailsSyncMarkerRef.current = syncKey;
 
     // Reset the gate each time we sign into a (potentially new) user or device anon_id.
