@@ -10,6 +10,39 @@ const STORAGE_RESET_VERSION = 'v14';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
 /** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
+const getRedirectToWithSid = (baseRedirectTo) => {
+  try {
+    if (typeof window === 'undefined') return baseRedirectTo;
+    if (typeof baseRedirectTo !== 'string') return baseRedirectTo;
+
+    const trimmed = baseRedirectTo.trim();
+    if (!trimmed) return baseRedirectTo;
+
+    // Normalize to avoid "almost identical" redirect URLs.
+    const normalized = trimmed.endsWith('/') && trimmed.length > 1 ? trimmed.slice(0, -1) : trimmed;
+
+    // Prefer anon id already present in current URL (if any), otherwise use the current device's local anon id.
+    let sid = '';
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      sid = qs.get('sid') || '';
+    } catch {}
+    if (!sid) {
+      try {
+        sid = localStorage.getItem(mantleStorageKey('nba-mantle-analytics-id')) || '';
+      } catch {}
+    }
+
+    if (!sid) return normalized;
+
+    const url = new URL(normalized, window.location.origin);
+    url.searchParams.set('sid', sid);
+    return url.toString();
+  } catch {
+    return baseRedirectTo;
+  }
+};
+
 const getPasswordRecoveryRedirectTo = () => {
   const fromEnv = import.meta.env.VITE_SUPABASE_PASSWORD_REDIRECT_TO || import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO;
   if (typeof fromEnv === 'string') {
@@ -20,7 +53,8 @@ const getPasswordRecoveryRedirectTo = () => {
   const { origin, pathname } = window.location;
   const path = pathname.split('?')[0].split('#')[0] || '/';
   if (path === '/' || path === '') return origin.endsWith('/') ? origin.slice(0, -1) : origin;
-  return `${origin}${path}`;
+  const base = `${origin}${path}`;
+  return getRedirectToWithSid(base);
 };
 
 const parseCompletionMapFromStorageRaw = (raw) => {
@@ -552,7 +586,7 @@ const NBAGuessGame = () => {
         password,
       };
       if (configuredEmailRedirectTo) {
-        payload.options = { emailRedirectTo: configuredEmailRedirectTo };
+        payload.options = { emailRedirectTo: getRedirectToWithSid(configuredEmailRedirectTo) };
       }
 
       const res = await supabase.auth.signUp(payload);
@@ -590,7 +624,7 @@ const NBAGuessGame = () => {
         email,
       };
       if (configuredEmailRedirectTo) {
-        payload.options = { emailRedirectTo: configuredEmailRedirectTo };
+        payload.options = { emailRedirectTo: getRedirectToWithSid(configuredEmailRedirectTo) };
       }
 
       const res = await supabase.auth.resend(payload);
@@ -618,7 +652,7 @@ const NBAGuessGame = () => {
         provider: 'google',
       };
       if (configuredRedirectTo) {
-        payload.options = { redirectTo: configuredRedirectTo };
+        payload.options = { redirectTo: getRedirectToWithSid(configuredRedirectTo) };
       }
 
       const res = await supabase.auth.signInWithOAuth(payload);
