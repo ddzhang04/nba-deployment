@@ -163,7 +163,23 @@ const NBAGuessGame = () => {
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
-  const profileSaveInFlightRef = useRef(false);
+  /** idle | saving | saved — drives Save name button + inline confirmation */
+  const [profileSaveUi, setProfileSaveUi] = useState('idle');
+  const [accountActivityToast, setAccountActivityToast] = useState(null); // { variant, message } | null
+  const accountActivityToastTimerRef = useRef(null);
+
+  const showAccountActivityToast = useCallback((message, variant = 'success') => {
+    setAccountActivityToast({ message, variant });
+    if (accountActivityToastTimerRef.current) clearTimeout(accountActivityToastTimerRef.current);
+    accountActivityToastTimerRef.current = setTimeout(() => {
+      setAccountActivityToast(null);
+      accountActivityToastTimerRef.current = null;
+    }, 3800);
+  }, []);
+
+  useEffect(() => {
+    setProfileSaveUi('idle');
+  }, [authSession?.user?.id]);
 
   // Detect whether mantle_runs supports storing details like guess_history/top5.
   useEffect(() => {
@@ -618,6 +634,7 @@ const NBAGuessGame = () => {
     setNewRecoveryPassword('');
     setNewRecoveryPassword2('');
     setShowForgotPassword(false);
+    setProfileSaveUi('idle');
     setAuthSession(null);
     try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
     try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
@@ -631,50 +648,78 @@ const NBAGuessGame = () => {
     setAccountIsVerified(false);
     setAuthEmail('');
     setAuthPassword('');
-    void supabase.auth.signOut().catch((e) => {
-      console.warn('signOut:', e?.message || e);
-    });
+    void (async () => {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.warn('signOut:', error.message || error);
+        showAccountActivityToast(
+          "Couldn't finish signing out with the server. Refresh the page if your account still looks signed in.",
+          'error'
+        );
+        return;
+      }
+      showAccountActivityToast('Signed out. Guest mode on this device — sign in anytime to sync again.', 'success');
+    })();
   };
 
   const handleSaveDisplayName = (overrideDisplayName) => {
     if (!supabase) return;
     if (!authSession?.user) return;
-    if (profileSaveInFlightRef.current) return;
+    if (profileSaveUi === 'saving') return;
     // If this handler is accidentally used directly as an `onClick` handler,
     // React will pass the click event as the first argument. Guard against that.
     const candidate =
       typeof overrideDisplayName === 'string' ? overrideDisplayName : undefined;
     const displayName = String(candidate ?? accountDisplayName).trim();
+    if (!displayName) {
+      setAuthError('Enter a display name.');
+      showAccountActivityToast('Enter a display name to save.', 'error');
+      return;
+    }
     const avatarUrl = accountAvatarUrl.trim() || null;
     const userId = authSession.user.id;
 
     setAuthError('');
-    profileSaveInFlightRef.current = true;
+    setProfileSaveUi('saving');
 
     void supabase
       .from('profiles')
       .update({ display_name: displayName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
       .eq('user_id', userId)
       .then(async ({ error }) => {
-        if (!error) return;
-        setAuthError(error.message || 'Could not save profile');
-        try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('display_name, avatar_url, is_verified')
-            .eq('user_id', userId)
-            .maybeSingle();
-          if (data) {
-            setAccountDisplayName(typeof data.display_name === 'string' ? data.display_name : '');
-            setAccountAvatarUrl(typeof data.avatar_url === 'string' ? data.avatar_url : '');
-            setAccountIsVerified(!!data.is_verified);
+        if (error) {
+          const msg = error.message || 'Could not save profile';
+          setAuthError(msg);
+          showAccountActivityToast(msg, 'error');
+          setProfileSaveUi('idle');
+          try {
+            const { data } = await supabase
+              .from('profiles')
+              .select('display_name, avatar_url, is_verified')
+              .eq('user_id', userId)
+              .maybeSingle();
+            if (data) {
+              setAccountDisplayName(typeof data.display_name === 'string' ? data.display_name : '');
+              setAccountAvatarUrl(typeof data.avatar_url === 'string' ? data.avatar_url : '');
+              setAccountIsVerified(!!data.is_verified);
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+          return;
         }
+        setAccountDisplayName(displayName);
+        setProfileSaveUi('saved');
+        showAccountActivityToast('Display name saved. Leaderboards will use this name.', 'success');
+        window.setTimeout(() => {
+          setProfileSaveUi((s) => (s === 'saved' ? 'idle' : s));
+        }, 2800);
       })
-      .finally(() => {
-        profileSaveInFlightRef.current = false;
+      .catch((e) => {
+        const msg = e?.message || 'Could not save profile';
+        setAuthError(msg);
+        showAccountActivityToast(msg, 'error');
+        setProfileSaveUi('idle');
       });
   };
 
@@ -2373,7 +2418,7 @@ const NBAGuessGame = () => {
         <div
           style={{
             position: 'fixed',
-            bottom: '20px',
+            bottom: accountActivityToast ? '76px' : '20px',
             left: '50%',
             transform: 'translateX(-50%)',
             backgroundColor: '#16a34a',
@@ -2384,11 +2429,39 @@ const NBAGuessGame = () => {
             fontSize: '0.9rem',
             fontWeight: 'bold',
             zIndex: 60,
+            maxWidth: 'min(420px, calc(100vw - 32px))',
+            textAlign: 'center',
           }}
         >
           ✅ Share message copied to clipboard
         </div>
       )}
+
+      {accountActivityToast ? (
+        <div
+          role="status"
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: accountActivityToast.variant === 'success' ? '#15803d' : '#b91c1c',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '14px',
+            boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+            fontSize: '0.92rem',
+            fontWeight: 700,
+            zIndex: 61,
+            maxWidth: 'min(420px, calc(100vw - 32px))',
+            textAlign: 'center',
+            lineHeight: 1.35,
+          }}
+        >
+          {accountActivityToast.variant === 'success' ? '✓ ' : '⚠ '}
+          {accountActivityToast.message}
+        </div>
+      ) : null}
 
       {confettiBurstId && <ConfettiBurst key={confettiBurstId} burstId={confettiBurstId} />}
 
@@ -3945,28 +4018,38 @@ const NBAGuessGame = () => {
                     <input
                       className="nm-account-modal__input"
                       value={safeAccountDisplayName}
-                      onChange={(e) => setAccountDisplayName(e.target.value)}
+                      onChange={(e) => {
+                        setProfileSaveUi((u) => (u === 'saved' ? 'idle' : u));
+                        setAccountDisplayName(e.target.value);
+                      }}
                       placeholder="How you appear on leaderboards"
                     />
+                    <p className="nm-account-modal__muted" style={{ marginTop: '6px' }}>
+                      Saved to your account in the cloud. Use a name you are okay showing on public leaderboards.
+                    </p>
                   </div>
 
                   <div className="nm-account-modal__row">
                     <button
                       type="button"
                       onClick={handleSaveDisplayName}
-                      disabled={accountSaving}
+                      disabled={accountSaving || profileSaveUi === 'saving'}
                       style={{
                         padding: '12px 16px',
                         borderRadius: '12px',
                         border: 'none',
-                        backgroundColor: '#3b82f6',
+                        backgroundColor: profileSaveUi === 'saved' ? '#15803d' : '#3b82f6',
                         color: 'white',
                         fontWeight: 900,
-                        cursor: accountSaving ? 'not-allowed' : 'pointer',
+                        cursor: accountSaving || profileSaveUi === 'saving' ? 'not-allowed' : 'pointer',
                       }}
-                      title="Updates your public display name"
+                      title="Save your display name to the server"
                     >
-                      Save name
+                      {profileSaveUi === 'saving'
+                        ? 'Saving…'
+                        : profileSaveUi === 'saved'
+                          ? 'Saved ✓'
+                          : 'Save name'}
                     </button>
 
                     <button
@@ -3981,11 +4064,17 @@ const NBAGuessGame = () => {
                         fontWeight: 900,
                         cursor: 'pointer',
                       }}
+                      title="Sign out and use guest mode on this device"
                     >
                       Sign out
                     </button>
                   </div>
 
+                  {profileSaveUi === 'saved' ? (
+                    <p style={{ color: '#86efac', fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>
+                      Saved — leaderboards will show this name.
+                    </p>
+                  ) : null}
                   {authError ? <div style={{ color: '#fecaca', fontSize: '0.9rem' }}>{authError}</div> : null}
                 </div>
               ) : (
