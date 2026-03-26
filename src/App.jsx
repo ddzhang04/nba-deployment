@@ -965,24 +965,41 @@ const NBAGuessGame = () => {
         return;
       }
 
-      const { error } = await supabase.from('mantle_runs').upsert(
-        {
-          anon_id,
-          user_id,
-          mode,
-          daily_number: dailyNumber,
-          date,
-          answer,
-          guesses,
-          won,
-          ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
-        },
-        { onConflict: 'anon_id,mode,daily_number' }
-      );
-      if (error) {
-        console.error('Supabase submit error:', error);
-        setSupabaseDebug({ lastSubmitOk: false, lastError: error?.message || 'Save failed' });
-        if (uiNotify) showAccountActivityToast(error?.message || 'Could not save to cloud.', 'error');
+      const payload = {
+        anon_id,
+        user_id,
+        mode,
+        daily_number: dailyNumber,
+        date,
+        answer,
+        guesses,
+        won,
+        ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
+      };
+
+      // IMPORTANT: Match the DB uniqueness rules.
+      // - Signed-in rows: unique per user_id+mode+daily_number (prevents two accounts on same device overwriting)
+      // - Guest rows: unique per anon_id+mode+daily_number
+      const primaryConflict = user_id ? 'user_id,mode,daily_number' : 'anon_id,mode,daily_number';
+      const fallbackConflict = user_id ? 'anon_id,mode,daily_number' : 'user_id,mode,daily_number';
+
+      const attemptUpsert = async (onConflict) =>
+        await supabase.from('mantle_runs').upsert(payload, { onConflict });
+
+      let res = await attemptUpsert(primaryConflict);
+      if (res?.error) {
+        const msg = String(res.error?.message || '');
+        // If the project hasn't applied the new indexes yet (or applied differently), retry with the other conflict target.
+        if (msg.toLowerCase().includes('no unique') || msg.toLowerCase().includes('conflict')) {
+          const res2 = await attemptUpsert(fallbackConflict);
+          if (!res2?.error) res = res2;
+        }
+      }
+
+      if (res?.error) {
+        console.error('Supabase submit error:', res.error);
+        setSupabaseDebug({ lastSubmitOk: false, lastError: res.error?.message || 'Save failed' });
+        if (uiNotify) showAccountActivityToast(res.error?.message || 'Could not save to cloud.', 'error');
         return;
       }
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
