@@ -974,6 +974,24 @@ const NBAGuessGame = () => {
   const [selectedDailyIndexOverride, setSelectedDailyIndexOverride] = useState(null); // number | null
   const [showPastDailyPicker, setShowPastDailyPicker] = useState(false);
   const todayDailyIndex = getDailyPuzzleDayIndex(new Date(nowTs), DAILY_PUZZLE_INDEX_OFFSET);
+  const getYmdInTimeZone = (date, timeZone) => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(date);
+      const y = parts.find((p) => p.type === 'year')?.value;
+      const m = parts.find((p) => p.type === 'month')?.value;
+      const d = parts.find((p) => p.type === 'day')?.value;
+      if (!y || !m || !d) return '';
+      return `${y}-${m}-${d}`;
+    } catch {
+      return '';
+    }
+  };
+  const todayYmdNY = getYmdInTimeZone(new Date(nowTs), 'America/New_York');
   const activeDailyIndex =
     (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && selectedDailyIndexOverride != null
       ? selectedDailyIndexOverride
@@ -2864,6 +2882,12 @@ const NBAGuessGame = () => {
               {gameMode === 'all' && 
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
+
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
+              <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+                Rollover date (ET): {todayYmdNY || '—'}
+              </div>
+            )}
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
