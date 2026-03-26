@@ -9,6 +9,17 @@ import { supabase } from './lib/supabaseClient';
 const STORAGE_RESET_VERSION = 'v14';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 
+/** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
+const getPasswordRecoveryRedirectTo = () => {
+  const fromEnv = import.meta.env.VITE_SUPABASE_PASSWORD_REDIRECT_TO || import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+  if (typeof window === 'undefined') return undefined;
+  const { origin, pathname } = window.location;
+  const path = pathname.split('?')[0].split('#')[0] || '/';
+  if (path === '/' || path === '') return origin.endsWith('/') ? origin.slice(0, -1) : origin;
+  return `${origin}${path}`;
+};
+
 const parseCompletionMapFromStorageRaw = (raw) => {
   if (!raw) return {};
   try {
@@ -139,8 +150,12 @@ const NBAGuessGame = () => {
   const [authError, setAuthError] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authResetEmail, setAuthResetEmail] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
+  const [newRecoveryPassword, setNewRecoveryPassword] = useState('');
+  const [newRecoveryPassword2, setNewRecoveryPassword2] = useState('');
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [accountDisplayName, setAccountDisplayName] = useState('');
   const [accountAvatarUrl, setAccountAvatarUrl] = useState('');
   const [accountIsVerified, setAccountIsVerified] = useState(false);
@@ -291,12 +306,21 @@ const NBAGuessGame = () => {
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthSession(session ?? null);
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        setPasswordRecoveryMode(true);
+        setShowAccountModal(true);
+        setAuthError('');
+        setAuthNotice('You opened a password reset link. Choose a new password below.');
+      }
       // Only clear account-local UI state on an explicit sign-out-like event.
       // Supabase can emit transient null sessions during init/refresh; clearing here would
       // incorrectly wipe local history when simply navigating/switching UI modes.
       const shouldClear =
         !session && (event === 'SIGNED_OUT' || event === 'USER_DELETED');
       if (shouldClear) {
+        setPasswordRecoveryMode(false);
+        setNewRecoveryPassword('');
+        setNewRecoveryPassword2('');
         try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
         try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
         setDailyCompletions({});
@@ -531,17 +555,24 @@ const NBAGuessGame = () => {
 
   const handleResetPassword = async () => {
     if (!supabase) return;
-    const email = authResetEmail.trim();
-    if (!email) return;
+    const email = authEmail.trim();
+    if (!email) {
+      setAuthError('Enter the email you used to sign up.');
+      return;
+    }
     setAuthLoading(true);
     setAuthError('');
     setAuthNotice('');
     try {
-      const redirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
+      const redirectTo = getPasswordRecoveryRedirectTo();
       const res = redirectTo
         ? await supabase.auth.resetPasswordForEmail(email, { redirectTo })
         : await supabase.auth.resetPasswordForEmail(email);
       if (res.error) throw res.error;
+      setAuthNotice(
+        'If that address has an account, we sent a reset link. Check your inbox and spam folder. The link opens this site so you can pick a new password.'
+      );
+      setShowForgotPassword(false);
     } catch (e) {
       setAuthError(e?.message || 'Reset failed');
     } finally {
@@ -549,34 +580,60 @@ const NBAGuessGame = () => {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleRecoverySetPassword = async () => {
     if (!supabase) return;
-    setAuthLoading(true);
+    const p1 = newRecoveryPassword;
+    const p2 = newRecoveryPassword2;
+    if (p1.length < 6) {
+      setAuthError('Use at least 6 characters.');
+      return;
+    }
+    if (p1 !== p2) {
+      setAuthError('Passwords do not match.');
+      return;
+    }
+    setRecoveryBusy(true);
     setAuthError('');
     try {
-      await supabase.auth.signOut();
+      const { error } = await supabase.auth.updateUser({ password: p1 });
+      if (error) throw error;
+      setPasswordRecoveryMode(false);
+      setNewRecoveryPassword('');
+      setNewRecoveryPassword2('');
+      setAuthNotice('Password updated. You are signed in.');
+      setShowAccountModal(false);
     } catch (e) {
-      setAuthError(e?.message || 'Sign out failed');
+      setAuthError(e?.message || 'Could not update password');
     } finally {
-      // Clear account-related local state + cached progress when signing out.
-      try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
-      try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
-      setDailyCompletions({});
-      setBallKnowledgeDailyCompletions({});
-      setSelectedDailyDetail(null);
-      setSelectedBallKnowledgeDetail(null);
-      // Also reset the visible puzzle state so a previous solved card
-      // (e.g. "answer was Luol Deng") does not linger after sign-out.
-      resetPuzzleState();
-      setAccountDisplayName('');
-      setAccountAvatarUrl('');
-      setAccountIsVerified(false);
-      setAuthEmail('');
-      setAuthPassword('');
-      setAuthResetEmail('');
-      setAuthNotice('');
-      setAuthLoading(false);
+      setRecoveryBusy(false);
     }
+  };
+
+  const handleSignOut = () => {
+    if (!supabase) return;
+    setShowAccountModal(false);
+    setAuthError('');
+    setAuthNotice('');
+    setPasswordRecoveryMode(false);
+    setNewRecoveryPassword('');
+    setNewRecoveryPassword2('');
+    setShowForgotPassword(false);
+    setAuthSession(null);
+    try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
+    try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+    setDailyCompletions({});
+    setBallKnowledgeDailyCompletions({});
+    setSelectedDailyDetail(null);
+    setSelectedBallKnowledgeDetail(null);
+    resetPuzzleState();
+    setAccountDisplayName('');
+    setAccountAvatarUrl('');
+    setAccountIsVerified(false);
+    setAuthEmail('');
+    setAuthPassword('');
+    void supabase.auth.signOut().catch((e) => {
+      console.warn('signOut:', e?.message || e);
+    });
   };
 
   const handleSaveDisplayName = (overrideDisplayName) => {
@@ -3738,7 +3795,10 @@ const NBAGuessGame = () => {
             role="dialog"
             aria-modal="true"
             aria-label="Account"
-            onClick={() => setShowAccountModal(false)}
+            onClick={() => {
+              setShowForgotPassword(false);
+              setShowAccountModal(false);
+            }}
             style={{
               position: 'fixed',
               inset: 0,
@@ -3752,15 +3812,16 @@ const NBAGuessGame = () => {
             }}
           >
             <div
+              className="nm-account-modal"
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: '100%',
-                maxWidth: '440px',
+                maxWidth: '420px',
                 maxHeight: '90vh',
                 overflowY: 'auto',
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 borderRadius: '16px',
-                padding: '18px',
+                padding: '22px',
                 border: '1px solid #334155',
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
               }}
@@ -3769,70 +3830,133 @@ const NBAGuessGame = () => {
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: '12px',
-                  marginBottom: '14px',
-                  flexWrap: 'wrap',
+                  marginBottom: '18px',
                 }}
               >
-                <div style={{ color: '#e5e7eb', fontWeight: 900, fontSize: '1rem' }}>🔐 Account (optional)</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  {authSession?.user ? (
-                    <div style={{ color: '#bbf7d0', fontWeight: 900, fontSize: '0.85rem' }}>Signed in</div>
-                  ) : (
-                    <div style={{ color: '#94a3b8', fontWeight: 900, fontSize: '0.85rem' }}>Guest mode</div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowAccountModal(false)}
-                    style={{
-                      border: 'none',
-                      background: 'rgba(15,23,42,0.65)',
-                      color: '#9ca3af',
-                      cursor: 'pointer',
-                      fontSize: '20px',
-                      lineHeight: 1,
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                    }}
-                    aria-label="Close account dialog"
-                  >
-                    ×
-                  </button>
+                <div>
+                  <h2 className="nm-account-modal__title">
+                    {passwordRecoveryMode && authSession?.user
+                      ? 'Set a new password'
+                      : authSession?.user
+                        ? 'Your account'
+                        : 'Sign in'}
+                  </h2>
+                  <div style={{ color: '#94a3b8', fontWeight: 700, fontSize: '0.8rem', marginTop: '4px' }}>
+                    {passwordRecoveryMode && authSession?.user
+                      ? 'Reset link'
+                      : authSession?.user
+                        ? 'Signed in'
+                        : 'Optional — play as guest anytime'}
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setShowAccountModal(false);
+                  }}
+                  style={{
+                    border: 'none',
+                    background: 'rgba(15,23,42,0.65)',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '22px',
+                    lineHeight: 1,
+                    padding: '2px 10px',
+                    borderRadius: '999px',
+                  }}
+                  aria-label="Close account dialog"
+                >
+                  ×
+                </button>
               </div>
 
-              {authLoading ? (
-                <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>Loading…</div>
-              ) : authSession?.user ? (
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <div style={{ color: '#bbf7d0', fontWeight: 900 }}>
-                    Signed in as {safeAccountDisplayName || authSession.user.email}
-                  </div>
-
-                  <div style={{ display: 'grid', gap: '6px' }}>
-                    <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Display name</div>
+              {passwordRecoveryMode && authSession?.user ? (
+                <div style={{ display: 'grid', gap: '14px' }}>
+                  <p className="nm-account-modal__lede" style={{ marginBottom: 0 }}>
+                    Pick a new password for <strong style={{ color: '#e2e8f0' }}>{authSession.user.email}</strong>.
+                  </p>
+                  <div className="nm-account-modal__field">
+                    <label className="nm-account-modal__label" htmlFor="nm-recovery-pw1">
+                      New password
+                    </label>
                     <input
+                      id="nm-recovery-pw1"
+                      className="nm-account-modal__input"
+                      value={newRecoveryPassword}
+                      onChange={(e) => setNewRecoveryPassword(e.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="At least 6 characters"
+                    />
+                  </div>
+                  <div className="nm-account-modal__field">
+                    <label className="nm-account-modal__label" htmlFor="nm-recovery-pw2">
+                      Confirm password
+                    </label>
+                    <input
+                      id="nm-recovery-pw2"
+                      className="nm-account-modal__input"
+                      value={newRecoveryPassword2}
+                      onChange={(e) => setNewRecoveryPassword2(e.target.value)}
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Repeat password"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRecoverySetPassword}
+                    disabled={recoveryBusy}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: '12px',
+                      border: 'none',
+                      backgroundColor: '#22c55e',
+                      color: 'white',
+                      fontWeight: 900,
+                      cursor: recoveryBusy ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {recoveryBusy ? 'Saving…' : 'Save new password'}
+                  </button>
+                  <button type="button" className="nm-account-modal__link-btn" onClick={handleSignOut}>
+                    Cancel and sign out
+                  </button>
+                  {authError ? <div style={{ color: '#fecaca', fontSize: '0.9rem' }}>{authError}</div> : null}
+                  {authNotice && !authError ? (
+                    <div style={{ color: '#bbf7d0', fontSize: '0.9rem' }}>{authNotice}</div>
+                  ) : null}
+                </div>
+              ) : authLoading ? (
+                <div style={{ color: '#94a3b8', fontSize: '0.95rem' }}>One moment…</div>
+              ) : authSession?.user ? (
+                <div style={{ display: 'grid', gap: '14px' }}>
+                  <p className="nm-account-modal__lede" style={{ marginBottom: 0 }}>
+                    <strong style={{ color: '#bbf7d0' }}>{safeAccountDisplayName || authSession.user.email}</strong>
+                    <span style={{ color: '#64748b' }}> · </span>
+                    <span style={{ color: '#94a3b8' }}>{authSession.user.email}</span>
+                  </p>
+
+                  <div className="nm-account-modal__field">
+                    <div className="nm-account-modal__section-title">Display name</div>
+                    <input
+                      className="nm-account-modal__input"
                       value={safeAccountDisplayName}
                       onChange={(e) => setAccountDisplayName(e.target.value)}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(51, 65, 85, 0.85)',
-                        backgroundColor: '#0b1220',
-                        color: 'white',
-                        width: '100%',
-                      }}
+                      placeholder="How you appear on leaderboards"
                     />
                   </div>
 
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div className="nm-account-modal__row">
                     <button
                       type="button"
                       onClick={handleSaveDisplayName}
                       disabled={accountSaving}
                       style={{
-                        padding: '10px 12px',
+                        padding: '12px 16px',
                         borderRadius: '12px',
                         border: 'none',
                         backgroundColor: '#3b82f6',
@@ -3842,77 +3966,71 @@ const NBAGuessGame = () => {
                       }}
                       title="Updates your public display name"
                     >
-                      Save
+                      Save name
                     </button>
 
                     <button
                       type="button"
                       onClick={handleSignOut}
-                      disabled={authLoading}
                       style={{
-                        padding: '10px 12px',
+                        padding: '12px 16px',
                         borderRadius: '12px',
                         border: '1px solid rgba(248, 113, 113, 0.55)',
                         backgroundColor: 'rgba(127, 29, 29, 0.22)',
                         color: '#fecaca',
                         fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
+                        cursor: 'pointer',
                       }}
                     >
                       Sign out
                     </button>
                   </div>
 
-                  {authError ? <div style={{ color: '#fecaca' }}>{authError}</div> : null}
+                  {authError ? <div style={{ color: '#fecaca', fontSize: '0.9rem' }}>{authError}</div> : null}
                 </div>
               ) : (
-                <div style={{ display: 'grid', gap: '10px' }}>
-                  <div style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.4 }}>
-                    Sign in to save progress across browsers. You can always keep playing as a guest.
-                  </div>
+                <div style={{ display: 'grid', gap: '4px' }}>
+                  <p className="nm-account-modal__lede">
+                    Save your daily progress in the cloud so you can pick up on another browser or device.
+                  </p>
 
-                  <div style={{ display: 'grid', gap: '6px' }}>
-                    <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Email</div>
+                  <div className="nm-account-modal__field">
+                    <label className="nm-account-modal__label" htmlFor="nm-auth-email">
+                      Email
+                    </label>
                     <input
+                      id="nm-auth-email"
+                      className="nm-account-modal__input"
                       value={authEmail}
                       onChange={(e) => setAuthEmail(e.target.value)}
                       placeholder="you@example.com"
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(51, 65, 85, 0.85)',
-                        backgroundColor: '#0b1220',
-                        color: 'white',
-                        width: '100%',
-                      }}
+                      type="email"
+                      autoComplete="email"
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gap: '6px' }}>
-                    <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Password</div>
+                  <div className="nm-account-modal__field">
+                    <label className="nm-account-modal__label" htmlFor="nm-auth-password">
+                      Password
+                    </label>
                     <input
+                      id="nm-auth-password"
+                      className="nm-account-modal__input"
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder="Your password"
                       type="password"
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(51, 65, 85, 0.85)',
-                        backgroundColor: '#0b1220',
-                        color: 'white',
-                        width: '100%',
-                      }}
+                      autoComplete="current-password"
                     />
                   </div>
 
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div className="nm-account-modal__row" style={{ marginTop: '6px' }}>
                     <button
                       type="button"
                       onClick={handleSignInWithEmail}
                       disabled={authLoading}
                       style={{
-                        padding: '10px 12px',
+                        padding: '12px 18px',
                         borderRadius: '12px',
                         border: 'none',
                         backgroundColor: '#22c55e',
@@ -3923,16 +4041,15 @@ const NBAGuessGame = () => {
                     >
                       Sign in
                     </button>
-
                     <button
                       type="button"
                       onClick={handleSignUpWithEmail}
                       disabled={authLoading}
                       style={{
-                        padding: '10px 12px',
+                        padding: '12px 18px',
                         borderRadius: '12px',
                         border: '1px solid rgba(167, 139, 250, 0.55)',
-                        backgroundColor: 'rgba(167, 139, 250, 0.10)',
+                        backgroundColor: 'rgba(167, 139, 250, 0.12)',
                         color: '#ddd6fe',
                         fontWeight: 900,
                         cursor: authLoading ? 'not-allowed' : 'pointer',
@@ -3941,82 +4058,87 @@ const NBAGuessGame = () => {
                     >
                       Create account
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSignInWithGoogle}
-                      disabled={authLoading}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(148, 163, 184, 0.55)',
-                        backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                        color: '#e2e8f0',
-                        fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      Continue with Google
-                    </button>
                   </div>
 
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handleSignInWithGoogle}
+                    disabled={authLoading}
+                    style={{
+                      width: '100%',
+                      marginTop: '6px',
+                      padding: '12px 16px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(148, 163, 184, 0.55)',
+                      backgroundColor: 'rgba(148, 163, 184, 0.10)',
+                      color: '#e2e8f0',
+                      fontWeight: 900,
+                      cursor: authLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    Continue with Google
+                  </button>
+
+                  <div className="nm-account-modal__divider" />
+
+                  <button
+                    type="button"
+                    className="nm-account-modal__link-btn"
+                    style={{ justifySelf: 'start', marginBottom: showForgotPassword ? 8 : 0 }}
+                    onClick={() => setShowForgotPassword((v) => !v)}
+                  >
+                    {showForgotPassword ? 'Hide' : 'Forgot password?'}
+                  </button>
+                  {showForgotPassword ? (
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(51, 65, 85, 0.75)',
+                      }}
+                    >
+                      <p className="nm-account-modal__muted" style={{ marginTop: 0 }}>
+                        We will email a link to the address above. Open it on this site to choose a new password. Add this URL in
+                        Supabase → Authentication → URL configuration → Redirect URLs if the email link fails.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleResetPassword}
+                        disabled={authLoading || !authEmail.trim()}
+                        style={{
+                          marginTop: '10px',
+                          padding: '10px 16px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(59, 130, 246, 0.55)',
+                          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                          color: '#dbeafe',
+                          fontWeight: 900,
+                          cursor: authLoading || !authEmail.trim() ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        Email me a reset link
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <p className="nm-account-modal__muted">
                     <button
                       type="button"
+                      className="nm-account-modal__link-btn"
                       onClick={handleResendSignupConfirmation}
                       disabled={authLoading || !authEmail.trim()}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(148, 163, 184, 0.45)',
-                        backgroundColor: 'rgba(148, 163, 184, 0.10)',
-                        color: '#e2e8f0',
-                        fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
-                      }}
-                      title="Resend the email confirmation link"
                     >
-                      Resend confirmation
+                      Resend signup confirmation
                     </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gap: '6px' }}>
-                    <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.9rem' }}>Reset password</div>
-                    <input
-                      value={authResetEmail}
-                      onChange={(e) => setAuthResetEmail(e.target.value)}
-                      placeholder="Email for reset"
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(51, 65, 85, 0.85)',
-                        backgroundColor: '#0b1220',
-                        color: 'white',
-                        width: '100%',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleResetPassword}
-                      disabled={authLoading}
-                      style={{
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(59, 130, 246, 0.55)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.18)',
-                        color: '#dbeafe',
-                        fontWeight: 900,
-                        cursor: authLoading ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      Send reset email
-                    </button>
-                  </div>
+                    <span style={{ color: '#475569' }}> · </span>
+                    <span>if you did not get the first email.</span>
+                  </p>
 
                   {authError ? (
-                    <div style={{ color: '#fecaca' }}>{authError}</div>
+                    <div style={{ color: '#fecaca', fontSize: '0.9rem', marginTop: '8px' }}>{authError}</div>
                   ) : authNotice ? (
-                    <div style={{ color: '#bbf7d0' }}>{authNotice}</div>
+                    <div style={{ color: '#bbf7d0', fontSize: '0.9rem', marginTop: '8px' }}>{authNotice}</div>
                   ) : null}
                 </div>
               )}
