@@ -12,7 +12,10 @@ const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 /** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
 const getPasswordRecoveryRedirectTo = () => {
   const fromEnv = import.meta.env.VITE_SUPABASE_PASSWORD_REDIRECT_TO || import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO;
-  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+  if (typeof fromEnv === 'string') {
+    const trimmed = fromEnv.trim();
+    if (trimmed) return trimmed.endsWith('/') && trimmed.length > 1 ? trimmed.slice(0, -1) : trimmed;
+  }
   if (typeof window === 'undefined') return undefined;
   const { origin, pathname } = window.location;
   const path = pathname.split('?')[0].split('#')[0] || '/';
@@ -341,17 +344,7 @@ const NBAGuessGame = () => {
     if (!supabase) return;
     let unsub = null;
     setAuthLoading(true);
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        setAuthSession(data.session ?? null);
-      })
-      .catch((err) => {
-        console.error('Supabase getSession error:', err);
-        setAuthSession(null);
-      })
-      .finally(() => setAuthLoading(false));
-
+    // Subscribe first so we don't miss one-time events triggered during getSession().
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthSession(session ?? null);
       if (event === 'PASSWORD_RECOVERY' && session) {
@@ -382,6 +375,17 @@ const NBAGuessGame = () => {
       }
     });
     unsub = data?.subscription || null;
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setAuthSession(data.session ?? null);
+      })
+      .catch((err) => {
+        console.error('Supabase getSession error:', err);
+        setAuthSession(null);
+      })
+      .finally(() => setAuthLoading(false));
 
     return () => {
       try {
@@ -1218,6 +1222,15 @@ const NBAGuessGame = () => {
 
     (async () => {
       try {
+        // Ensure the Supabase client has this JWT before doing any auth-scoped RPCs.
+        // On mobile, state can update before the client's internal auth store does.
+        if (authSession?.access_token && authSession?.refresh_token) {
+          await supabase.auth.setSession({
+            access_token: authSession.access_token,
+            refresh_token: authSession.refresh_token,
+          });
+        }
+
         const detailsOk = mantleRunsDetailsSupported === true;
         let mergedRows = [];
 
@@ -1354,6 +1367,7 @@ const NBAGuessGame = () => {
   // On sign-in, push local history once so it becomes available on other devices.
   useEffect(() => {
     if (!authSession?.user?.id) return;
+    if (!supabase) return;
     if (!identityInitialized) return;
     if (!anonId) return;
 
@@ -1361,46 +1375,60 @@ const NBAGuessGame = () => {
     if (accountBackfillMarkerRef.current === marker) return;
     accountBackfillMarkerRef.current = marker;
 
-    const dailyLocal = getDailyCompletionsFromStorage();
-    const hardcoreLocal = getBallKnowledgeDailyFromStorage();
+    void (async () => {
+      try {
+        // Same race as hydration: ensure the client is authenticated before writing.
+        if (authSession?.access_token && authSession?.refresh_token) {
+          await supabase.auth.setSession({
+            access_token: authSession.access_token,
+            refresh_token: authSession.refresh_token,
+          });
+        }
+      } catch {
+        // Best-effort: even if setSession fails, writes may still go through.
+      }
 
-    const jobs = [];
-    for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
-      const n = Number(numStr);
-      if (!Number.isFinite(n) || n < 1) continue;
-      jobs.push(
-        submitCompletionToCloud({
-          mode: 'daily',
-          dailyNumber: n,
-          date: typeof entry?.date === 'string' ? entry.date : '',
-          answer: typeof entry?.answer === 'string' ? entry.answer : '',
-          guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
-          won: entry?.won !== false,
-          guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
-          top5: Array.isArray(entry?.top5) ? entry.top5 : [],
-        })
-      );
-    }
-    for (const [numStr, entry] of Object.entries(hardcoreLocal || {})) {
-      const n = Number(numStr);
-      if (!Number.isFinite(n) || n < 1) continue;
-      jobs.push(
-        submitCompletionToCloud({
-          mode: 'hardcore',
-          dailyNumber: n,
-          date: typeof entry?.date === 'string' ? entry.date : '',
-          answer: typeof entry?.answer === 'string' ? entry.answer : '',
-          guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
-          won: entry?.won !== false,
-          guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
-          top5: Array.isArray(entry?.top5) ? entry.top5 : [],
-        })
-      );
-    }
+      const dailyLocal = getDailyCompletionsFromStorage();
+      const hardcoreLocal = getBallKnowledgeDailyFromStorage();
 
-    if (jobs.length) {
-      Promise.allSettled(jobs).catch(() => {});
-    }
+      const jobs = [];
+      for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
+        const n = Number(numStr);
+        if (!Number.isFinite(n) || n < 1) continue;
+        jobs.push(
+          submitCompletionToCloud({
+            mode: 'daily',
+            dailyNumber: n,
+            date: typeof entry?.date === 'string' ? entry.date : '',
+            answer: typeof entry?.answer === 'string' ? entry.answer : '',
+            guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+            won: entry?.won !== false,
+            guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+            top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+          })
+        );
+      }
+      for (const [numStr, entry] of Object.entries(hardcoreLocal || {})) {
+        const n = Number(numStr);
+        if (!Number.isFinite(n) || n < 1) continue;
+        jobs.push(
+          submitCompletionToCloud({
+            mode: 'hardcore',
+            dailyNumber: n,
+            date: typeof entry?.date === 'string' ? entry.date : '',
+            answer: typeof entry?.answer === 'string' ? entry.answer : '',
+            guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+            won: entry?.won !== false,
+            guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+            top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+          })
+        );
+      }
+
+      if (jobs.length) {
+        Promise.allSettled(jobs).catch(() => {});
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId]);
   useEffect(() => {
@@ -2705,22 +2733,12 @@ const NBAGuessGame = () => {
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '12px',
           padding: '18px',
-          paddingTop: '52px',
+          paddingTop: '18px',
           marginBottom: '24px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
-          <button
-            type="button"
-            className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
-            onClick={() => setShowAccountModal(true)}
-            title={authSession?.user ? 'Account & sign out' : 'Sign in (optional) — saves progress across devices'}
-          >
-            <span className="nm-header-account-btn__icon">{authSession?.user ? '✓' : '🔐'}</span>
-            <span className="nm-header-account-btn__label">{authSession?.user ? 'Account' : 'Sign in'}</span>
-          </button>
-
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '18px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
             <h1 style={{ fontSize: '2.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
@@ -2748,6 +2766,17 @@ const NBAGuessGame = () => {
           </div>
 
           <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', marginBottom: '4px' }}>
+            <button
+              type="button"
+              className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
+              onClick={() => setShowAccountModal(true)}
+              title={authSession?.user ? 'Account & sign out' : 'Sign in (optional) — saves progress across devices'}
+              style={{ padding: '6px 12px', fontSize: '12px', gap: '6px' }}
+            >
+              <span className="nm-header-account-btn__icon">{authSession?.user ? '✓' : '🔐'}</span>
+              <span className="nm-header-account-btn__label">{authSession?.user ? 'Account' : 'Sign in'}</span>
+            </button>
+
             <button
               onClick={() => setShowHowToPlay(true)}
               className="how-to-play-btn"
