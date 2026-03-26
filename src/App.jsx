@@ -984,40 +984,31 @@ const NBAGuessGame = () => {
         ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
       };
 
-      // IMPORTANT: Match the DB uniqueness rules.
-      // - Signed-in rows: unique per user_id+mode+daily_number (prevents two accounts on same device overwriting)
-      // - Guest rows: unique per anon_id+mode+daily_number
-      const primaryConflict = user_id ? 'user_id,mode,daily_number' : 'anon_id,mode,daily_number';
-      const fallbackConflict = user_id ? 'anon_id,mode,daily_number' : 'user_id,mode,daily_number';
-
-      const attemptUpsert = async (onConflict) =>
-        await supabase.from('mantle_runs').upsert(payload, { onConflict });
-
-      let res = await attemptUpsert(primaryConflict);
-      if (res?.error) {
-        const msg = String(res.error?.message || '');
-        // If the project hasn't applied the new indexes yet (or applied differently), retry with the other conflict target.
-        if (msg.toLowerCase().includes('no unique') || msg.toLowerCase().includes('conflict')) {
-          const res2 = await attemptUpsert(fallbackConflict);
-          if (!res2?.error) res = res2;
+      // Append-only attempt history. This is the ONLY cloud write path.
+      // We intentionally DO NOT upsert into `mantle_runs` to avoid overwriting.
+      try {
+        const ins = await supabase.from('mantle_run_attempts').insert(payload);
+        if (ins?.error) throw ins.error;
+      } catch (e) {
+        const msg = e?.message || 'Save failed';
+        console.error('Supabase attempts insert error:', e);
+        setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
+        if (uiNotify) {
+          const lower = String(msg).toLowerCase();
+          const missingTable =
+            lower.includes('does not exist') || lower.includes('relation') || lower.includes('mantle_run_attempts');
+          showAccountActivityToast(
+            missingTable
+              ? 'Cloud save failed: missing mantle_run_attempts table. Apply supabase/setup.sql in Supabase.'
+              : `Cloud save failed: ${msg}`,
+            'error'
+          );
         }
-      }
-
-      if (res?.error) {
-        console.error('Supabase submit error:', res.error);
-        setSupabaseDebug({ lastSubmitOk: false, lastError: res.error?.message || 'Save failed' });
-        if (uiNotify) showAccountActivityToast(res.error?.message || 'Could not save to cloud.', 'error');
         return;
       }
+
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
       if (uiNotify) showAccountActivityToast('Saved to cloud.', 'success');
-
-      // Append-only attempt history (best-effort). This is what you want if you never want overwrites.
-      try {
-        await supabase.from('mantle_run_attempts').insert(payload);
-      } catch {
-        // If the table isn't deployed yet, ignore.
-      }
 
       // After a successful write, refresh cloud completions so stats/past games update immediately.
       try {
