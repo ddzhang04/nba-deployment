@@ -987,6 +987,20 @@ const NBAGuessGame = () => {
       try {
         cloudHydrateLastTsRef.current = 0;
       } catch {}
+
+      // Bust global-average cache and refetch so win count / avg update immediately (not stuck on 1 win / 12h cache).
+      try {
+        const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+        const cacheKey = key(`nba-mantle-global-daily-avg-v2-${m}-${dailyNumber}`);
+        localStorage.removeItem(cacheKey);
+      } catch {}
+      void (async () => {
+        try {
+          const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+          const next = await fetchGlobalDailyAverage({ mode: m, dailyNumber, forceRefresh: true });
+          setPostWinGlobalDailyAverage(next);
+        } catch {}
+      })();
     } catch {
       // ignore
     }
@@ -997,7 +1011,6 @@ const NBAGuessGame = () => {
     if (!authSession?.user?.id) return false;
     if (!identityInitialized) return false;
     if (!anonId) return false;
-    if (!anonLinksLinkedForDevice) return false;
 
     const now = Date.now();
     if (!force && now - cloudHydrateLastTsRef.current < 2500) return true;
@@ -1006,16 +1019,6 @@ const NBAGuessGame = () => {
     cloudHydrateLastTsRef.current = now;
 
     try {
-      // Ensure auth context for RPC.
-      if (authSession?.access_token && authSession?.refresh_token) {
-        try {
-          await supabase.auth.setSession({
-            access_token: authSession.access_token,
-            refresh_token: authSession.refresh_token,
-          });
-        } catch {}
-      }
-
       const userId = authSession.user.id;
       const detailsOk = mantleRunsDetailsSupported === true;
       let mergedRows = [];
@@ -1024,29 +1027,32 @@ const NBAGuessGame = () => {
       if (!rpcErr && Array.isArray(rpcRows)) {
         mergedRows = rpcRows;
       } else {
-        let linkedAnonIds = [];
-        try {
-          const { data: links, error: linksErr } = await supabase
-            .from('anon_links')
-            .select('anon_id')
-            .eq('user_id', userId)
-            .limit(200);
-          if (!linksErr) {
-            linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
-          }
-        } catch {}
-
-        const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
         const columns = detailsOk
           ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
           : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+        const userQuery = supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000);
+        let anonQuery = Promise.resolve({ data: [], error: null });
+        if (anonLinksLinkedForDevice) {
+          anonQuery = (async () => {
+            try {
+              const { data: links, error: linksErr } = await supabase
+                .from('anon_links')
+                .select('anon_id')
+                .eq('user_id', userId)
+                .limit(200);
+              if (linksErr) return { data: [], error: linksErr };
+              const anonIds = Array.from(
+                new Set((links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean))
+              );
+              if (!anonIds.length) return { data: [], error: null };
+              return supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000);
+            } catch (e) {
+              return { data: [], error: e };
+            }
+          })();
+        }
 
-        const [byUserRes, byAnonRes] = await Promise.all([
-          supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
-          anonIds.length
-            ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
+        const [byUserRes, byAnonRes] = await Promise.all([userQuery, anonQuery]);
         mergedRows = [
           ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
           ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
@@ -1175,37 +1181,47 @@ const NBAGuessGame = () => {
 
   // (intentionally no public "test write" in production UI)
 
+  // v2 key: older builds cached 12h from RPC that read mantle_run_attempts → stuck at "1 win".
+  const GLOBAL_AVG_CACHE_TTL_MS = 1000 * 90; // 90s — stats should feel live; bust on each cloud save too.
+  const readCachedGlobalDailyAverage = ({ mode, dailyNumber }) => {
+    const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+    const n = Number(dailyNumber);
+    if (!Number.isFinite(n) || n < 1) return null;
+    const cacheKey = key(`nba-mantle-global-daily-avg-v2-${m}-${n}`);
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.ts || typeof parsed.ts !== 'number') return null;
+      if (Date.now() - parsed.ts > GLOBAL_AVG_CACHE_TTL_MS) return null;
+      return parsed?.value ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber, forceRefresh = false }) => {
     // mode: 'daily' | 'hardcore'
     const m = mode === 'hardcore' ? 'hardcore' : 'daily';
     const n = Number(dailyNumber);
     if (!Number.isFinite(n) || n < 1) return null;
 
-    // Cache per (mode,dailyNumber) so reloads don't recompute on every visit.
-    const CACHE_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
-    const cacheKey = key(`nba-mantle-global-daily-avg-${m}-${n}`);
+    const cacheKey = key(`nba-mantle-global-daily-avg-v2-${m}-${n}`);
     if (!forceRefresh) {
-      try {
-        const raw = localStorage.getItem(cacheKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.ts && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= CACHE_TTL_MS) {
-            return parsed?.value ?? null;
-          }
-        }
-      } catch {}
+      const cached = readCachedGlobalDailyAverage({ mode: m, dailyNumber: n });
+      if (cached != null) return cached;
     }
 
-    // Global averages: Supabase RPC (same DB as the game — no separate stats API).
+    // Global averages: Supabase RPC aggregates mantle_runs in SQL (see setup.sql).
     // Keep this fast: if Supabase is slow/unreachable, return quickly (UI treats it as optional).
-    const RPC_TIMEOUT_MS = 2500;
+    const RPC_TIMEOUT_MS = 4000;
     const withRpcTimeout = (promise) =>
       Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), RPC_TIMEOUT_MS)),
       ]);
 
-    // Preferred: single-daily RPC so we don't fetch/loop through every daily_number.
+    // Preferred: single-daily RPC (AVG + COUNT in Postgres).
     if (supabase) {
       try {
         const { data: rpcData, error: rpcErr } = await withRpcTimeout(supabase.rpc(
@@ -1217,9 +1233,7 @@ const NBAGuessGame = () => {
           const avg = row?.avg == null ? null : Number(row.avg);
           const wins = row?.wins == null ? null : Number(row.wins);
           if (avg == null) {
-            // No wins for this daily yet.
             const value = { avg: null, wins: Number.isFinite(wins) ? wins : null };
-            // Cache "no data yet" briefly so we don't spam Supabase during the same session.
             try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
             return value;
           }
@@ -1230,10 +1244,10 @@ const NBAGuessGame = () => {
           }
         }
       } catch {
-        // If the faster RPC isn't deployed yet (or is slow), fall back below.
+        // RPC missing, slow, or old — fall back below.
       }
 
-      // Fallback: compute for one daily directly from mantle_runs if RPC is unavailable.
+      // Fallback: compute from mantle_runs rows if RPC is unavailable.
       // This keeps the UI working even when the optional RPC hasn't been deployed yet.
       try {
         const { data: rows, error: rowsErr } = await withRpcTimeout(
@@ -1575,12 +1589,11 @@ const NBAGuessGame = () => {
     if (!authSession?.user?.id) return;
     if (!identityInitialized) return;
     if (!anonId) return;
-    if (!anonLinksLinkedForDevice) return;
     const id = setInterval(() => {
       void hydrateCompletionsFromCloud();
     }, 12000);
     return () => clearInterval(id);
-  }, [authSession?.user?.id, identityInitialized, anonId, anonLinksLinkedForDevice, hydrateCompletionsFromCloud]);
+  }, [authSession?.user?.id, identityInitialized, anonId, hydrateCompletionsFromCloud]);
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
   // On sign-in, push local history once so it becomes available on other devices.
@@ -1876,17 +1889,18 @@ const NBAGuessGame = () => {
   }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed]);
 
   // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
+  // Do not gate on targetPlayer — desktop often hydrates completion state before the answer string is restored.
   useEffect(() => {
-    if (!targetPlayer) return;
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
-    if (!gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed) return;
+    if (!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed) return;
     let cancelled = false;
     let intervalId = null;
     const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
 
     const fetchAndApply = async ({ forceRefresh, withLoading }) => {
       if (cancelled) return;
-      if (postWinGlobalAvgInFlightRef.current) return; // prevent overlapping RPCs
+      // Allow forced refreshes (poll / post-save) to run even if a soft refresh is in flight.
+      if (postWinGlobalAvgInFlightRef.current && !forceRefresh) return;
 
       const reqId = ++postWinGlobalAvgReqIdRef.current;
       postWinGlobalAvgInFlightRef.current = true;
@@ -1912,21 +1926,36 @@ const NBAGuessGame = () => {
       }
     };
 
-    // Initial (fast) fetch uses cache if possible.
-    void fetchAndApply({ forceRefresh: false, withLoading: true });
+    // Apply cached value synchronously so the UI updates immediately.
+    const cached = readCachedGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber });
+    if (cached != null) {
+      setPostWinGlobalDailyAverage(cached);
+      setPostWinGlobalDailyAverageLoading(false);
+      void fetchAndApply({ forceRefresh: true, withLoading: false });
+    } else {
+      // No cache: fetch now with loading state.
+      void fetchAndApply({ forceRefresh: false, withLoading: true });
+    }
 
     // Poll occasionally while the user is on the end screen.
     // Slower polling + single-flight makes it much less likely to feel "messed up".
     intervalId = setInterval(() => {
       void fetchAndApply({ forceRefresh: true, withLoading: false });
-    }, 3 * 60 * 1000);
+    }, 45 * 1000);
 
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameWon, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, targetPlayer, gameMode, activeDailyNumber]);
+  }, [gameWon, showAnswer, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, gameMode, activeDailyNumber]);
+
+  // Prefetch global average for the active daily so end-screen can render instantly.
+  useEffect(() => {
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+    void fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: false });
+  }, [gameMode, activeDailyNumber]);
 
   // Auto-dismiss confetti after a win.
   useEffect(() => {
@@ -4739,7 +4768,8 @@ const NBAGuessGame = () => {
                         </p>
                       )}
 
-                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && end.state === 'won' && (
+                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') &&
+                        (end.state === 'won' || end.state === 'revealed') && (
                         <div style={{ marginTop: '10px', fontSize: '0.95rem', opacity: 0.95, color: 'white' }}>
                           {postWinGlobalDailyAverageLoading ? (
                             <span>Fetching global daily average…</span>

@@ -55,8 +55,8 @@ CREATE INDEX IF NOT EXISTS mantle_run_attempts_anon_id_idx ON public.mantle_run_
 CREATE INDEX IF NOT EXISTS mantle_run_attempts_mode_daily_idx ON public.mantle_run_attempts (mode, daily_number);
 
 -- ---------------------------------------------------------------------------
--- 1c) Global averages based on append-only attempts
--- We take the latest attempt per anon_id for the given (mode,daily_number) to avoid double-counting.
+-- 1c) Global averages for one daily (from mantle_runs — canonical cloud table)
+-- App writes completions here; do not use mantle_run_attempts or stats stay at 1 / stale.
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.get_mantle_answer_averages_for_daily(text, integer) CASCADE;
 
@@ -65,20 +65,12 @@ RETURNS TABLE (avg numeric, wins bigint)
 LANGUAGE sql
 STABLE
 AS $$
-  WITH latest_per_anon AS (
-    SELECT DISTINCT ON (mra.anon_id)
-      mra.anon_id,
-      mra.guesses,
-      mra.won
-    FROM public.mantle_run_attempts mra
-    WHERE mra.mode = p_mode
-      AND mra.daily_number = p_daily_number
-    ORDER BY mra.anon_id, mra.created_at DESC
-  )
   SELECT
-    AVG((l.guesses)::numeric) FILTER (WHERE l.won = true) AS avg,
-    COUNT(*) FILTER (WHERE l.won = true)::bigint        AS wins
-  FROM latest_per_anon l
+    AVG((mr.guesses)::numeric) FILTER (WHERE mr.won = true) AS avg,
+    COUNT(*) FILTER (WHERE mr.won = true)::bigint AS wins
+  FROM public.mantle_runs mr
+  WHERE mr.mode = p_mode
+    AND mr.daily_number = p_daily_number
   ;
 $$;
 
