@@ -415,7 +415,10 @@ const NBAGuessGame = () => {
     setAuthLoading(true);
     // Subscribe first so we don't miss one-time events triggered during getSession().
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      setAuthSession(session ?? null);
+      // Avoid "phantom sign-outs" caused by transient null sessions during init/refresh.
+      // Only clear session when Supabase explicitly says it's signed out / deleted.
+      const explicitSignOut = !session && (event === 'SIGNED_OUT' || event === 'USER_DELETED');
+      if (session || explicitSignOut) setAuthSession(session ?? null);
       if (event === 'PASSWORD_RECOVERY' && session) {
         setPasswordRecoveryMode(true);
         setShowAccountModal(true);
@@ -458,8 +461,9 @@ const NBAGuessGame = () => {
         setAuthSession(data.session ?? null);
       })
       .catch((err) => {
-        console.error('Supabase getSession error:', err);
-        setAuthSession(null);
+        // Important: do NOT clear auth session on timeout/network errors.
+        // That would look like a random sign-out on mobile.
+        console.warn('Supabase getSession error/timeout:', err?.message || err);
       })
       .finally(() => setAuthLoading(false));
 
@@ -1199,20 +1203,31 @@ const NBAGuessGame = () => {
     }
 
     // Global averages: Supabase RPC (same DB as the game — no separate stats API).
+    // Keep this fast: if Supabase is slow/unreachable, return quickly (UI treats it as optional).
+    const RPC_TIMEOUT_MS = 2500;
+    const withRpcTimeout = (promise) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), RPC_TIMEOUT_MS)),
+      ]);
+
     // Preferred: single-daily RPC so we don't fetch/loop through every daily_number.
     if (supabase) {
       try {
-        const { data: rpcData, error: rpcErr } = await supabase.rpc(
+        const { data: rpcData, error: rpcErr } = await withRpcTimeout(supabase.rpc(
           'get_mantle_answer_averages_for_daily',
           { p_mode: m, p_daily_number: n }
-        );
+        ));
         if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
           const row = rpcData[0] ?? {};
           const avg = row?.avg == null ? null : Number(row.avg);
           const wins = row?.wins == null ? null : Number(row.wins);
           if (avg == null) {
             // No wins for this daily yet.
-            return { avg: null, wins: Number.isFinite(wins) ? wins : null };
+            const value = { avg: null, wins: Number.isFinite(wins) ? wins : null };
+            // Cache "no data yet" briefly so we don't spam Supabase during the same session.
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
           }
           if (Number.isFinite(avg)) {
             const value = { avg, wins: Number.isFinite(wins) ? wins : null };
@@ -1221,32 +1236,11 @@ const NBAGuessGame = () => {
           }
         }
       } catch {
-        // If the faster RPC isn't deployed yet, fall back below.
+        // If the faster RPC isn't deployed yet (or is slow), fall back below.
       }
 
-      // Fallback: original RPC returns averages for every daily_number. Correct but heavier.
-      try {
-        const { data: rpcData, error: rpcErr } = await supabase.rpc('get_mantle_answer_averages', { p_mode: m });
-        if (!rpcErr && Array.isArray(rpcData)) {
-          const row = rpcData.find((item) => {
-            if (!item || typeof item !== 'object') return false;
-            const dn = Number(item.daily_number ?? item.dailyNumber ?? NaN);
-            return dn === n;
-          });
-          if (row) {
-            const avg = row?.avg == null ? null : Number(row.avg);
-            const wins = row?.wins == null ? null : Number(row.wins);
-            if (avg == null) return { avg: null, wins: Number.isFinite(wins) ? wins : null };
-            if (Number.isFinite(avg)) {
-              const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-              try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-              return value;
-            }
-          }
-        }
-      } catch {
-        // fall through
-      }
+      // Skip the heavy "all dailies" fallback in the hot path — it can be slow on mobile.
+      // If you need this, deploy the single-daily RPC which is O(1) instead of O(N).
     }
 
     return null;
@@ -2434,7 +2428,9 @@ const NBAGuessGame = () => {
               prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0;
             setTop5Players((top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []));
             if (gameMode === 'daily') {
-              const dateStr = getISODateForDailyIndex(activeDailyIndex);
+              const dateStr = isPastDailySelected
+                ? getISODateForDailyIndex(activeDailyIndex)
+                : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
@@ -2447,7 +2443,9 @@ const NBAGuessGame = () => {
                 );
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
-              const dateStr = getISODateForDailyIndex(activeDailyIndex);
+              const dateStr = isPastDailySelected
+                ? getISODateForDailyIndex(activeDailyIndex)
+                : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
               const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
@@ -2536,7 +2534,9 @@ const NBAGuessGame = () => {
     
     setShowAnswer(true);
     if (gameMode === 'daily') {
-      const dateStr = getISODateForDailyIndex(activeDailyIndex);
+      const dateStr = isPastDailySelected
+        ? getISODateForDailyIndex(activeDailyIndex)
+        : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
@@ -2548,7 +2548,9 @@ const NBAGuessGame = () => {
         );
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
-      const dateStr = getISODateForDailyIndex(activeDailyIndex);
+      const dateStr = isPastDailySelected
+        ? getISODateForDailyIndex(activeDailyIndex)
+        : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
       const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
