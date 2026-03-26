@@ -2,22 +2,76 @@
  * DAILY PUZZLE PLAYERS — Edit this file to change which player is used each day.
  *
  * How it works:
- * - The app uses your device's calendar date. Everyone gets the same puzzle on the same day.
+ * - The app uses a shared calendar day (US Eastern / New York) for "today's" puzzle # so it
+ *   doesn't flip at UTC midnight while it's still the previous evening in the US. Everyone
+ *   shares the same daily number at the same moment.
  * - Day 0 = first day (epoch date below), Day 1 = next day, etc.
  * - Each day maps to the player at that index in the array below.
  * - To add more dailies: add names to the DAILY_PLAYERS array. Order matters:
  *   Index 0 = Day 0, Index 1 = Day 1, Index 2 = Day 2, ...
  * - If there are more days than players, the list cycles (e.g. after the last name it wraps to the first).
  *
- * To reset to "Day 1": set DAILY_PUZZLE_EPOCH to today's UTC date (and bump ROTATION_SHUFFLE_VERSION + STORAGE_RESET_VERSION in App).
+ * To reset to "Day 1": set DAILY_PUZZLE_EPOCH to today's date in America/New_York (YYYY-MM-DD),
+ * then bump ROTATION_SHUFFLE_VERSION + STORAGE_RESET_VERSION in App.
  */
 
-// Day index 0 = Daily #1 on this UTC calendar day (everyone shares the same puzzle date).
+// Day index 0 = Daily #1 on the epoch date (see DAILY_PUZZLE_CALENDAR_TIMEZONE).
 export const DAILY_PUZZLE_EPOCH = '2026-03-25';
 
 // Bump when you reshuffle the rotation for everyone.
 export const ROTATION_SHUFFLE_VERSION = 'shuffle-v9';
 export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-25';
+
+/** Which calendar date defines "today's" daily # (shared by the app and serverless APIs). */
+export const DAILY_PUZZLE_CALENDAR_TIMEZONE = 'America/New_York';
+
+const getYmdInTimeZone = (date, timeZone) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (!y || !m || !d) return '';
+    return `${y}-${m}-${d}`;
+  } catch {
+    return '';
+  }
+};
+
+const ymdDayIndex = (ymd) => {
+  const [y, mo, da] = String(ymd).split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(da)) return 0;
+  return Math.floor(Date.UTC(y, mo - 1, da) / 86400000);
+};
+
+/** 0-based day index from epoch (Daily #1 = index 0 on the epoch date). */
+export const getDailyPuzzleDayIndex = (now = new Date(), indexOffset = 0) => {
+  const ref = now instanceof Date ? now : new Date(now);
+  const todayYmd = getYmdInTimeZone(ref, DAILY_PUZZLE_CALENDAR_TIMEZONE);
+  if (!todayYmd) {
+    const epoch = new Date(`${DAILY_PUZZLE_EPOCH}T00:00:00.000Z`).getTime();
+    const todayUTC = Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate());
+    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) + indexOffset);
+  }
+  const delta = ymdDayIndex(todayYmd) - ymdDayIndex(DAILY_PUZZLE_EPOCH);
+  return Math.max(0, delta + indexOffset);
+};
+
+/** ISO date (YYYY-MM-DD) for puzzle day index `index` (0 = epoch day). */
+export const getISODateForDailyIndexFromEpoch = (index) => {
+  try {
+    const [y, m, d] = DAILY_PUZZLE_EPOCH.split('-').map(Number);
+    const t = Date.UTC(y, m - 1, d) + index * 86400000;
+    return new Date(t).toISOString().slice(0, 10);
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
 
 const hashSeed = (str) => {
   // FNV-1a 32-bit

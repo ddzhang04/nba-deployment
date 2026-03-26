@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { DAILY_PUZZLE_EPOCH } from '../src/data/dailyPlayers.js';
+import { getDailyPuzzleDayIndex, getISODateForDailyIndexFromEpoch } from '../src/data/dailyPlayers.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -23,23 +23,12 @@ function parseMode(modeRaw) {
   return 'daily';
 }
 
-const DAILY_PUZZLE_INDEX_OFFSET = -1;
-
 function getDailyPuzzleIndexDisplayed() {
-  const epoch = new Date(`${DAILY_PUZZLE_EPOCH}T00:00:00.000Z`).getTime();
-  const now = new Date();
-  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) + DAILY_PUZZLE_INDEX_OFFSET);
+  return getDailyPuzzleDayIndex();
 }
 
 function getISODateForDailyIndex(index) {
-  const epochUTC = Date.UTC(
-    Number(DAILY_PUZZLE_EPOCH.slice(0, 4)),
-    Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
-    Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
-  );
-  const d = new Date(epochUTC + index * 86400000);
-  return d.toISOString().slice(0, 10);
+  return getISODateForDailyIndexFromEpoch(index);
 }
 
 function hashAnonId(str) {

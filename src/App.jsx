@@ -1,27 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
-import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
+import { DAILY_PLAYERS, getDailyPuzzleDayIndex, getISODateForDailyIndexFromEpoch } from './data/dailyPlayers';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
 /** Bump to wipe versioned localStorage keys (daily progress, caches, etc.). */
 const STORAGE_RESET_VERSION = 'v14';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
-
-const getISODateForDailyIndexStatic = (index) => {
-  try {
-    const epochUTC = Date.UTC(
-      Number(DAILY_PUZZLE_EPOCH.slice(0, 4)),
-      Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
-      Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
-    );
-    const d = new Date(epochUTC + index * 86400000);
-    return d.toISOString().slice(0, 10);
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-};
 
 const parseCompletionMapFromStorageRaw = (raw) => {
   if (!raw) return {};
@@ -33,7 +19,7 @@ const parseCompletionMapFromStorageRaw = (raw) => {
       const canonicalDate = (() => {
         const n = Number(num);
         if (!Number.isFinite(n) || n < 1) return '';
-        return getISODateForDailyIndexStatic(n - 1);
+        return getISODateForDailyIndexFromEpoch(n - 1);
       })();
       if (typeof val === 'string') {
         out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
@@ -828,16 +814,9 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  // Daily mode: one puzzle per day (seeded by calendar). Same puzzle for everyone globally.
-  // Use UTC so the day index is the same for everyone regardless of timezone.
-  // Non-zero offset shifts the live puzzle index vs calendar (rare; keep 0 for epoch = Daily #1 on that UTC day).
+  // Daily # uses America/New_York calendar (see getDailyPuzzleDayIndex in dailyPlayers.js).
   const DAILY_PUZZLE_INDEX_OFFSET = 0;
-  const getDailyPuzzleIndex = () => {
-    const epoch = new Date(DAILY_PUZZLE_EPOCH + 'T00:00:00.000Z').getTime();
-    const now = new Date();
-    const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) + DAILY_PUZZLE_INDEX_OFFSET);
-  };
+  const getDailyPuzzleIndex = () => getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET);
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getBallKnowledgeDailyPlayer = (index) =>
@@ -866,7 +845,7 @@ const NBAGuessGame = () => {
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
   }, []);
 
-  const getISODateForDailyIndex = (index) => getISODateForDailyIndexStatic(index);
+  const getISODateForDailyIndex = (index) => getISODateForDailyIndexFromEpoch(index);
 
   const computeDailyStats = (completions, todayIdx) => {
     const entries = Object.entries(completions || {});
