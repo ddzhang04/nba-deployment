@@ -193,6 +193,7 @@ const NBAGuessGame = () => {
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
   const anonIdFallbackRef = useRef(null);
+  const sessionAnonIdRef = useRef('');
   // (leaderboard/profile modal removed)
   const [authSession, setAuthSession] = useState(null);
   /** True only while the first `getSession()` runs on app load. */
@@ -357,30 +358,14 @@ const NBAGuessGame = () => {
 
   const getOrCreateAnalyticsId = () => {
     try {
-      const analyticsKey = key('nba-mantle-analytics-id');
-      // Prefer localStorage (persists across browser restarts).
-      try {
-        const existing = localStorage.getItem(analyticsKey);
-        if (existing) return existing;
-      } catch {
-        // ignore and fall through
-      }
-
-      // Fallback to sessionStorage (persists for this tab/session).
-      try {
-        const existing = sessionStorage.getItem(analyticsKey);
-        if (existing) return existing;
-      } catch {
-        // ignore and fall through
-      }
+      // New anonymous identity for each page load (no storage persistence).
+      if (sessionAnonIdRef.current) return sessionAnonIdRef.current;
 
       const id =
         (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
           ? globalThis.crypto.randomUUID()
           : `id_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-
-      try { localStorage.setItem(analyticsKey, id); } catch {}
-      try { sessionStorage.setItem(analyticsKey, id); } catch {}
+      sessionAnonIdRef.current = id;
       return id;
     } catch {
       // If storage APIs themselves are blocked, still ensure we return a stable id.
@@ -394,16 +379,9 @@ const NBAGuessGame = () => {
     }
   };
 
-  // Cross-browser identity: if you open the app with `?sid=<anon_id>`,
-  // we reuse that anon_id in localStorage so history/leaderboards follow you.
+  // Generate a fresh anonymous identity on each page load.
   useEffect(() => {
     try {
-      const qs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const sid = qs ? (qs.get('sid') || '') : '';
-      if (typeof sid === 'string' && sid.trim()) {
-        const analyticsKey = key('nba-mantle-analytics-id');
-        localStorage.setItem(analyticsKey, sid.trim());
-      }
       const id = getOrCreateAnalyticsId();
       setAnonId(id);
     } catch {
@@ -962,8 +940,11 @@ const NBAGuessGame = () => {
     { uiNotify = false } = {}
   ) => {
     try {
-      const anon_id = getOrCreateAnalyticsId();
       const user_id = authSession?.user?.id || null;
+      const deviceAnonId = getOrCreateAnalyticsId();
+      // Table uniqueness is keyed by anon_id+mode+daily_number.
+      // Use a per-account key when signed in so different accounts on one device do not collide.
+      const anon_id = user_id ? `user:${user_id}` : deviceAnonId;
       const detailsOk = mantleRunsDetailsSupported === true;
 
       if (!supabase) {
