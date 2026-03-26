@@ -132,6 +132,8 @@ const NBAGuessGame = () => {
   });
   const [postWinGlobalDailyAverage, setPostWinGlobalDailyAverage] = useState(null); // { avg, wins } | null
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
+  const postWinGlobalAvgReqIdRef = useRef(0);
+  const postWinGlobalAvgInFlightRef = useRef(false);
   const [supabaseDebug, setSupabaseDebug] = useState({ lastSubmitOk: null, lastError: '' });
   const [backendWarming, setBackendWarming] = useState(false);
   const backendWarmPromiseRef = useRef(null);
@@ -814,32 +816,48 @@ const NBAGuessGame = () => {
     }
 
     // Global averages: Supabase RPC (same DB as the game — no separate stats API).
+    // Preferred: single-daily RPC so we don't fetch/loop through every daily_number.
     if (supabase) {
+      try {
+        const { data: rpcData, error: rpcErr } = await supabase.rpc(
+          'get_mantle_answer_averages_for_daily',
+          { p_mode: m, p_daily_number: n }
+        );
+        if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+          const row = rpcData[0] ?? {};
+          const avg = row?.avg == null ? null : Number(row.avg);
+          const wins = row?.wins == null ? null : Number(row.wins);
+          if (avg == null) {
+            // No wins for this daily yet.
+            return { avg: null, wins: Number.isFinite(wins) ? wins : null };
+          }
+          if (Number.isFinite(avg)) {
+            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
+          }
+        }
+      } catch {
+        // If the faster RPC isn't deployed yet, fall back below.
+      }
+
+      // Fallback: original RPC returns averages for every daily_number. Correct but heavier.
       try {
         const { data: rpcData, error: rpcErr } = await supabase.rpc('get_mantle_answer_averages', { p_mode: m });
         if (!rpcErr && Array.isArray(rpcData)) {
-          for (const item of rpcData) {
-            if (item && typeof item === 'object' && !Array.isArray(item)) {
-              const dn = Number(item.daily_number ?? item.dailyNumber ?? NaN);
-              if (dn !== n) continue;
-              const avg = Number(item.avg);
-              const wins = item.wins == null ? null : Number(item.wins);
-              if (Number.isFinite(avg)) {
-                const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-                try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-                return value;
-              }
-            }
-            if (Array.isArray(item)) {
-              const dn = Number(item[0]);
-              if (dn !== n) continue;
-              const avg = Number(item[1]);
-              const wins = item.length > 2 ? Number(item[2]) : null;
-              if (Number.isFinite(avg)) {
-                const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-                try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-                return value;
-              }
+          const row = rpcData.find((item) => {
+            if (!item || typeof item !== 'object') return false;
+            const dn = Number(item.daily_number ?? item.dailyNumber ?? NaN);
+            return dn === n;
+          });
+          if (row) {
+            const avg = row?.avg == null ? null : Number(row.avg);
+            const wins = row?.wins == null ? null : Number(row.wins);
+            if (avg == null) return { avg: null, wins: Number.isFinite(wins) ? wins : null };
+            if (Number.isFinite(avg)) {
+              const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+              try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+              return value;
             }
           }
         }
@@ -848,27 +866,7 @@ const NBAGuessGame = () => {
       }
     }
 
-    // Fallback: scan winning rows (works if RPC not installed yet).
-    if (!supabase) return null;
-
-    const { data, count, error } = await supabase
-      .from('mantle_runs')
-      .select('guesses', { count: 'exact' })
-      .eq('mode', m)
-      .eq('daily_number', n)
-      .eq('won', true)
-      .limit(5000);
-
-    if (error) {
-      console.error('Supabase daily avg error:', error);
-      return null;
-    }
-    const rows = Array.isArray(data) ? data : [];
-    if (!rows.length) return { avg: null, wins: count ?? 0 };
-    const total = rows.reduce((sum, r) => sum + (typeof r?.guesses === 'number' ? r.guesses : 0), 0);
-    const value = { avg: total / rows.length, wins: count ?? rows.length };
-    try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-    return value;
+    return null;
   };
 
   // Cache player name list locally so the UI feels instant on repeat visits.
@@ -1517,38 +1515,49 @@ const NBAGuessGame = () => {
     if (!gameWon && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed) return;
     let cancelled = false;
     let intervalId = null;
-    const run = async () => {
-      setPostWinGlobalDailyAverageLoading(true);
+    const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+
+    const fetchAndApply = async ({ forceRefresh, withLoading }) => {
+      if (cancelled) return;
+      if (postWinGlobalAvgInFlightRef.current) return; // prevent overlapping RPCs
+
+      const reqId = ++postWinGlobalAvgReqIdRef.current;
+      postWinGlobalAvgInFlightRef.current = true;
+      if (withLoading) setPostWinGlobalDailyAverageLoading(true);
+
       try {
+        const result = await fetchGlobalDailyAverage({
+          mode: modeKey,
+          dailyNumber: activeDailyNumber,
+          forceRefresh,
+        });
         if (cancelled) return;
-        const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
-        const result = await fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: false });
-        if (cancelled) return;
+        // Ignore late/stale results when active daily changes.
+        if (reqId !== postWinGlobalAvgReqIdRef.current) return;
         setPostWinGlobalDailyAverage(result);
       } catch {
+        if (cancelled) return;
+        if (reqId !== postWinGlobalAvgReqIdRef.current) return;
         setPostWinGlobalDailyAverage(null);
       } finally {
-        if (!cancelled) setPostWinGlobalDailyAverageLoading(false);
+        postWinGlobalAvgInFlightRef.current = false;
+        if (!cancelled && withLoading) setPostWinGlobalDailyAverageLoading(false);
       }
     };
-    run();
 
-    // Keep it "live" while user is on the end screen:
-    // - other people finishing updates the global average,
-    // - without polling (or realtime) the UI stays stale.
-    // Keep polling moderate to avoid hammering backend.
+    // Initial (fast) fetch uses cache if possible.
+    void fetchAndApply({ forceRefresh: false, withLoading: true });
+
+    // Poll occasionally while the user is on the end screen.
+    // Slower polling + single-flight makes it much less likely to feel "messed up".
     intervalId = setInterval(() => {
-      if (cancelled) return;
-      const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
-      fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: true })
-        .then((result) => {
-          if (cancelled) return;
-          setPostWinGlobalDailyAverage(result);
-        })
-        .catch(() => {});
-    }, 60 * 1000);
+      void fetchAndApply({ forceRefresh: true, withLoading: false });
+    }, 3 * 60 * 1000);
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameWon, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, targetPlayer, gameMode, activeDailyNumber]);
 

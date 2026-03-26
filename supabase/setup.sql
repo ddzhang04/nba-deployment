@@ -154,6 +154,28 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages(text) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Optional: faster average for a single daily number (used by end-screen UI)
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_mantle_answer_averages_for_daily(text, integer) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.get_mantle_answer_averages_for_daily(p_mode text, p_daily_number integer)
+RETURNS TABLE (avg numeric, wins bigint)
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    AVG(mr.guesses::numeric) AS avg,
+    COUNT(*)::bigint        AS wins
+  FROM public.mantle_runs mr
+  WHERE mr.mode = p_mode
+    AND mr.won = true
+    AND mr.daily_number = p_daily_number
+  ;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages_for_daily(text, integer) TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- 6) Your runs on any device (one RPC — no Vercel /api/stats/* needed)
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.get_my_mantle_runs() CASCADE;
