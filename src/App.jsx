@@ -875,6 +875,7 @@ const NBAGuessGame = () => {
     setAccountIsVerified(false);
     setAuthEmail('');
     setAuthPassword('');
+    try { localStorage.removeItem(key('nba-mantle-cloud-user-id')); } catch {}
     void (async () => {
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -1004,6 +1005,13 @@ const NBAGuessGame = () => {
       }
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
       if (uiNotify) showAccountActivityToast('Saved to cloud.', 'success');
+
+      // Append-only attempt history (best-effort). This is what you want if you never want overwrites.
+      try {
+        await supabase.from('mantle_run_attempts').insert(payload);
+      } catch {
+        // If the table isn't deployed yet, ignore.
+      }
 
       // After a successful write, refresh cloud completions so stats/past games update immediately.
       try {
@@ -1151,6 +1159,7 @@ const NBAGuessGame = () => {
 
       try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(nextDaily)); } catch {}
       try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(nextHardcore)); } catch {}
+      try { localStorage.setItem(key('nba-mantle-cloud-user-id'), String(userId)); } catch {}
       setDailyCompletions(nextDaily);
       setBallKnowledgeDailyCompletions(nextHardcore);
       return true;
@@ -1697,6 +1706,16 @@ const NBAGuessGame = () => {
   useEffect(() => {
     if (!identityInitialized) return;
     if (authSession?.user?.id) return;
+    // If we previously hydrated from a signed-in account, don't show that history in guest mode.
+    // Guest mode should only reflect guest progress on this device.
+    try {
+      const marker = localStorage.getItem(key('nba-mantle-cloud-user-id')) || '';
+      if (marker) {
+        localStorage.removeItem(key('nba-mantle-cloud-user-id'));
+        localStorage.removeItem(DAILY_COMPLETIONS_KEY);
+        localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY);
+      }
+    } catch {}
     setDailyCompletions(readDailyCompletionsFromLocalStorage());
     setBallKnowledgeDailyCompletions(readBallKnowledgeDailyFromLocalStorage());
     // eslint-disable-next-line react-hooks/exhaustive-deps
