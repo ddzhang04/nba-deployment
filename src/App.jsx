@@ -162,6 +162,7 @@ const NBAGuessGame = () => {
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
+  const profileSaveInFlightRef = useRef(false);
 
   // Detect whether mantle_runs supports storing details like guess_history/top5.
   useEffect(() => {
@@ -589,33 +590,46 @@ const NBAGuessGame = () => {
     }
   };
 
-  const handleSaveDisplayName = async (overrideDisplayName) => {
+  const handleSaveDisplayName = (overrideDisplayName) => {
     if (!supabase) return;
     if (!authSession?.user) return;
-    setAccountSaving(true);
+    if (profileSaveInFlightRef.current) return;
+    // If this handler is accidentally used directly as an `onClick` handler,
+    // React will pass the click event as the first argument. Guard against that.
+    const candidate =
+      typeof overrideDisplayName === 'string' ? overrideDisplayName : undefined;
+    const displayName = String(candidate ?? accountDisplayName).trim();
+    const avatarUrl = accountAvatarUrl.trim() || null;
+    const userId = authSession.user.id;
+
     setAuthError('');
-    try {
-      // If this handler is accidentally used directly as an `onClick` handler,
-      // React will pass the click event as the first argument. Guard against that.
-      const candidate =
-        typeof overrideDisplayName === 'string' ? overrideDisplayName : undefined;
-      const displayName = String(candidate ?? accountDisplayName).trim();
-      const avatarUrl = accountAvatarUrl.trim() || null;
-      const userId = authSession.user.id;
-      const { error } = await supabase
-        .from('profiles')
-        .update({ display_name: displayName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
-        .eq('user_id', userId);
-      if (error) throw error;
-      setAccountDisplayName(displayName);
-      setAccountIsVerified(!!accountIsVerified);
-      return true;
-    } catch (e) {
-      setAuthError(e?.message || 'Could not save profile');
-      return false;
-    } finally {
-      setAccountSaving(false);
-    }
+    profileSaveInFlightRef.current = true;
+
+    void supabase
+      .from('profiles')
+      .update({ display_name: displayName, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .then(async ({ error }) => {
+        if (!error) return;
+        setAuthError(error.message || 'Could not save profile');
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('display_name, avatar_url, is_verified')
+            .eq('user_id', userId)
+            .maybeSingle();
+          if (data) {
+            setAccountDisplayName(typeof data.display_name === 'string' ? data.display_name : '');
+            setAccountAvatarUrl(typeof data.avatar_url === 'string' ? data.avatar_url : '');
+            setAccountIsVerified(!!data.is_verified);
+          }
+        } catch {
+          // ignore
+        }
+      })
+      .finally(() => {
+        profileSaveInFlightRef.current = false;
+      });
   };
 
   const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] }) => {
@@ -3846,7 +3860,7 @@ const NBAGuessGame = () => {
                       }}
                       title="Updates your public display name"
                     >
-                      {accountSaving ? 'Saving…' : 'Save'}
+                      Save
                     </button>
 
                     <button
