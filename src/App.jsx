@@ -1687,7 +1687,8 @@ const NBAGuessGame = () => {
         setFilteredPlayers(pool);
         if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
           setTargetPlayer('');
-          setTargetMaxSimilar(null);
+          // Do not clear targetMaxSimilar here: fetchDailyCeiling (daily sync effect) may already
+          // have set it from cache; clearing would blank the "closest" / ceiling until mode toggle.
         } else {
           setTargetPlayer((prev) => (pool.includes(prev) ? prev : pool[Math.floor(Math.random() * pool.length)]));
         }
@@ -1715,7 +1716,7 @@ const NBAGuessGame = () => {
         setFilteredPlayers(sortedPlayers);
         if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
           setTargetPlayer('');
-          setTargetMaxSimilar(null);
+          // Same as warm-cache path: keep ceiling from fetchDailyCeiling; do not null it here.
         } else {
           const initialTarget = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
           setTargetPlayer(initialTarget);
@@ -1754,7 +1755,7 @@ const NBAGuessGame = () => {
         setFilteredPlayers(fallback);
         if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
           setTargetPlayer('');
-          setTargetMaxSimilar(null);
+          // Same: preserve daily ceiling if already fetched.
         } else {
           const target = fallback[Math.floor(Math.random() * fallback.length)];
           setTargetPlayer(target);
