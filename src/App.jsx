@@ -984,27 +984,36 @@ const NBAGuessGame = () => {
         ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
       };
 
-      // Append-only attempt history. This is the ONLY cloud write path.
-      // We intentionally DO NOT upsert into `mantle_runs` to avoid overwriting.
+      // Append-only attempt history preferred.
+      // If `mantle_run_attempts` is not deployed, fallback to INSERT on `mantle_runs`
+      // (still append-only, never upsert).
       try {
         const ins = await supabase.from('mantle_run_attempts').insert(payload);
         if (ins?.error) throw ins.error;
       } catch (e) {
         const msg = e?.message || 'Save failed';
-        console.error('Supabase attempts insert error:', e);
-        setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
-        if (uiNotify) {
-          const lower = String(msg).toLowerCase();
-          const missingTable =
-            lower.includes('does not exist') || lower.includes('relation') || lower.includes('mantle_run_attempts');
-          showAccountActivityToast(
-            missingTable
-              ? 'Cloud save failed: missing mantle_run_attempts table. Apply supabase/setup.sql in Supabase.'
-              : `Cloud save failed: ${msg}`,
-            'error'
-          );
+        const lower = String(msg).toLowerCase();
+        const missingAttemptsTable =
+          (lower.includes('does not exist') || lower.includes('relation')) && lower.includes('mantle_run_attempts');
+
+        if (!missingAttemptsTable) {
+          console.error('Supabase attempts insert error:', e);
+          setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
+          if (uiNotify) showAccountActivityToast(`Cloud save failed: ${msg}`, 'error');
+          return;
         }
-        return;
+
+        // Fallback for older DBs: append to mantle_runs using INSERT (never overwrite).
+        try {
+          const fallbackIns = await supabase.from('mantle_runs').insert(payload);
+          if (fallbackIns?.error) throw fallbackIns.error;
+        } catch (fallbackError) {
+          const fallbackMsg = fallbackError?.message || 'Save failed';
+          console.error('Supabase mantle_runs insert fallback error:', fallbackError);
+          setSupabaseDebug({ lastSubmitOk: false, lastError: fallbackMsg });
+          if (uiNotify) showAccountActivityToast(`Cloud save failed: ${fallbackMsg}`, 'error');
+          return;
+        }
       }
 
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
