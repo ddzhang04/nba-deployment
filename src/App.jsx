@@ -413,8 +413,14 @@ const NBAGuessGame = () => {
     });
     unsub = data?.subscription || null;
 
-    supabase.auth
-      .getSession()
+    const timeoutMs = 5000;
+    const withTimeout = (promise, label) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(label)), timeoutMs)),
+      ]);
+
+    withTimeout(supabase.auth.getSession(), 'Supabase getSession timeout')
       .then(({ data }) => {
         setAuthSession(data.session ?? null);
       })
@@ -463,8 +469,18 @@ const NBAGuessGame = () => {
     setAccountSaving(true);
     setAuthError('');
 
+    // Safety: if any of the network/auth calls hang, the UI must not stay in "Syncing…" forever.
+    const safetyTimer = setTimeout(() => {
+      try {
+        if (!cancelled) {
+          setAccountSaving(false);
+          setAnonLinksLinkedForDevice(true);
+        }
+      } catch {}
+    }, 9000);
+
     (async () => {
-      const timeoutMs = 20000;
+      const timeoutMs = 5000;
       const withTimeout = (promise, label) =>
         Promise.race([
           promise,
@@ -475,13 +491,18 @@ const NBAGuessGame = () => {
         // Ensure the Supabase client has this JWT before RLS-checked writes.
         // React state can update before the client's auth store does → requests look like `anon` → 403 on anon_links.
         if (authSession?.access_token && authSession?.refresh_token) {
-          await withTimeout(
-            supabase.auth.setSession({
-            access_token: authSession.access_token,
-            refresh_token: authSession.refresh_token,
-            }),
-            'Supabase setSession timeout'
-          );
+          try {
+            await withTimeout(
+              supabase.auth.setSession({
+                access_token: authSession.access_token,
+                refresh_token: authSession.refresh_token,
+              }),
+              'Supabase setSession timeout'
+            );
+          } catch (e) {
+            // If setSession hangs/fails, we still attempt anon_links/profile writes below.
+            console.warn('Supabase setSession failed/timeout:', e?.message || e);
+          }
         }
 
         // 1) Link this device's anon_id to the signed-in user.
@@ -503,6 +524,14 @@ const NBAGuessGame = () => {
         // Important: unblock cloud hydration after anon_links is at least attempted.
         // Even if linking fails, we don't want hydration stuck waiting forever.
         if (!cancelled) setAnonLinksLinkedForDevice(true);
+
+        // Unblock UI fast. Profiles load in the background; cloud hydration depends only on anon_links.
+        if (!cancelled) {
+          setAccountSaving(false);
+          setAccountDisplayName(fallbackDisplayName);
+          setAccountAvatarUrl(fallbackAvatarUrl || '');
+          setAccountIsVerified(false);
+        }
 
         // 2) Load profile if it exists.
         let profile = null;
@@ -553,6 +582,7 @@ const NBAGuessGame = () => {
         setAuthError(e?.message ? `Account sync failed: ${e.message}` : 'Account sync failed');
       } finally {
         if (!cancelled) setAccountSaving(false);
+        clearTimeout(safetyTimer);
       }
     })();
 
@@ -561,6 +591,7 @@ const NBAGuessGame = () => {
       // If this run is superseded or unmounted before the async work finishes, `finally`
       // skips clearing — without this, accountSaving stays true and Save / Sign out stay disabled.
       setAccountSaving(false);
+      clearTimeout(safetyTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId]);
@@ -571,7 +602,11 @@ const NBAGuessGame = () => {
     setAuthError('');
     setAuthNotice('');
     try {
-      const res = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+      const timeoutMs = 12000;
+      const res = await Promise.race([
+        supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Sign in timed out. Try again.')), timeoutMs)),
+      ]);
       if (res.error) throw res.error;
       setAuthSession(res.data.session ?? null);
       setShowAccountModal(false);
@@ -678,7 +713,11 @@ const NBAGuessGame = () => {
         payload.options = { redirectTo: getRedirectToWithSid(configuredRedirectTo) };
       }
 
-      const res = await supabase.auth.signInWithOAuth(payload);
+      const timeoutMs = 12000;
+      const res = await Promise.race([
+        supabase.auth.signInWithOAuth(payload),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Google sign-in timed out. Try again.')), timeoutMs)),
+      ]);
       if (res.error) throw res.error;
     } catch (e) {
       console.error('Google sign-in error:', e);
@@ -699,9 +738,14 @@ const NBAGuessGame = () => {
     setAuthNotice('');
     try {
       const redirectTo = getPasswordRecoveryRedirectTo();
-      const res = redirectTo
-        ? await supabase.auth.resetPasswordForEmail(email, { redirectTo })
-        : await supabase.auth.resetPasswordForEmail(email);
+      const timeoutMs = 12000;
+      const resetPromise = redirectTo
+        ? supabase.auth.resetPasswordForEmail(email, { redirectTo })
+        : supabase.auth.resetPasswordForEmail(email);
+      const res = await Promise.race([
+        resetPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Reset request timed out. Try again.')), timeoutMs)),
+      ]);
       if (res.error) throw res.error;
       setAuthNotice(
         'If that address has an account, we sent a reset link. Check your inbox and spam folder. The link opens this site so you can pick a new password.'
@@ -730,7 +774,12 @@ const NBAGuessGame = () => {
     setRecoveryBusy(true);
     setAuthError('');
     try {
-      const { error } = await supabase.auth.updateUser({ password: p1 });
+      const timeoutMs = 12000;
+      const res = await Promise.race([
+        supabase.auth.updateUser({ password: p1 }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Save password timed out. Try again.')), timeoutMs)),
+      ]);
+      const { error } = res ?? {};
       if (error) throw error;
       setPasswordRecoveryMode(false);
       setNewRecoveryPassword('');
