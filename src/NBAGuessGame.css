@@ -869,6 +869,10 @@ button, input, textarea, select {
   color: #e2e8f0;
 }
 
+.nm-account-modal button {
+  min-height: 44px; /* touch-friendly target size */
+}
+
 .nm-account-modal__title {
   font-size: 1.2rem;
   font-weight: 800;
@@ -927,6 +931,16 @@ button, input, textarea, select {
   margin-bottom: 12px;
 }
 
+@media (max-width: 480px) {
+  /* On mobile, stack primary actions so the "Sign in" button isn't squeezed/covered. */
+  .nm-account-modal__row {
+    flex-direction: column;
+  }
+  .nm-account-modal__row button {
+    width: 100%;
+  }
+}
+
 .nm-account-modal__divider {
   height: 1px;
   background: rgba(51, 65, 85, 0.85);
@@ -959,4 +973,24 @@ button, input, textarea, select {
   font-size: 0.85rem;
   color: #64748b;
   margin: 8px 0 0;
+}
+
+.nm-account-modal__notice {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+}
+
+.nm-account-modal__notice--error {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.3);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.nm-account-modal__notice--success {
+  color: #bbf7d0;
+  background: rgba(20, 83, 45, 0.3);
+  border-color: rgba(34, 197, 94, 0.4);
 }

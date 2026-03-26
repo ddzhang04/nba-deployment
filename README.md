@@ -81,6 +81,32 @@ VITE_API_ORIGIN=https://your-vercel-deployment.vercel.app
 
 See [`scripts/README.md`](scripts/README.md) for player image helpers.
 
+### Automation (hands-off scaling)
+
+This repo now includes scheduled GitHub Actions so you do not need daily manual checks:
+
+- **`Refresh Player Images`** (`.github/workflows/player-images-refresh.yml`)
+  - runs daily
+  - executes `node scripts/fetch-nba-player-images.js --targetsFrom=gameplayLists`
+  - auto-opens/updates a PR when `public/player-images.json` changes
+
+- **`Production Healthcheck`** (`.github/workflows/production-healthcheck.yml`)
+  - runs every 30 minutes
+  - executes `node scripts/healthcheck.js`
+  - checks homepage + leaderboard API + profile API and fails if broken
+
+You can set optional GitHub repository variables:
+
+- `HEALTHCHECK_BASE_URL` (default: `https://nba-deployment.vercel.app`)
+- `HEALTHCHECK_API_BASE_URL` (default: `<HEALTHCHECK_BASE_URL>/api`)
+
+Local equivalents:
+
+```bash
+npm run refresh:player-images
+npm run healthcheck
+```
+
 ## Troubleshooting
 
 | Problem | Check |

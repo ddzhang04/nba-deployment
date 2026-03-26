@@ -1,0 +1,50 @@
+name: Refresh Player Images
+
+on:
+  schedule:
+    # Daily at 10:20 UTC
+    - cron: "20 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Refresh player images
+        run: node scripts/fetch-nba-player-images.js --targetsFrom=gameplayLists
+
+      - name: Create Pull Request (if changed)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/auto-refresh-player-images
+          delete-branch: true
+          commit-message: "chore: auto-refresh player image mapping"
+          title: "chore: auto-refresh player image mapping"
+          body: |
+            Automated refresh of `public/player-images.json`.
+
+            - Source: `scripts/fetch-nba-player-images.js`
+            - Trigger: scheduled GitHub Action
+
+            This PR was created automatically.
+          labels: |
+            automation
+            data
+

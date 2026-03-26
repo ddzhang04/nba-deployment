@@ -146,6 +146,7 @@ const NBAGuessGame = () => {
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
+  const anonIdFallbackRef = useRef(null);
   // (leaderboard/profile modal removed)
   const [authSession, setAuthSession] = useState(null);
   /** True only while the first `getSession()` runs on app load. */
@@ -276,16 +277,39 @@ const NBAGuessGame = () => {
   const getOrCreateAnalyticsId = () => {
     try {
       const analyticsKey = key('nba-mantle-analytics-id');
-      const existing = localStorage.getItem(analyticsKey);
-      if (existing) return existing;
+      // Prefer localStorage (persists across browser restarts).
+      try {
+        const existing = localStorage.getItem(analyticsKey);
+        if (existing) return existing;
+      } catch {
+        // ignore and fall through
+      }
+
+      // Fallback to sessionStorage (persists for this tab/session).
+      try {
+        const existing = sessionStorage.getItem(analyticsKey);
+        if (existing) return existing;
+      } catch {
+        // ignore and fall through
+      }
+
       const id =
         (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
           ? globalThis.crypto.randomUUID()
           : `id_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-      localStorage.setItem(analyticsKey, id);
+
+      try { localStorage.setItem(analyticsKey, id); } catch {}
+      try { sessionStorage.setItem(analyticsKey, id); } catch {}
       return id;
     } catch {
-      return '';
+      // If storage APIs themselves are blocked, still ensure we return a stable id.
+      if (anonIdFallbackRef.current) return anonIdFallbackRef.current;
+      const id =
+        (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+          ? globalThis.crypto.randomUUID()
+          : `id_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+      anonIdFallbackRef.current = id;
+      return id;
     }
   };
 
@@ -483,6 +507,13 @@ const NBAGuessGame = () => {
     } finally {
       setEmailAuthAction(null);
     }
+  };
+
+  const handleAuthFieldKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    if (emailAuthAction !== null) return;
+    e.preventDefault();
+    void handleSignInWithEmail();
   };
 
   const handleSignUpWithEmail = async () => {
@@ -3916,6 +3947,8 @@ const NBAGuessGame = () => {
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 borderRadius: '16px',
                 padding: '22px',
+                // Give extra room for the soft keyboard / safe-area inset.
+                paddingBottom: 'max(22px, env(safe-area-inset-bottom))',
                 border: '1px solid #334155',
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
               }}
@@ -4050,6 +4083,12 @@ const NBAGuessGame = () => {
                     </p>
                   </div>
 
+                  {accountSaving ? (
+                    <p className="nm-account-modal__muted" style={{ marginTop: '-6px' }}>
+                      Syncing account details...
+                    </p>
+                  ) : null}
+
                   <div className="nm-account-modal__row">
                     <button
                       type="button"
@@ -4096,7 +4135,7 @@ const NBAGuessGame = () => {
                       Saved — leaderboards will show this name.
                     </p>
                   ) : null}
-                  {authError ? <div style={{ color: '#fecaca', fontSize: '0.9rem' }}>{authError}</div> : null}
+                  {authError ? <div className="nm-account-modal__notice nm-account-modal__notice--error">{authError}</div> : null}
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: '4px' }}>
@@ -4113,6 +4152,7 @@ const NBAGuessGame = () => {
                       className="nm-account-modal__input"
                       value={authEmail}
                       onChange={(e) => setAuthEmail(e.target.value)}
+                      onKeyDown={handleAuthFieldKeyDown}
                       placeholder="you@example.com"
                       type="email"
                       autoComplete="email"
@@ -4128,6 +4168,7 @@ const NBAGuessGame = () => {
                       className="nm-account-modal__input"
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
+                      onKeyDown={handleAuthFieldKeyDown}
                       placeholder="Your password"
                       type="password"
                       autoComplete="current-password"
@@ -4246,9 +4287,9 @@ const NBAGuessGame = () => {
                   </p>
 
                   {authError ? (
-                    <div style={{ color: '#fecaca', fontSize: '0.9rem', marginTop: '8px' }}>{authError}</div>
+                    <div className="nm-account-modal__notice nm-account-modal__notice--error">{authError}</div>
                   ) : authNotice ? (
-                    <div style={{ color: '#bbf7d0', fontSize: '0.9rem', marginTop: '8px' }}>{authNotice}</div>
+                    <div className="nm-account-modal__notice nm-account-modal__notice--success">{authNotice}</div>
                   ) : null}
                 </div>
               )}
