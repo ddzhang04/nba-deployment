@@ -992,6 +992,18 @@ const NBAGuessGame = () => {
     }
   };
   const todayYmdNY = getYmdInTimeZone(new Date(nowTs), 'America/New_York');
+  const lastTodayYmdNYRef = useRef(null);
+  useEffect(() => {
+    if (!todayYmdNY) return;
+    const prev = lastTodayYmdNYRef.current;
+    lastTodayYmdNYRef.current = todayYmdNY;
+    // If user had selected a past day, clear it when the live rollover day changes.
+    // This prevents "Daily #2" sticking after midnight.
+    if (prev && prev !== todayYmdNY && selectedDailyIndexOverride != null) {
+      setSelectedDailyIndexOverride(null);
+      setShowPastDailyPicker(false);
+    }
+  }, [todayYmdNY, selectedDailyIndexOverride]);
   const activeDailyIndex =
     (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && selectedDailyIndexOverride != null
       ? selectedDailyIndexOverride
@@ -1088,24 +1100,67 @@ const NBAGuessGame = () => {
   const getWinsCount = (completions) =>
     Object.values(completions || {}).filter((e) => typeof e === 'object' && e != null && e?.won !== false).length;
 
-  // Next daily puzzle time (UTC midnight rollover).
+  // Next daily puzzle time (ET midnight rollover based on the same daily-number logic).
+  const nextDailyRolloverTsRef = useRef(null);
   useEffect(() => {
     const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
     if (!isDailyMode) {
+      nextDailyRolloverTsRef.current = null;
       setNextDailyCountdown(null);
       return;
     }
 
+    const computeNextRolloverTs = () => {
+      const startMs = Date.now();
+      const currentIdx = getDailyPuzzleDayIndex(new Date(startMs), DAILY_PUZZLE_INDEX_OFFSET);
+
+      let low = startMs;
+      let high = startMs + 36 * 60 * 60 * 1000; // 36h upper bound
+
+      // If we're somehow very close to a boundary and `high` still matches, extend a bit.
+      let safety = 0;
+      while (
+        safety < 12 &&
+        getDailyPuzzleDayIndex(new Date(high), DAILY_PUZZLE_INDEX_OFFSET) === currentIdx
+      ) {
+        high += 3 * 60 * 60 * 1000; // +3h
+        safety++;
+      }
+
+      if (getDailyPuzzleDayIndex(new Date(high), DAILY_PUZZLE_INDEX_OFFSET) === currentIdx) return null;
+
+      // Binary search for first moment when the day index changes.
+      for (let i = 0; i < 32; i++) {
+        const mid = (low + high) / 2;
+        const midIdx = getDailyPuzzleDayIndex(new Date(mid), DAILY_PUZZLE_INDEX_OFFSET);
+        if (midIdx === currentIdx) low = mid;
+        else high = mid;
+      }
+      return high;
+    };
+
+    nextDailyRolloverTsRef.current = computeNextRolloverTs();
+
     const tick = () => {
-      const now = new Date();
-      const nextUtcMidnight = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0));
-      setNextDailyCountdown(formatHMS(nextUtcMidnight.getTime() - now.getTime()));
+      const ts = nextDailyRolloverTsRef.current;
+      if (!ts) {
+        setNextDailyCountdown(null);
+        return;
+      }
+      const diff = ts - Date.now();
+      if (diff <= 0) {
+        nextDailyRolloverTsRef.current = computeNextRolloverTs();
+        const ts2 = nextDailyRolloverTsRef.current;
+        setNextDailyCountdown(ts2 ? formatHMS(ts2 - Date.now()) : null);
+        return;
+      }
+      setNextDailyCountdown(formatHMS(diff));
     };
 
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [gameMode, formatHMS]);
+  }, [gameMode, formatHMS, todayDailyIndex]);
 
   // Tick a lightweight clock while playing daily puzzles so the daily # changes even
   // if the page is left open across midnight.
@@ -3484,7 +3539,7 @@ const NBAGuessGame = () => {
             )}
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !isPastDailySelected && nextDailyCountdown != null && (
               <span style={{ color: '#60a5fa', fontWeight: 'bold', fontSize: '1rem' }}>
-                Next in {nextDailyCountdown} UTC
+                Next in {nextDailyCountdown} ET
               </span>
             )}
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && bestSoFar != null && (
