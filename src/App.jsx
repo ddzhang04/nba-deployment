@@ -944,7 +944,10 @@ const NBAGuessGame = () => {
       });
   };
 
-  const submitCompletionToCloud = async ({ mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] }) => {
+  const submitCompletionToCloud = async (
+    { mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] },
+    { uiNotify = false } = {}
+  ) => {
     try {
       const anon_id = getOrCreateAnalyticsId();
       const user_id = authSession?.user?.id || null;
@@ -952,6 +955,7 @@ const NBAGuessGame = () => {
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
+        if (uiNotify) showAccountActivityToast('Cloud save unavailable (Supabase not configured).', 'error');
         return;
       }
 
@@ -972,9 +976,11 @@ const NBAGuessGame = () => {
       if (error) {
         console.error('Supabase submit error:', error);
         setSupabaseDebug({ lastSubmitOk: false, lastError: error?.message || 'Save failed' });
+        if (uiNotify) showAccountActivityToast(error?.message || 'Could not save to cloud.', 'error');
         return;
       }
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
+      if (uiNotify) showAccountActivityToast('Saved to cloud.', 'success');
     } catch {
       // ignore
     }
@@ -2402,7 +2408,10 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore });
+                submitCompletionToCloud(
+                  { mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore },
+                  { uiNotify: true }
+                );
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
               const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -2412,7 +2421,10 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
-                submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore });
+                submitCompletionToCloud(
+                  { mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore },
+                  { uiNotify: true }
+                );
               }
             }
           }
@@ -2497,7 +2509,10 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] });
+        submitCompletionToCloud(
+          { mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] },
+          { uiNotify: true }
+        );
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
       const dateStr = getISODateForDailyIndex(activeDailyIndex);
@@ -2506,7 +2521,10 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setBallKnowledgeDailyCompletions(next);
-        submitCompletionToCloud({ mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] });
+        submitCompletionToCloud(
+          { mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] },
+          { uiNotify: true }
+        );
       }
     }
     setLoading(false);
@@ -4379,6 +4397,17 @@ const NBAGuessGame = () => {
                     <p className="nm-account-modal__muted" style={{ marginTop: '-6px' }}>
                       Syncing account details...
                     </p>
+                  ) : null}
+
+                  <p className="nm-account-modal__muted" style={{ marginTop: accountSaving ? 0 : '-6px' }}>
+                    Cloud saves happen when you finish a <strong>Daily</strong> or <strong>Hardcore Daily</strong> (win or reveal).
+                    Other modes are local-only.
+                  </p>
+
+                  {supabaseDebug?.lastSubmitOk === false ? (
+                    <div className="nm-account-modal__notice nm-account-modal__notice--error">
+                      Cloud save failed: {supabaseDebug?.lastError || 'Unknown error'}
+                    </div>
                   ) : null}
 
                   <div className="nm-account-modal__row">
