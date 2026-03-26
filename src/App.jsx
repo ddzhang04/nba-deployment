@@ -984,36 +984,16 @@ const NBAGuessGame = () => {
         ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
       };
 
-      // Append-only attempt history preferred.
-      // If `mantle_run_attempts` is not deployed, fallback to INSERT on `mantle_runs`
-      // (still append-only, never upsert).
+      // Insert directly into mantle_runs.
       try {
-        const ins = await supabase.from('mantle_run_attempts').insert(payload);
+        const ins = await supabase.from('mantle_runs').insert(payload);
         if (ins?.error) throw ins.error;
       } catch (e) {
         const msg = e?.message || 'Save failed';
-        const lower = String(msg).toLowerCase();
-        const missingAttemptsTable =
-          (lower.includes('does not exist') || lower.includes('relation')) && lower.includes('mantle_run_attempts');
-
-        if (!missingAttemptsTable) {
-          console.error('Supabase attempts insert error:', e);
-          setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
-          if (uiNotify) showAccountActivityToast(`Cloud save failed: ${msg}`, 'error');
-          return;
-        }
-
-        // Fallback for older DBs: append to mantle_runs using INSERT (never overwrite).
-        try {
-          const fallbackIns = await supabase.from('mantle_runs').insert(payload);
-          if (fallbackIns?.error) throw fallbackIns.error;
-        } catch (fallbackError) {
-          const fallbackMsg = fallbackError?.message || 'Save failed';
-          console.error('Supabase mantle_runs insert fallback error:', fallbackError);
-          setSupabaseDebug({ lastSubmitOk: false, lastError: fallbackMsg });
-          if (uiNotify) showAccountActivityToast(`Cloud save failed: ${fallbackMsg}`, 'error');
-          return;
-        }
+        console.error('Supabase mantle_runs insert error:', e);
+        setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
+        if (uiNotify) showAccountActivityToast(`Cloud save failed: ${msg}`, 'error');
+        return;
       }
 
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
@@ -1056,9 +1036,10 @@ const NBAGuessGame = () => {
       const detailsOk = mantleRunsDetailsSupported === true;
       let mergedRows = [];
 
-      // Prefer append-only attempts if available.
-      let usedAttempts = false;
-      try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
+      if (!rpcErr && Array.isArray(rpcRows)) {
+        mergedRows = rpcRows;
+      } else {
         let linkedAnonIds = [];
         try {
           const { data: links, error: linksErr } = await supabase
@@ -1073,59 +1054,19 @@ const NBAGuessGame = () => {
 
         const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
         const columns = detailsOk
-          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5,user_id'
-          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,user_id';
+          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
+          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
 
-        // Use two queries to avoid tricky `or()` formatting across SDK versions.
-        const [byUserAttempts, byAnonAttempts] = await Promise.all([
-          supabase.from('mantle_run_attempts').select(columns).eq('user_id', userId).limit(5000),
+        const [byUserRes, byAnonRes] = await Promise.all([
+          supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
           anonIds.length
-            ? supabase.from('mantle_run_attempts').select(columns).in('anon_id', anonIds).limit(5000)
+            ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
             : Promise.resolve({ data: [], error: null }),
         ]);
-
-        if (!byUserAttempts?.error && !byAnonAttempts?.error) {
-          mergedRows = [
-            ...(Array.isArray(byUserAttempts?.data) ? byUserAttempts.data : []),
-            ...(Array.isArray(byAnonAttempts?.data) ? byAnonAttempts.data : []),
-          ];
-          usedAttempts = true;
-        }
-      } catch {}
-
-      if (!usedAttempts) {
-        const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
-        if (!rpcErr && Array.isArray(rpcRows)) {
-          mergedRows = rpcRows;
-        } else {
-          let linkedAnonIds = [];
-          try {
-            const { data: links, error: linksErr } = await supabase
-              .from('anon_links')
-              .select('anon_id')
-              .eq('user_id', userId)
-              .limit(200);
-            if (!linksErr) {
-              linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
-            }
-          } catch {}
-
-          const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
-          const columns = detailsOk
-            ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
-            : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
-
-          const [byUserRes, byAnonRes] = await Promise.all([
-            supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
-            anonIds.length
-              ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
-              : Promise.resolve({ data: [], error: null }),
-          ]);
-          mergedRows = [
-            ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
-            ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
-          ];
-        }
+        mergedRows = [
+          ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
+          ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
+        ];
       }
 
       const rowMap = new Map();
