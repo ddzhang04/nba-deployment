@@ -109,6 +109,9 @@ const NBAGuessGame = () => {
   const [bestDelta, setBestDelta] = useState(null);
 
   const [nextDailyCountdown, setNextDailyCountdown] = useState(null);
+  // Forces periodic re-renders so daily # updates promptly at the rollover moment
+  // (even if no other state changes happen right at midnight).
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
   const [showDailyHistoryPanel, setShowDailyHistoryPanel] = useState(() => {
     try {
@@ -970,7 +973,7 @@ const NBAGuessGame = () => {
   // This affects Daily + Hardcore Daily (same calendar).
   const [selectedDailyIndexOverride, setSelectedDailyIndexOverride] = useState(null); // number | null
   const [showPastDailyPicker, setShowPastDailyPicker] = useState(false);
-  const todayDailyIndex = getDailyPuzzleIndex();
+  const todayDailyIndex = getDailyPuzzleDayIndex(new Date(nowTs), DAILY_PUZZLE_INDEX_OFFSET);
   const activeDailyIndex =
     (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && selectedDailyIndexOverride != null
       ? selectedDailyIndexOverride
@@ -1085,6 +1088,15 @@ const NBAGuessGame = () => {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [gameMode, formatHMS]);
+
+  // Tick a lightweight clock while playing daily puzzles so the daily # changes even
+  // if the page is left open across midnight.
+  useEffect(() => {
+    const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
+    if (!isDailyMode) return;
+    const id = setInterval(() => setNowTs(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [gameMode]);
 
   // Past daily mantles: keyed by daily number, value = { date, completedAt, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
