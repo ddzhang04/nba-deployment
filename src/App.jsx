@@ -5,6 +5,74 @@ import { DAILY_PUZZLE_EPOCH, DAILY_PLAYERS } from './data/dailyPlayers';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
+/** Bump to wipe versioned localStorage keys (daily progress, caches, etc.). */
+const STORAGE_RESET_VERSION = 'v14';
+const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
+
+const getISODateForDailyIndexStatic = (index) => {
+  try {
+    const epochUTC = Date.UTC(
+      Number(DAILY_PUZZLE_EPOCH.slice(0, 4)),
+      Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
+      Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
+    );
+    const d = new Date(epochUTC + index * 86400000);
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+};
+
+const parseCompletionMapFromStorageRaw = (raw) => {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    const out = {};
+    for (const [num, val] of Object.entries(parsed)) {
+      const canonicalDate = (() => {
+        const n = Number(num);
+        if (!Number.isFinite(n) || n < 1) return '';
+        return getISODateForDailyIndexStatic(n - 1);
+      })();
+      if (typeof val === 'string') {
+        out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
+      } else {
+        const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
+        const top5 = Array.isArray(val?.top5) ? val.top5 : [];
+        out[num] = {
+          date: canonicalDate || (val?.date ?? ''),
+          completedAt: val?.completedAt ?? '',
+          guesses: val?.guesses ?? null,
+          guessHistory: arr,
+          won: val?.won !== false,
+          answer: val?.answer ?? '',
+          top5,
+        };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const readDailyCompletionsFromLocalStorage = () => {
+  try {
+    return parseCompletionMapFromStorageRaw(localStorage.getItem(mantleStorageKey('nba-mantle-daily-completions')));
+  } catch {
+    return {};
+  }
+};
+
+const readBallKnowledgeDailyFromLocalStorage = () => {
+  try {
+    return parseCompletionMapFromStorageRaw(localStorage.getItem(mantleStorageKey('nba-mantle-ball-knowledge-daily')));
+  } catch {
+    return {};
+  }
+};
+
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
@@ -33,8 +101,7 @@ const NBAGuessGame = () => {
   const [prefetchedTargetTop5For, setPrefetchedTargetTop5For] = useState(null); // playerName the prefetched top5 belongs to
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
-  const STORAGE_RESET_VERSION = 'v13'; // bump to force fresh local storage for everyone
-  const key = (k) => `${k}-${STORAGE_RESET_VERSION}`;
+  const key = mantleStorageKey;
 
   const bestPrevRef = useRef(null);
   const guessSectionRef = useRef(null);
@@ -43,18 +110,6 @@ const NBAGuessGame = () => {
   const pulseGuessCardRef = useRef(null);
   const [bestSoFar, setBestSoFar] = useState(null);
   const [bestDelta, setBestDelta] = useState(null);
-
-  const FAVORITES_KEY = key('nba-mantle-favorites');
-  const [favoritePlayerKeys, setFavoritePlayerKeys] = useState(() => {
-    try {
-      const raw = localStorage.getItem(FAVORITES_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-  const favoritePlayerKeySet = useMemo(() => new Set(favoritePlayerKeys), [favoritePlayerKeys]);
 
   const [nextDailyCountdown, setNextDailyCountdown] = useState(null);
 
@@ -87,7 +142,6 @@ const NBAGuessGame = () => {
   const [shakeInput, setShakeInput] = useState(false);
   const [pulseGuessName, setPulseGuessName] = useState(null);
   const [confettiBurstId, setConfettiBurstId] = useState(null);
-  const [showFavorites, setShowFavorites] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
   const [restoringTop5, setRestoringTop5] = useState(false);
@@ -265,8 +319,6 @@ const NBAGuessGame = () => {
         setAccountDisplayName('');
         setAccountAvatarUrl('');
         setAccountIsVerified(false);
-        setEditingDisplayName(false);
-        setDisplayNameDraft('');
         setAuthNotice('');
       }
     });
@@ -529,8 +581,6 @@ const NBAGuessGame = () => {
       setAccountDisplayName('');
       setAccountAvatarUrl('');
       setAccountIsVerified(false);
-      setEditingDisplayName(false);
-      setDisplayNameDraft('');
       setAuthEmail('');
       setAuthPassword('');
       setAuthResetEmail('');
@@ -763,15 +813,12 @@ const NBAGuessGame = () => {
 
   // Daily mode: one puzzle per day (seeded by calendar). Same puzzle for everyone globally.
   // Use UTC so the day index is the same for everyone regardless of timezone.
-  // If this offset is non-zero, puzzle index and displayed epoch date intentionally differ.
-  // Streaks must use the *live puzzle calendar day* derived from this same mapping.
-  const DAILY_PUZZLE_INDEX_OFFSET = -1;
+  // Non-zero offset shifts the live puzzle index vs calendar (rare; keep 0 for epoch = Daily #1 on that UTC day).
+  const DAILY_PUZZLE_INDEX_OFFSET = 0;
   const getDailyPuzzleIndex = () => {
     const epoch = new Date(DAILY_PUZZLE_EPOCH + 'T00:00:00.000Z').getTime();
     const now = new Date();
     const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    // We moved the displayed epoch back one day (Mar 18) but want to keep the
-    // current puzzle number/history stable for existing players.
     return Math.max(0, Math.floor((todayUTC - epoch) / 86400000) + DAILY_PUZZLE_INDEX_OFFSET);
   };
   const getDailyPlayerForIndex = (index) =>
@@ -802,19 +849,7 @@ const NBAGuessGame = () => {
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
   }, []);
 
-  const getISODateForDailyIndex = (index) => {
-    try {
-      const epochUTC = Date.UTC(
-        Number(DAILY_PUZZLE_EPOCH.slice(0, 4)),
-        Number(DAILY_PUZZLE_EPOCH.slice(5, 7)) - 1,
-        Number(DAILY_PUZZLE_EPOCH.slice(8, 10))
-      );
-      const d = new Date(epochUTC + index * 86400000);
-      return d.toISOString().slice(0, 10);
-    } catch {
-      return new Date().toISOString().slice(0, 10);
-    }
-  };
+  const getISODateForDailyIndex = (index) => getISODateForDailyIndexStatic(index);
 
   const computeDailyStats = (completions, todayIdx) => {
     const entries = Object.entries(completions || {});
@@ -914,32 +949,7 @@ const NBAGuessGame = () => {
   // Past daily mantles: keyed by daily number, value = { date, completedAt, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
-  const getDailyCompletionsFromStorage = () => {
-    try {
-      const raw = localStorage.getItem(DAILY_COMPLETIONS_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null) return {};
-      const out = {};
-      for (const [num, val] of Object.entries(parsed)) {
-        const canonicalDate = (() => {
-          const n = Number(num);
-          if (!Number.isFinite(n) || n < 1) return '';
-          return getISODateForDailyIndex(n - 1);
-        })();
-        if (typeof val === 'string') {
-          out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
-        } else {
-          const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
-          const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: canonicalDate || (val?.date ?? ''), completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
-        }
-      }
-      return out;
-    } catch {
-      return {};
-    }
-  };
+  const getDailyCompletionsFromStorage = () => readDailyCompletionsFromLocalStorage();
   const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getDailyCompletionsFromStorage();
     const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
@@ -949,38 +959,13 @@ const NBAGuessGame = () => {
     return next;
   };
 
-  const [dailyCompletions, setDailyCompletions] = useState({});
+  const [dailyCompletions, setDailyCompletions] = useState(() => readDailyCompletionsFromLocalStorage());
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
   // Lock out replaying any daily that already has a saved completion (today or past).
   const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(activeDailyNumber)] != null;
 
   const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
-  const getBallKnowledgeDailyFromStorage = () => {
-    try {
-      const raw = localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      if (typeof parsed !== 'object' || parsed === null) return {};
-      const out = {};
-      for (const [num, val] of Object.entries(parsed)) {
-        const canonicalDate = (() => {
-          const n = Number(num);
-          if (!Number.isFinite(n) || n < 1) return '';
-          return getISODateForDailyIndex(n - 1);
-        })();
-        if (typeof val === 'string') {
-          out[num] = { date: canonicalDate || val, completedAt: '', guesses: null, guessHistory: [], won: true, answer: '', top5: [] };
-        } else {
-          const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
-          const top5 = Array.isArray(val?.top5) ? val.top5 : [];
-          out[num] = { date: canonicalDate || (val?.date ?? ''), completedAt: val?.completedAt ?? '', guesses: val?.guesses ?? null, guessHistory: arr, won: val?.won !== false, answer: val?.answer ?? '', top5 };
-        }
-      }
-      return out;
-    } catch {
-      return {};
-    }
-  };
+  const getBallKnowledgeDailyFromStorage = () => readBallKnowledgeDailyFromLocalStorage();
   const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getBallKnowledgeDailyFromStorage();
     const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
@@ -989,7 +974,7 @@ const NBAGuessGame = () => {
     } catch {}
     return next;
   };
-  const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState({});
+  const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => readBallKnowledgeDailyFromLocalStorage());
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   // Lock out replaying any hardcore daily that already has a saved completion (today or past).
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
@@ -1206,7 +1191,11 @@ const NBAGuessGame = () => {
           'nba-mantle-analytics-id-v1',
           'nba-mantle-players-cache-v1',
           'nba-mantle-daily-completions-v12',
+          'nba-mantle-daily-completions-v13',
           'nba-mantle-ball-knowledge-daily-v1',
+          'nba-mantle-ball-knowledge-daily-v13',
+          'nba-mantle-favorites-v13',
+          'nba-mantle-favorites-v14',
         ];
         for (const k of oldKeys) localStorage.removeItem(k);
 
@@ -1224,9 +1213,19 @@ const NBAGuessGame = () => {
     } catch {}
 
     // Now load post-reset values
-    setDailyCompletions(getDailyCompletionsFromStorage());
-    setBallKnowledgeDailyCompletions(getBallKnowledgeDailyFromStorage());
+    setDailyCompletions(readDailyCompletionsFromLocalStorage());
+    setBallKnowledgeDailyCompletions(readBallKnowledgeDailyFromLocalStorage());
   }, []);
+
+  // Guests: re-read local progress after identity init so we never stay on empty state if the first
+  // paint ran before localStorage was ready (Safari private / strict modes).
+  useEffect(() => {
+    if (!identityInitialized) return;
+    if (authSession?.user?.id) return;
+    setDailyCompletions(readDailyCompletionsFromLocalStorage());
+    setBallKnowledgeDailyCompletions(readBallKnowledgeDailyFromLocalStorage());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identityInitialized, authSession?.user?.id]);
 
   const resetPuzzleState = () => {
     setGuess('');
@@ -1245,13 +1244,6 @@ const NBAGuessGame = () => {
     setBestSoFar(null);
     setBestDelta(null);
   };
-
-  // Persist favorites so they survive refresh.
-  useEffect(() => {
-    try {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoritePlayerKeys));
-    } catch {}
-  }, [favoritePlayerKeys, FAVORITES_KEY]);
 
   // Track best score (+delta when it improves).
   useEffect(() => {
@@ -1848,20 +1840,6 @@ const NBAGuessGame = () => {
         {getPlayerInitials(name)}
       </div>
     );
-  };
-
-  const isFavoritePlayer = (name) => {
-    if (!name) return false;
-    return favoritePlayerKeySet.has(normalizePlayerName(name));
-  };
-
-  const toggleFavoritePlayer = (name) => {
-    if (!name) return;
-    const k = normalizePlayerName(name);
-    setFavoritePlayerKeys((prev) => {
-      if (prev.includes(k)) return prev.filter((x) => x !== k);
-      return [...prev, k];
-    });
   };
 
   const triggerInputShake = () => {
@@ -2461,11 +2439,22 @@ const NBAGuessGame = () => {
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '12px',
           padding: '18px',
+          paddingTop: '52px',
           marginBottom: '24px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
+          <button
+            type="button"
+            className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
+            onClick={() => setShowAccountModal(true)}
+            title={authSession?.user ? 'Account & sign out' : 'Sign in (optional) — saves progress across devices'}
+          >
+            <span className="nm-header-account-btn__icon">{authSession?.user ? '✓' : '🔐'}</span>
+            <span className="nm-header-account-btn__label">{authSession?.user ? 'Account' : 'Sign in'}</span>
+          </button>
+
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '18px' }}>
             <span style={{ fontSize: '32px' }}>🏀</span>
             <h1 style={{ fontSize: '2.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
@@ -2513,28 +2502,6 @@ const NBAGuessGame = () => {
               <span>How to Play</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setShowAccountModal(true)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '10px',
-                border: '1px solid rgba(148, 163, 184, 0.45)',
-                backgroundColor: authSession?.user ? 'rgba(34, 197, 94, 0.12)' : '#111827',
-                color: authSession?.user ? '#bbf7d0' : '#94a3b8',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontWeight: 700,
-              }}
-              title={authSession?.user ? 'Account & sign out' : 'Sign in (optional)'}
-            >
-              <span>{authSession?.user ? '✓' : '🔐'}</span>
-              <span>{authSession?.user ? 'Account' : 'Sign in'}</span>
-            </button>
-
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <button
                 onClick={() => setShowStats(true)}
@@ -2555,27 +2522,6 @@ const NBAGuessGame = () => {
                 <span>Stats</span>
               </button>
             )}
-
-            <button
-              onClick={() => setShowFavorites(true)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '10px',
-                border: '1px solid rgba(251, 191, 36, 0.55)',
-                backgroundColor: 'rgba(251, 191, 36, 0.12)',
-                color: '#fde68a',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontWeight: 700
-              }}
-              title="View your favorite players"
-            >
-              <span>⭐</span>
-              <span>Favorites</span>
-            </button>
 
             {(() => {
               // Hide destructive "reset" for normal users.
@@ -3666,136 +3612,6 @@ const NBAGuessGame = () => {
           </div>
         )}
 
-        {showFavorites && (
-          <div
-            onClick={() => setShowFavorites(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(15,23,42,0.85)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 55,
-              padding: '16px'
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Favorite players"
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '520px',
-                maxHeight: '85vh',
-                overflow: 'auto',
-                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-                borderRadius: '16px',
-                padding: '20px',
-                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
-                border: '1px solid rgba(251, 191, 36, 0.35)'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '1.25rem', color: '#fde68a' }}>⭐ Favorites</h2>
-                  <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginTop: '4px' }}>
-                    {favoritePlayerKeySet.size} saved
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowFavorites(false)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                    fontSize: '20px',
-                    padding: '4px 8px',
-                    borderRadius: '4px'
-                  }}
-                  aria-label="Close favorites"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setFavoritePlayerKeys([])}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(248, 113, 113, 0.35)',
-                    backgroundColor: 'rgba(127, 29, 29, 0.25)',
-                    color: '#fecaca',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    font: 'inherit'
-                  }}
-                  title="Remove all favorites"
-                >
-                  🧹 Clear all
-                </button>
-              </div>
-
-              {(() => {
-                const favorites = allPlayers.filter((name) => favoritePlayerKeySet.has(normalizePlayerName(name)));
-                if (!favorites.length) {
-                  return (
-                    <div style={{ color: '#94a3b8', textAlign: 'center', padding: '28px 10px' }}>
-                      <div style={{ fontSize: '2.2rem', marginBottom: '6px' }}>⭐</div>
-                      <div>No favorites yet. Star a player in Guess History.</div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div style={{ display: 'grid', gap: '10px' }}>
-                    {favorites.map((name) => (
-                      <div
-                        key={name}
-                        style={{
-                          backgroundColor: '#0f172a',
-                          border: '1px solid rgba(51, 65, 85, 0.85)',
-                          borderRadius: '12px',
-                          padding: '12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px'
-                        }}
-                      >
-                        {renderPlayerAvatar(name, { size: 40, radius: 8 })}
-                        <div style={{ fontWeight: 700, color: '#f1f5f9', flex: 1, minWidth: 0 }}>{name}</div>
-                        <button
-                          type="button"
-                          onClick={() => toggleFavoritePlayer(name)}
-                          style={{
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#fbbf24',
-                            cursor: 'pointer',
-                            fontSize: '18px',
-                            padding: 0,
-                            fontWeight: 700
-                          }}
-                          aria-label={`Remove ${name} from favorites`}
-                          title="Unfavorite"
-                        >
-                          ★
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-
         {/* More games / About modal */}
         {showMoreGames && (
           <div
@@ -4362,9 +4178,7 @@ const NBAGuessGame = () => {
                             !name.includes('?') &&
                             normalizePlayerName(name).includes(normQuery)
                           ).slice(0, 8);
-                          const sorted = [...filtered].sort(
-                            (a, b) => Number(isFavoritePlayer(b)) - Number(isFavoritePlayer(a))
-                          );
+                          const sorted = [...filtered].sort((a, b) => a.localeCompare(b));
                           setSuggestions(sorted);
                           setShowSuggestions(true);
                         } else {
@@ -4723,24 +4537,7 @@ const NBAGuessGame = () => {
                   }}>
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                       {renderPlayerAvatar(item.name, { size: 34, radius: 8 })}
-                      <h4 style={{ margin: 0, color: '#e2e8f0', fontSize: '0.95rem', fontWeight: 700 }}>{item.name}</h4>
-                      <button
-                        type="button"
-                        onClick={() => toggleFavoritePlayer(item.name)}
-                        style={{
-                          marginLeft: 'auto',
-                          border: 'none',
-                          background: 'transparent',
-                          color: isFavoritePlayer(item.name) ? '#fbbf24' : '#334155',
-                          cursor: 'pointer',
-                          fontSize: '18px',
-                          lineHeight: 1,
-                          padding: 0
-                        }}
-                        aria-label={isFavoritePlayer(item.name) ? 'Unfavorite player' : 'Favorite player'}
-                      >
-                        {isFavoritePlayer(item.name) ? '★' : '☆'}
-                      </button>
+                      <h4 style={{ margin: 0, color: '#e2e8f0', fontSize: '0.95rem', fontWeight: 700, flex: 1, minWidth: 0 }}>{item.name}</h4>
                     </div>
                     
                     <ScoreBar score={item.score} animate={item.name === pulseGuessName} />

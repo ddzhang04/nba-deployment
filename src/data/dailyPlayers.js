@@ -9,15 +9,15 @@
  *   Index 0 = Day 0, Index 1 = Day 1, Index 2 = Day 2, ...
  * - If there are more days than players, the list cycles (e.g. after the last name it wraps to the first).
  *
- * To change the "start" of the calendar: change DAILY_PUZZLE_EPOCH to the date you want to be Day 0 (Daily #1).
+ * To reset to "Day 1": set DAILY_PUZZLE_EPOCH to today's UTC date (and bump ROTATION_SHUFFLE_VERSION + STORAGE_RESET_VERSION in App).
  */
 
-export const DAILY_PUZZLE_EPOCH = '2026-03-18';
+// Day index 0 = Daily #1 on this UTC calendar day (everyone shares the same puzzle date).
+export const DAILY_PUZZLE_EPOCH = '2026-03-25';
 
-// Bump this when you want to reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v8';
-// Keep shuffle seed stable even if the displayed epoch date changes.
-export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-19';
+// Bump when you reshuffle the rotation for everyone.
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v9';
+export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-25';
 
 const hashSeed = (str) => {
   // FNV-1a 32-bit
