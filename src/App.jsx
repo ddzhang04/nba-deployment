@@ -1233,8 +1233,38 @@ const NBAGuessGame = () => {
         // If the faster RPC isn't deployed yet (or is slow), fall back below.
       }
 
-      // Skip the heavy "all dailies" fallback in the hot path — it can be slow on mobile.
-      // If you need this, deploy the single-daily RPC which is O(1) instead of O(N).
+      // Fallback: compute for one daily directly from mantle_runs if RPC is unavailable.
+      // This keeps the UI working even when the optional RPC hasn't been deployed yet.
+      try {
+        const { data: rows, error: rowsErr } = await withRpcTimeout(
+          supabase
+            .from('mantle_runs')
+            .select('guesses')
+            .eq('mode', m)
+            .eq('daily_number', n)
+            .eq('won', true)
+            .limit(50000)
+        );
+        if (!rowsErr && Array.isArray(rows)) {
+          const wins = rows.length;
+          if (wins === 0) {
+            const value = { avg: null, wins: 0 };
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
+          }
+          let total = 0;
+          for (const r of rows) {
+            const g = Number(r?.guesses);
+            if (Number.isFinite(g)) total += g;
+          }
+          const avg = total / Math.max(1, wins);
+          if (Number.isFinite(avg)) {
+            const value = { avg, wins };
+            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
+            return value;
+          }
+        }
+      } catch {}
     }
 
     return null;
