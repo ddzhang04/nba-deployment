@@ -2771,7 +2771,6 @@ const NBAGuessGame = () => {
               className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
               onClick={() => setShowAccountModal(true)}
               title={authSession?.user ? 'Account & sign out' : 'Sign in (optional) — saves progress across devices'}
-              style={{ padding: '6px 12px', fontSize: '12px', gap: '6px' }}
             >
               <span className="nm-header-account-btn__icon">{authSession?.user ? '✓' : '🔐'}</span>
               <span className="nm-header-account-btn__label">{authSession?.user ? 'Account' : 'Sign in'}</span>

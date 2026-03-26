@@ -136,6 +136,8 @@ button, input, textarea, select {
     justify-content: center;
     /* Keep label from wrapping awkwardly on very narrow devices. */
     white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 0.95rem;
   }
 }
 
