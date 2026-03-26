@@ -91,17 +91,19 @@ const parseCompletionMapFromStorageRaw = (raw) => {
   }
 };
 
-const readDailyCompletionsFromLocalStorage = () => {
+const readCompletionMapFromLocalStorageKey = (storageKey) => {
   try {
-    return parseCompletionMapFromStorageRaw(localStorage.getItem(mantleStorageKey('nba-mantle-daily-completions')));
+    return parseCompletionMapFromStorageRaw(localStorage.getItem(storageKey));
   } catch {
     return {};
   }
 };
 
-const readBallKnowledgeDailyFromLocalStorage = () => {
+const readDailyCompletionsFromLocalStorage = (storageKey) => readCompletionMapFromLocalStorageKey(storageKey);
+
+const readBallKnowledgeDailyFromLocalStorage = (storageKey) => {
   try {
-    return parseCompletionMapFromStorageRaw(localStorage.getItem(mantleStorageKey('nba-mantle-ball-knowledge-daily')));
+    return parseCompletionMapFromStorageRaw(localStorage.getItem(storageKey));
   } catch {
     return {};
   }
@@ -136,6 +138,22 @@ const NBAGuessGame = () => {
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
   const key = mantleStorageKey;
+  const authedUserId = authSession?.user?.id ? String(authSession.user.id) : '';
+
+  const getDailyCompletionsStorageKey = useCallback(
+    (userId) => key(userId ? `nba-mantle-daily-completions-user-${userId}` : 'nba-mantle-daily-completions'),
+    [key]
+  );
+  const getHardcoreCompletionsStorageKey = useCallback(
+    (userId) => key(userId ? `nba-mantle-ball-knowledge-daily-user-${userId}` : 'nba-mantle-ball-knowledge-daily'),
+    [key]
+  );
+
+  const DAILY_COMPLETIONS_KEY = useMemo(() => getDailyCompletionsStorageKey(authedUserId), [getDailyCompletionsStorageKey, authedUserId]);
+  const BALL_KNOWLEDGE_DAILY_KEY = useMemo(() => getHardcoreCompletionsStorageKey(authedUserId), [getHardcoreCompletionsStorageKey, authedUserId]);
+
+  const GUEST_DAILY_COMPLETIONS_KEY = useMemo(() => getDailyCompletionsStorageKey(''), [getDailyCompletionsStorageKey]);
+  const GUEST_BALL_KNOWLEDGE_DAILY_KEY = useMemo(() => getHardcoreCompletionsStorageKey(''), [getHardcoreCompletionsStorageKey]);
 
   const bestPrevRef = useRef(null);
   const guessSectionRef = useRef(null);
@@ -863,8 +881,11 @@ const NBAGuessGame = () => {
     setShowForgotPassword(false);
     setProfileSaveUi('idle');
     setAuthSession(null);
+    // Clear both account-scoped and guest-scoped caches on sign-out so you don't see account history as guest.
     try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
     try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+    try { localStorage.removeItem(GUEST_DAILY_COMPLETIONS_KEY); } catch {}
+    try { localStorage.removeItem(GUEST_BALL_KNOWLEDGE_DAILY_KEY); } catch {}
     setDailyCompletions({});
     setBallKnowledgeDailyCompletions({});
     setSelectedDailyDetail(null);
@@ -1050,10 +1071,9 @@ const NBAGuessGame = () => {
       const detailsOk = mantleRunsDetailsSupported === true;
       let mergedRows = [];
 
-      const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
-      if (!rpcErr && Array.isArray(rpcRows)) {
-        mergedRows = rpcRows;
-      } else {
+      // Prefer append-only attempts if available.
+      let usedAttempts = false;
+      try {
         let linkedAnonIds = [];
         try {
           const { data: links, error: linksErr } = await supabase
@@ -1068,19 +1088,59 @@ const NBAGuessGame = () => {
 
         const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
         const columns = detailsOk
-          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
-          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+          ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5,user_id'
+          : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,user_id';
 
-        const [byUserRes, byAnonRes] = await Promise.all([
-          supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
+        // Use two queries to avoid tricky `or()` formatting across SDK versions.
+        const [byUserAttempts, byAnonAttempts] = await Promise.all([
+          supabase.from('mantle_run_attempts').select(columns).eq('user_id', userId).limit(5000),
           anonIds.length
-            ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
+            ? supabase.from('mantle_run_attempts').select(columns).in('anon_id', anonIds).limit(5000)
             : Promise.resolve({ data: [], error: null }),
         ]);
-        mergedRows = [
-          ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
-          ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
-        ];
+
+        if (!byUserAttempts?.error && !byAnonAttempts?.error) {
+          mergedRows = [
+            ...(Array.isArray(byUserAttempts?.data) ? byUserAttempts.data : []),
+            ...(Array.isArray(byAnonAttempts?.data) ? byAnonAttempts.data : []),
+          ];
+          usedAttempts = true;
+        }
+      } catch {}
+
+      if (!usedAttempts) {
+        const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
+        if (!rpcErr && Array.isArray(rpcRows)) {
+          mergedRows = rpcRows;
+        } else {
+          let linkedAnonIds = [];
+          try {
+            const { data: links, error: linksErr } = await supabase
+              .from('anon_links')
+              .select('anon_id')
+              .eq('user_id', userId)
+              .limit(200);
+            if (!linksErr) {
+              linkedAnonIds = (links || []).map((r) => String(r?.anon_id || '').trim()).filter(Boolean);
+            }
+          } catch {}
+
+          const anonIds = Array.from(new Set([...linkedAnonIds, String(anonId || '').trim()].filter(Boolean)));
+          const columns = detailsOk
+            ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
+            : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
+
+          const [byUserRes, byAnonRes] = await Promise.all([
+            supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000),
+            anonIds.length
+              ? supabase.from('mantle_runs').select(columns).in('anon_id', anonIds).limit(5000)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+          mergedRows = [
+            ...(Array.isArray(byUserRes?.data) ? byUserRes.data : []),
+            ...(Array.isArray(byAnonRes?.data) ? byAnonRes.data : []),
+          ];
+        }
       }
 
       const rowMap = new Map();
@@ -1154,12 +1214,10 @@ const NBAGuessGame = () => {
         return next;
       };
 
-      const nextDaily = merge(getDailyCompletionsFromStorage(), dailyFromCloud);
-      const nextHardcore = merge(getBallKnowledgeDailyFromStorage(), hardcoreFromCloud);
-
-      try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(nextDaily)); } catch {}
-      try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(nextHardcore)); } catch {}
-      try { localStorage.setItem(key('nba-mantle-cloud-user-id'), String(userId)); } catch {}
+      // Signed-in cloud sync is the source of truth.
+      // IMPORTANT: Never persist completions to localStorage. On refresh, we re-hydrate from Supabase.
+      const nextDaily = dailyFromCloud || {};
+      const nextHardcore = hardcoreFromCloud || {};
       setDailyCompletions(nextDaily);
       setBallKnowledgeDailyCompletions(nextHardcore);
       return true;
@@ -1544,33 +1602,25 @@ const NBAGuessGame = () => {
 
   // Past daily mantles: keyed by daily number, value = { date, completedAt, guesses, guessHistory, won, answer, top5 }
   // Once you play a daily (win or lose), you can't play it again.
-  const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
-  const getDailyCompletionsFromStorage = () => readDailyCompletionsFromLocalStorage();
+  const getDailyCompletionsFromStorage = () => (dailyCompletions || {});
   const saveDailyCompletionToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getDailyCompletionsFromStorage();
     const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
-    try {
-      localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
-    } catch {}
     return next;
   };
 
-  const [dailyCompletions, setDailyCompletions] = useState(() => readDailyCompletionsFromLocalStorage());
+  const [dailyCompletions, setDailyCompletions] = useState(() => ({}));
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
   // Lock out replaying any daily that already has a saved completion (today or past).
   const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(activeDailyNumber)] != null;
 
-  const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
-  const getBallKnowledgeDailyFromStorage = () => readBallKnowledgeDailyFromLocalStorage();
+  const getBallKnowledgeDailyFromStorage = () => (ballKnowledgeDailyCompletions || {});
   const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
     const prev = getBallKnowledgeDailyFromStorage();
     const next = { ...prev, [String(dailyNumber)]: { date: dateStr, completedAt: new Date().toISOString(), guesses, guessHistory, won, answer, top5 } };
-    try {
-      localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
-    } catch {}
     return next;
   };
-  const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => readBallKnowledgeDailyFromLocalStorage());
+  const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => ({}));
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   // Lock out replaying any hardcore daily that already has a saved completion (today or past).
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
@@ -1697,8 +1747,8 @@ const NBAGuessGame = () => {
     } catch {}
 
     // Now load post-reset values
-    setDailyCompletions(readDailyCompletionsFromLocalStorage());
-    setBallKnowledgeDailyCompletions(readBallKnowledgeDailyFromLocalStorage());
+    setDailyCompletions({});
+    setBallKnowledgeDailyCompletions({});
   }, []);
 
   // Guests: re-read local progress after identity init so we never stay on empty state if the first
@@ -1706,18 +1756,9 @@ const NBAGuessGame = () => {
   useEffect(() => {
     if (!identityInitialized) return;
     if (authSession?.user?.id) return;
-    // If we previously hydrated from a signed-in account, don't show that history in guest mode.
-    // Guest mode should only reflect guest progress on this device.
-    try {
-      const marker = localStorage.getItem(key('nba-mantle-cloud-user-id')) || '';
-      if (marker) {
-        localStorage.removeItem(key('nba-mantle-cloud-user-id'));
-        localStorage.removeItem(DAILY_COMPLETIONS_KEY);
-        localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY);
-      }
-    } catch {}
-    setDailyCompletions(readDailyCompletionsFromLocalStorage());
-    setBallKnowledgeDailyCompletions(readBallKnowledgeDailyFromLocalStorage());
+    // Guest mode: session-only. We do not persist completions across refresh.
+    setDailyCompletions({});
+    setBallKnowledgeDailyCompletions({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityInitialized, authSession?.user?.id]);
 

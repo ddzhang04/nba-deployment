@@ -55,6 +55,36 @@ CREATE INDEX IF NOT EXISTS mantle_run_attempts_anon_id_idx ON public.mantle_run_
 CREATE INDEX IF NOT EXISTS mantle_run_attempts_mode_daily_idx ON public.mantle_run_attempts (mode, daily_number);
 
 -- ---------------------------------------------------------------------------
+-- 1c) Global averages based on append-only attempts
+-- We take the latest attempt per anon_id for the given (mode,daily_number) to avoid double-counting.
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_mantle_answer_averages_for_daily(text, integer) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.get_mantle_answer_averages_for_daily(p_mode text, p_daily_number integer)
+RETURNS TABLE (avg numeric, wins bigint)
+LANGUAGE sql
+STABLE
+AS $$
+  WITH latest_per_anon AS (
+    SELECT DISTINCT ON (mra.anon_id)
+      mra.anon_id,
+      mra.guesses,
+      mra.won
+    FROM public.mantle_run_attempts mra
+    WHERE mra.mode = p_mode
+      AND mra.daily_number = p_daily_number
+    ORDER BY mra.anon_id, mra.created_at DESC
+  )
+  SELECT
+    AVG((l.guesses)::numeric) FILTER (WHERE l.won = true) AS avg,
+    COUNT(*) FILTER (WHERE l.won = true)::bigint        AS wins
+  FROM latest_per_anon l
+  ;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages_for_daily(text, integer) TO anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- 2) anon_links — tie device anon_id → Supabase auth user
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.anon_links (
@@ -196,28 +226,6 @@ $$;
 
 -- Anyone can read global averages (same data the leaderboard uses).
 GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages(text) TO anon, authenticated;
-
--- ---------------------------------------------------------------------------
--- Optional: faster average for a single daily number (used by end-screen UI)
--- ---------------------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.get_mantle_answer_averages_for_daily(text, integer) CASCADE;
-
-CREATE OR REPLACE FUNCTION public.get_mantle_answer_averages_for_daily(p_mode text, p_daily_number integer)
-RETURNS TABLE (avg numeric, wins bigint)
-LANGUAGE sql
-STABLE
-AS $$
-  SELECT
-    AVG(mr.guesses::numeric) AS avg,
-    COUNT(*)::bigint        AS wins
-  FROM public.mantle_runs mr
-  WHERE mr.mode = p_mode
-    AND mr.won = true
-    AND mr.daily_number = p_daily_number
-  ;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.get_mantle_answer_averages_for_daily(text, integer) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 6) Your runs on any device (one RPC — no Vercel /api/stats/* needed)
