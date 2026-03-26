@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
-import { DAILY_PLAYERS, getDailyPuzzleDayIndex, getISODateForDailyIndexFromEpoch } from './data/dailyPlayers';
+import { DAILY_PLAYERS, getISODateForDailyIndexFromEpoch, getDailyPuzzleDayIndex } from './data/dailyPlayers';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
@@ -957,7 +957,8 @@ const NBAGuessGame = () => {
     'Pascal Siakam', 'Bam Adebayo', 'Jaylen Brown', 'Tyler Herro'
   ];
 
-  // Daily # uses America/New_York calendar (see getDailyPuzzleDayIndex in dailyPlayers.js).
+  // Daily # uses the shared calendar timezone (America/New_York),
+  // so rollover happens at midnight in Boston/ET.
   const DAILY_PUZZLE_INDEX_OFFSET = 0;
   const getDailyPuzzleIndex = () => getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET);
   const getDailyPlayerForIndex = (index) =>
