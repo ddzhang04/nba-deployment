@@ -138,22 +138,10 @@ const NBAGuessGame = () => {
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
   const key = mantleStorageKey;
-  const authedUserId = authSession?.user?.id ? String(authSession.user.id) : '';
-
-  const getDailyCompletionsStorageKey = useCallback(
-    (userId) => key(userId ? `nba-mantle-daily-completions-user-${userId}` : 'nba-mantle-daily-completions'),
-    [key]
-  );
-  const getHardcoreCompletionsStorageKey = useCallback(
-    (userId) => key(userId ? `nba-mantle-ball-knowledge-daily-user-${userId}` : 'nba-mantle-ball-knowledge-daily'),
-    [key]
-  );
-
-  const DAILY_COMPLETIONS_KEY = useMemo(() => getDailyCompletionsStorageKey(authedUserId), [getDailyCompletionsStorageKey, authedUserId]);
-  const BALL_KNOWLEDGE_DAILY_KEY = useMemo(() => getHardcoreCompletionsStorageKey(authedUserId), [getHardcoreCompletionsStorageKey, authedUserId]);
-
-  const GUEST_DAILY_COMPLETIONS_KEY = useMemo(() => getDailyCompletionsStorageKey(''), [getDailyCompletionsStorageKey]);
-  const GUEST_BALL_KNOWLEDGE_DAILY_KEY = useMemo(() => getHardcoreCompletionsStorageKey(''), [getHardcoreCompletionsStorageKey]);
+  // Completion keys (legacy). We no longer persist completions, but we still clear these on sign-out/reset
+  // to avoid any stale local data from older versions.
+  const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
+  const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
 
   const bestPrevRef = useRef(null);
   const guessSectionRef = useRef(null);
@@ -881,11 +869,8 @@ const NBAGuessGame = () => {
     setShowForgotPassword(false);
     setProfileSaveUi('idle');
     setAuthSession(null);
-    // Clear both account-scoped and guest-scoped caches on sign-out so you don't see account history as guest.
     try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
     try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
-    try { localStorage.removeItem(GUEST_DAILY_COMPLETIONS_KEY); } catch {}
-    try { localStorage.removeItem(GUEST_BALL_KNOWLEDGE_DAILY_KEY); } catch {}
     setDailyCompletions({});
     setBallKnowledgeDailyCompletions({});
     setSelectedDailyDetail(null);
