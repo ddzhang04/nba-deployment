@@ -984,9 +984,12 @@ const NBAGuessGame = () => {
         ...(detailsOk ? { guess_history: guessHistory, top5 } : {}),
       };
 
-      // Insert directly into mantle_runs.
+      // One row per (anon_id, mode, daily_number) — DB enforces uniqueness (e.g. mantle_runs_unique).
+      // Upsert so replays / retries update instead of violating the constraint.
       try {
-        const ins = await supabase.from('mantle_runs').insert(payload);
+        const ins = await supabase.from('mantle_runs').upsert(payload, {
+          onConflict: 'anon_id,mode,daily_number',
+        });
         if (ins?.error) throw ins.error;
       } catch (e) {
         const msg = e?.message || 'Save failed';
