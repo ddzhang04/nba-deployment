@@ -429,6 +429,9 @@ const NBAGuessGame = () => {
 
     return () => {
       cancelled = true;
+      // If this run is superseded or unmounted before the async work finishes, `finally`
+      // skips clearing — without this, accountSaving stays true and Save / Sign out stay disabled.
+      setAccountSaving(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId]);
@@ -3866,7 +3869,7 @@ const NBAGuessGame = () => {
                     <button
                       type="button"
                       onClick={handleSignOut}
-                      disabled={accountSaving}
+                      disabled={authLoading}
                       style={{
                         padding: '10px 12px',
                         borderRadius: '12px',
@@ -3874,7 +3877,7 @@ const NBAGuessGame = () => {
                         backgroundColor: 'rgba(127, 29, 29, 0.22)',
                         color: '#fecaca',
                         fontWeight: 900,
-                        cursor: accountSaving ? 'not-allowed' : 'pointer',
+                        cursor: authLoading ? 'not-allowed' : 'pointer',
                       }}
                     >
                       Sign out
