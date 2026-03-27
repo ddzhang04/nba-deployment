@@ -5353,33 +5353,31 @@ const NBAGuessGame = () => {
                     </div>
 
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', justifyContent: 'center' }}>
-                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isPostGameView) {
-                              setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'));
-                              return;
-                            }
-                            if (gameMode === 'daily') setSelectedDailyDetail(String(activeDailyNumber));
-                            else setSelectedBallKnowledgeDetail(String(activeDailyNumber));
-                          }}
-                          style={{
-                            padding: '10px 16px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            backgroundColor: isHardcore ? '#d97706' : '#7c3aed',
-                            color: 'white',
-                            fontWeight: '800',
-                            cursor: 'pointer',
-                            fontSize: '0.9rem'
-                          }}
-                        >
-                          {isPostGameView
-                            ? (postGameRightPanelView === 'guesses' ? 'Show Top 5 most similar' : 'Show your guesses')
-                            : 'View your guesses'}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isPostGameView) {
+                            setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'));
+                            return;
+                          }
+                          if (gameMode === 'daily') setSelectedDailyDetail(String(activeDailyNumber));
+                          else if (gameMode === 'ballKnowledgeDaily') setSelectedBallKnowledgeDetail(String(activeDailyNumber));
+                        }}
+                        style={{
+                          padding: '10px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          backgroundColor: isHardcore ? '#d97706' : '#7c3aed',
+                          color: 'white',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem'
+                        }}
+                      >
+                        {isPostGameView
+                          ? (postGameRightPanelView === 'guesses' ? 'Show Top 5 most similar' : 'Show your guesses')
+                          : 'View your guesses'}
+                      </button>
                       {end.canShare && (
                         <button
                           type="button"
