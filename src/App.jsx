@@ -359,7 +359,6 @@ const NBAGuessGame = () => {
       if (!supabase) throw new Error('Supabase is not configured');
       const limit = 20;
       const lookbackDays = 60;
-      const minWinsForSpeed = 3;
       const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), -1) + 1;
       const firstDailyNumber = Math.max(1, todayDailyNumber - lookbackDays + 1);
 
@@ -390,15 +389,6 @@ const NBAGuessGame = () => {
           };
         })
         .filter(Boolean);
-
-      const speed = entries
-        .filter((e) => e.wins >= minWinsForSpeed && e.avgGuesses != null)
-        .sort((a, b) => {
-          if (a.avgGuesses !== b.avgGuesses) return a.avgGuesses - b.avgGuesses;
-          if (a.wins !== b.wins) return b.wins - a.wins;
-          return b.maxStreak - a.maxStreak;
-        })
-        .slice(0, limit);
 
       const wins = entries
         .filter((e) => e.wins > 0)
@@ -440,9 +430,7 @@ const NBAGuessGame = () => {
         mode,
         todayDailyNumber,
         lookbackDays,
-        minWinsForSpeed,
         updatedAt: new Date().toISOString(),
-        speed,
         wins,
         streaks,
         completed,
@@ -4492,14 +4480,6 @@ const NBAGuessGame = () => {
               ) : (
                 <div style={{ display: 'grid', gap: '10px' }}>
                   {[
-                    {
-                      id: 'speed',
-                      title: 'Fastest Average',
-                      subtitle: `Lower average guesses is better (min ${leaderboardData?.minWinsForSpeed ?? 3} wins).`,
-                      rows: Array.isArray(leaderboardData?.speed) ? leaderboardData.speed : [],
-                      metric: (e) => `${Number(e?.avgGuesses ?? 0).toFixed(2)} avg`,
-                      extra: (e) => `${e?.wins ?? 0} wins`,
-                    },
                     {
                       id: 'wins',
                       title: 'Most Wins',

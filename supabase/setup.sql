@@ -279,12 +279,13 @@ AS $$
   win_agg AS (
     SELECT
       mr.anon_id::text AS aid,
-      min(mr.user_id::text)::uuid AS uid,
+      coalesce(min(mr.user_id::text), min(al.user_id::text))::uuid AS uid,
       count(*)::bigint AS c,
       count(*) FILTER (WHERE mr.won = true)::bigint AS w,
       coalesce(sum(mr.guesses) FILTER (WHERE mr.won = true), 0)::bigint AS tg,
       coalesce(sum(mr.guesses), 0)::bigint AS tga
     FROM public.mantle_runs mr
+    LEFT JOIN public.anon_links al ON al.anon_id = mr.anon_id
     WHERE mr.mode = p_mode
       AND mr.daily_number >= p_first_daily
       AND mr.daily_number <= p_last_daily
