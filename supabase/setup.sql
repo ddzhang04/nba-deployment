@@ -273,10 +273,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH RECURSIVE v_epoch AS (
-    SELECT date '2026-03-25'::date AS d
-  ),
-  base AS (
+  WITH RECURSIVE base AS (
     SELECT
       mr.anon_id::text AS aid,
       coalesce(
@@ -339,47 +336,47 @@ AS $$
     FROM dedup d
     GROUP BY d.uid
   ),
-  live AS (
+  -- Streaks are based on consecutive winning daily numbers (not "solved on scheduled date").
+  win_days AS (
     SELECT
       d.uid,
       d.dn
-    FROM dedup d, v_epoch e
+    FROM dedup d
     WHERE d.won = true
-      AND (timezone('America/New_York', d.created_at))::date = (e.d + (d.dn - 1))
   ),
-  live_grp AS (
+  win_grp AS (
     SELECT
-      l.uid,
-      l.dn,
-      l.dn - row_number() OVER (PARTITION BY l.uid ORDER BY l.dn) AS g
-    FROM live l
+      w.uid,
+      w.dn,
+      w.dn - row_number() OVER (PARTITION BY w.uid ORDER BY w.dn) AS g
+    FROM win_days w
   ),
-  live_streaks AS (
-    SELECT lg.uid, lg.g, count(*)::bigint AS streak_len
-    FROM live_grp lg
-    GROUP BY lg.uid, lg.g
+  win_streaks AS (
+    SELECT wg.uid, wg.g, count(*)::bigint AS streak_len
+    FROM win_grp wg
+    GROUP BY wg.uid, wg.g
   ),
   max_streak AS (
-    SELECT ls.uid, max(ls.streak_len)::bigint AS max_ls
-    FROM live_streaks ls
-    GROUP BY ls.uid
+    SELECT ws.uid, max(ws.streak_len)::bigint AS max_ls
+    FROM win_streaks ws
+    GROUP BY ws.uid
   ),
   ss AS (
     SELECT
       x.uid,
       CASE
-        WHEN EXISTS (SELECT 1 FROM live l WHERE l.uid = x.uid AND l.dn = p_last_daily)
+        WHEN EXISTS (SELECT 1 FROM win_days w WHERE w.uid = x.uid AND w.dn = p_last_daily)
           THEN p_last_daily
         ELSE p_last_daily - 1
       END AS start_dn
-    FROM (SELECT DISTINCT live.uid FROM live) x
+    FROM (SELECT DISTINCT win_days.uid FROM win_days) x
   ),
   rec AS (
     SELECT
       ss.uid,
       ss.start_dn AS n,
       CASE
-        WHEN EXISTS (SELECT 1 FROM live l WHERE l.uid = ss.uid AND l.dn = ss.start_dn)
+        WHEN EXISTS (SELECT 1 FROM win_days w WHERE w.uid = ss.uid AND w.dn = ss.start_dn)
           THEN 1::bigint
         ELSE 0::bigint
       END AS len
@@ -390,7 +387,7 @@ AS $$
       r.n - 1,
       r.len + 1
     FROM rec r
-    INNER JOIN live l ON l.uid = r.uid AND l.dn = r.n - 1
+    INNER JOIN win_days w ON w.uid = r.uid AND w.dn = r.n - 1
     WHERE r.len >= 1
       AND r.n > p_first_daily
   ),
