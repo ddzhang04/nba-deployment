@@ -163,7 +163,7 @@ button, input, textarea, select {
 @media (min-width: 1100px) {
   .main-layout.main-layout--with-history {
     flex-direction: row;
-    align-items: flex-start;
+    align-items: stretch;
     justify-content: center;
     gap: 0.9rem;
   }
@@ -180,8 +180,8 @@ button, input, textarea, select {
 
 @media (min-width: 1100px) {
   .main-layout.main-layout--with-history .play-stage {
-    flex: 1 1 640px;
-    max-width: 760px;
+    flex: 1 1 700px;
+    max-width: 780px;
     margin: 0;
   }
 }
@@ -209,9 +209,9 @@ button, input, textarea, select {
 
 @media (min-width: 1100px) {
   .main-layout.main-layout--with-history .guess-history-aside {
-    flex: 0 0 420px;
-    width: 420px;
-    max-width: 420px;
+    flex: 0 0 500px;
+    width: 500px;
+    max-width: 500px;
     margin: 0;
     position: sticky;
     top: 10px;
@@ -219,6 +219,7 @@ button, input, textarea, select {
 
   .guess-history-aside {
     max-height: min(430px, 45vh);
+    min-height: min(430px, 45vh);
   }
 }
 

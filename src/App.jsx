@@ -5330,16 +5330,16 @@ const NBAGuessGame = () => {
                   : 'rgba(139, 92, 246, 0.15)';
 
                 return (
-                  <div style={{ padding: '16px', borderRadius: '12px', backgroundColor: accentBg, border: accentBorder }}>
+                  <div style={{ padding: '12px', borderRadius: '12px', backgroundColor: accentBg, border: accentBorder }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '2rem', marginBottom: '8px' }}>{end.state === 'won' ? '🎉' : '🎯'}</div>
-                      <div style={{ marginBottom: '8px' }}>{renderPlayerAvatar(end.answer, { size: 64, radius: 12 })}</div>
+                      <div style={{ fontSize: '1.7rem', marginBottom: '6px' }}>{end.state === 'won' ? '🎉' : '🎯'}</div>
+                      <div style={{ marginBottom: '6px' }}>{renderPlayerAvatar(end.answer, { size: 56, radius: 12 })}</div>
                       {end.state === 'won' ? (
-                        <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
+                        <p style={{ margin: 0, fontSize: '1rem', color: 'white' }}>
                           {gameMode === 'daily' ? 'Daily' : gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Game'} #{activeDailyNumber}{displayDate ? ` (${displayDate})` : ''} — you got it in <strong>{end.guesses ?? '?'}</strong> guesses! The answer was <strong>{end.answer}</strong>.
                         </p>
                       ) : (
-                        <p style={{ margin: 0, fontSize: '1.05rem', color: 'white' }}>
+                        <p style={{ margin: 0, fontSize: '1rem', color: 'white' }}>
                           The answer was <strong>{end.answer}</strong>
                         </p>
                       )}
@@ -5363,32 +5363,7 @@ const NBAGuessGame = () => {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', justifyContent: 'center' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isPostGameView) {
-                            setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'));
-                            return;
-                          }
-                          if (gameMode === 'daily') setSelectedDailyDetail(String(activeDailyNumber));
-                          else if (gameMode === 'ballKnowledgeDaily') setSelectedBallKnowledgeDetail(String(activeDailyNumber));
-                        }}
-                        style={{
-                          padding: '10px 16px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: isHardcore ? '#d97706' : '#7c3aed',
-                          color: 'white',
-                          fontWeight: '800',
-                          cursor: 'pointer',
-                          fontSize: '0.9rem'
-                        }}
-                      >
-                        {isPostGameView
-                          ? (postGameRightPanelView === 'guesses' ? 'Show Top 5 most similar' : 'Show your guesses')
-                          : 'View your guesses'}
-                      </button>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', justifyContent: 'center' }}>
                       {end.canShare && (
                         <button
                           type="button"
