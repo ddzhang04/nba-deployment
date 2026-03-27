@@ -29,6 +29,10 @@ Live: [https://nba-deployment.vercel.app/](https://nba-deployment.vercel.app/)
 
 5. **Deploy** — Push to GitHub / deploy on Vercel.
 
+6. **(Optional) Brand auth emails** — Supabase sends confirmation/reset emails by default.
+   To make them look better, copy templates from [`supabase/email-templates`](supabase/email-templates)
+   into **Supabase → Authentication → Email Templates**.
+
 **Account sync** is entirely **Supabase from the browser**: save = `upsert` on `mantle_runs`, load = `rpc('get_my_mantle_runs')`. No separate `/api/stats/*` layer.
 
 Sign in **once per device** so `anon_links` ties that device’s `anon_id` to your user (needed for history from before `user_id` was on every row).
@@ -112,6 +116,7 @@ npm run healthcheck
 | Problem | Check |
 |--------|--------|
 | Can’t sign in / no Supabase | `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` |
+| Gmail + no verification email | If account was created via Google OAuth, use **Continue with Google** (no email verification flow) |
 | History missing after sign-in | Re-run `setup.sql` (includes `get_my_mantle_runs`), sign in on each device once |
 | Global average empty | RPC + RLS from `setup.sql`; browser Network → calls to `supabase.co` |
 | Leaderboard/profile 500 on Vercel | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on that project |

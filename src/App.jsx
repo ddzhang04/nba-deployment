@@ -128,6 +128,11 @@ const NBAGuessGame = () => {
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showLeaderboards, setShowLeaderboards] = useState(false);
+  const [leaderboardMode, setLeaderboardMode] = useState('daily'); // 'daily' | 'hardcore'
+  const [leaderboardData, setLeaderboardData] = useState(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError] = useState('');
   const [showMoreGames, setShowMoreGames] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
@@ -329,6 +334,30 @@ const NBAGuessGame = () => {
     }
     throw lastErr || new Error('Request failed');
   };
+  const loadLeaderboards = useCallback(async (modeInput, { force = false } = {}) => {
+    const mode = modeInput === 'hardcore' ? 'hardcore' : 'daily';
+    if (!force && leaderboardLoading) return;
+    setLeaderboardLoading(true);
+    setLeaderboardError('');
+    try {
+      const params = new URLSearchParams({
+        mode,
+        lookbackDays: '120',
+        limit: '20',
+        minWinsForSpeed: '3',
+      });
+      const data = await fetchJsonWithRetry(
+        `${SECURE_API_BASE}/leaderboards?${params.toString()}`,
+        {},
+        { timeoutMs: 12000, retries: 1, retryDelayMs: 800 }
+      );
+      setLeaderboardData(data || null);
+    } catch (e) {
+      setLeaderboardError(e?.message || 'Could not load leaderboards');
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  }, [SECURE_API_BASE, leaderboardLoading]);
   const warmBackend = async ({ force = false, background = false } = {}) => {
     const now = Date.now();
     if (!force && now - backendLastWarmTsRef.current < 1000 * 60 * 5) return true;
@@ -469,6 +498,11 @@ const NBAGuessGame = () => {
   const getDefaultAvatarForUser = (user) => {
     const md = user?.user_metadata || {};
     return String(md?.picture || md?.avatar_url || '').trim();
+  };
+
+  const isLikelyGmailAddress = (emailRaw) => {
+    const email = String(emailRaw || '').trim().toLowerCase();
+    return email.endsWith('@gmail.com') || email.endsWith('@googlemail.com');
   };
 
   // After login, link this device's anon_id to the user, then load their profile.
@@ -653,7 +687,20 @@ const NBAGuessGame = () => {
       setShowAccountModal(false);
       showAccountActivityToast('Signed in.', 'success');
     } catch (e) {
-      setAuthError(e?.message || 'Sign in failed');
+      const msg = e?.message || 'Sign in failed';
+      const lower = String(msg).toLowerCase();
+      if (
+        isLikelyGmailAddress(authEmail) &&
+        (lower.includes('invalid login credentials') ||
+          lower.includes('email not confirmed') ||
+          lower.includes('invalid email or password'))
+      ) {
+        setAuthError(
+          `${msg} If this Gmail was created with Google OAuth, use "Continue with Google" instead of email/password.`
+        );
+      } else {
+        setAuthError(msg);
+      }
     } finally {
       setEmailAuthAction(null);
     }
@@ -697,13 +744,28 @@ const NBAGuessGame = () => {
       if (nextSession) {
         showAccountActivityToast('Account created — you are signed in.', 'success');
       } else {
+        const gmailHint = isLikelyGmailAddress(email)
+          ? ' If this Gmail is meant for Google OAuth, use "Continue with Google" (no confirmation email in that flow).'
+          : '';
         showAccountActivityToast(
-          'Check your email to confirm your account, then use Sign in here.',
+          `Check your email to confirm your account, then use Sign in here.${gmailHint}`,
           'success'
         );
       }
     } catch (e) {
-      setAuthError(e?.message || 'Sign up failed');
+      const msg = e?.message || 'Sign up failed';
+      const lower = String(msg).toLowerCase();
+      if (
+        isLikelyGmailAddress(authEmail) &&
+        (lower.includes('already') ||
+          lower.includes('registered') ||
+          lower.includes('exists') ||
+          lower.includes('identity'))
+      ) {
+        setAuthError(`${msg} If this Gmail already uses Google sign-in, click "Continue with Google".`);
+      } else {
+        setAuthError(msg);
+      }
     } finally {
       setEmailAuthAction(null);
     }
@@ -716,6 +778,11 @@ const NBAGuessGame = () => {
     setEmailAuthAction('resend');
     setAuthError('');
     setAuthNotice('');
+    if (isLikelyGmailAddress(email)) {
+      setAuthNotice(
+        'Using Gmail with Google OAuth does not use verification emails. If this account is Google-based, click "Continue with Google".'
+      );
+    }
     try {
       const configuredEmailRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
       const payload = {
@@ -1960,6 +2027,15 @@ const NBAGuessGame = () => {
     void fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: false });
   }, [gameMode, activeDailyNumber]);
 
+  useEffect(() => {
+    if (!showLeaderboards) return;
+    void loadLeaderboards(leaderboardMode, { force: true });
+    const id = setInterval(() => {
+      void loadLeaderboards(leaderboardMode, { force: true });
+    }, 60000);
+    return () => clearInterval(id);
+  }, [showLeaderboards, leaderboardMode, loadLeaderboards]);
+
   // Auto-dismiss confetti after a win.
   useEffect(() => {
     if (!confettiBurstId) return;
@@ -3088,6 +3164,29 @@ const NBAGuessGame = () => {
                 <span>Stats</span>
               </button>
             )}
+            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
+              <button
+                onClick={() => {
+                  setLeaderboardMode(gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily');
+                  setShowLeaderboards(true);
+                }}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #4b5563',
+                  backgroundColor: '#111827',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>🏆</span>
+                <span>Leaderboards</span>
+              </button>
+            )}
 
             {(() => {
               // Hide destructive "reset" for normal users.
@@ -4184,6 +4283,180 @@ const NBAGuessGame = () => {
           </div>
         )}
 
+        {/* Leaderboards Modal */}
+        {showLeaderboards && (
+          <div
+            onClick={() => setShowLeaderboards(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15,23,42,0.88)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 52,
+              padding: '16px',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '700px',
+                maxHeight: '90vh',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+                borderRadius: '16px',
+                padding: '18px',
+                border: '1px solid #334155',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+                overflowY: 'auto',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h2 style={{ fontSize: '1.35rem', margin: 0, color: '#e5e7eb' }}>Leaderboards</h2>
+                <button
+                  onClick={() => setShowLeaderboards(false)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    padding: '4px 8px',
+                    borderRadius: '999px',
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                {[
+                  { id: 'daily', label: 'Daily' },
+                  { id: 'hardcore', label: 'Hardcore' },
+                ].map((opt) => {
+                  const active = leaderboardMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setLeaderboardMode(opt.id)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '10px',
+                        border: active ? '1px solid #7c3aed' : '1px solid #4b5563',
+                        backgroundColor: active ? 'rgba(124, 58, 237, 0.2)' : '#111827',
+                        color: active ? '#ede9fe' : '#9ca3af',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => void loadLeaderboards(leaderboardMode, { force: true })}
+                  style={{
+                    marginLeft: 'auto',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    border: '1px solid #4b5563',
+                    backgroundColor: '#111827',
+                    color: '#cbd5e1',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {leaderboardLoading && !leaderboardData ? (
+                <div style={{ color: '#cbd5e1', fontSize: '0.95rem', padding: '6px 2px' }}>Loading leaderboards…</div>
+              ) : leaderboardError ? (
+                <div style={{ color: '#fca5a5', fontSize: '0.95rem', padding: '6px 2px' }}>{leaderboardError}</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {[
+                    {
+                      id: 'speed',
+                      title: 'Fastest Average',
+                      subtitle: `Lower average guesses is better (min ${leaderboardData?.minWinsForSpeed ?? 3} wins).`,
+                      rows: Array.isArray(leaderboardData?.speed) ? leaderboardData.speed : [],
+                      metric: (e) => `${Number(e?.avgGuesses ?? 0).toFixed(2)} avg`,
+                      extra: (e) => `${e?.wins ?? 0} wins`,
+                    },
+                    {
+                      id: 'wins',
+                      title: 'Most Wins',
+                      subtitle: 'Most solved dailies in the recent window.',
+                      rows: Array.isArray(leaderboardData?.wins) ? leaderboardData.wins : [],
+                      metric: (e) => `${e?.wins ?? 0} wins`,
+                      extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg` : '—'),
+                    },
+                    {
+                      id: 'streaks',
+                      title: 'Best Live Streak',
+                      subtitle: 'Streaks count only scheduled-day solves.',
+                      rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
+                      metric: (e) => `${e?.maxStreak ?? 0} best`,
+                      extra: (e) => `${e?.currentStreak ?? 0} live`,
+                    },
+                  ].map((section) => (
+                    <div
+                      key={section.id}
+                      style={{
+                        borderRadius: '12px',
+                        border: '1px solid #334155',
+                        backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
+                        <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.95rem' }}>{section.title}</div>
+                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '2px' }}>{section.subtitle}</div>
+                      </div>
+                      {section.rows.length ? (
+                        <div>
+                          {section.rows.slice(0, 10).map((entry, idx) => (
+                            <div
+                              key={`${section.id}-${entry?.anon_id || idx}`}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '40px minmax(0,1fr) auto',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '10px 12px',
+                                borderTop: idx === 0 ? 'none' : '1px solid rgba(51, 65, 85, 0.55)',
+                              }}
+                            >
+                              <div style={{ color: '#93c5fd', fontWeight: 800 }}>#{idx + 1}</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {entry?.verified ? '✓ ' : ''}{entry?.user || 'Player'}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{section.extra(entry)}</div>
+                              </div>
+                              <div style={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.9rem' }}>{section.metric(entry)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ padding: '12px', color: '#94a3b8', fontSize: '0.9rem' }}>No entries yet.</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ marginTop: '10px', color: '#64748b', fontSize: '0.78rem' }}>
+                Window: last {leaderboardData?.lookbackDays ?? 120} dailies · updates about every minute
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* More games / About modal */}
         {showMoreGames && (
           <div
@@ -4271,7 +4544,7 @@ const NBAGuessGame = () => {
                     Instagram @joshuam0y
                   </a>
                   <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-                    Questions or bugs? DM me. Also—share it with friends.
+                    Questions or bugs? DM me or email jmoy2077@gmail.com. Also—share it with friends.
                   </div>
                 </div>
               </div>
@@ -4651,6 +4924,11 @@ const NBAGuessGame = () => {
                   >
                     {emailAuthAction === 'google' ? 'Opening Google…' : 'Continue with Google'}
                   </button>
+                  {isLikelyGmailAddress(authEmail) ? (
+                    <div style={{ color: '#93c5fd', fontSize: '0.8rem', marginTop: '6px' }}>
+                      Gmail tip: if you originally used Google sign-in, use this button (email verification is not sent for OAuth sign-ins).
+                    </div>
+                  ) : null}
 
                   <div className="nm-account-modal__divider" />
 
