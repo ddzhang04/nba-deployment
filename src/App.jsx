@@ -153,6 +153,7 @@ const NBAGuessGame = () => {
   const guessSectionRef = useRef(null);
   const guessInputRef = useRef(null);
   const guessHistoryEndRef = useRef(null);
+  const postGamePanelScrollRef = useRef(null);
   const pulseGuessCardRef = useRef(null);
   const [bestSoFar, setBestSoFar] = useState(null);
   const [bestDelta, setBestDelta] = useState(null);
@@ -1805,6 +1806,16 @@ const NBAGuessGame = () => {
       setPostGameRightPanelView('guesses');
     }
   }, [isPostGameView]);
+  useEffect(() => {
+    if (!isPostGameView) return;
+    const el = postGamePanelScrollRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      try {
+        el.scrollTop = 0;
+      } catch {}
+    });
+  }, [isPostGameView, postGameRightPanelView]);
 
   // When signed in, hydrate local daily completions from all devices linked to this account.
   useEffect(() => {
@@ -5592,6 +5603,25 @@ const NBAGuessGame = () => {
               {/* Universal end screen handles win/reveal/already-played */}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                {isPostGameView && (
+                  <button
+                    type="button"
+                    onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
+                    style={{
+                      flex: 1,
+                      padding: '12px 20px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: '#7c3aed',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      fontSize: '16px'
+                    }}
+                  >
+                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5' : '📝 Show Guesses'}
+                  </button>
+                )}
                 {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
                     onClick={() => setConfirmAction('newGame')}
@@ -5755,7 +5785,7 @@ const NBAGuessGame = () => {
                 </div>
 
                 {postGameRightPanelView === 'top5' ? (
-                  <div className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
+                  <div ref={postGamePanelScrollRef} className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
                     {top5Players.length > 0 ? (
                       <div>
                         {top5Players.map(([name, score], index) => (
@@ -5817,6 +5847,7 @@ const NBAGuessGame = () => {
                   )
                 ) : (
                   <div
+                    ref={postGamePanelScrollRef}
                     className="nm-guess-history-scroll"
                     style={isPostGameView ? { maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' } : undefined}
                   >
