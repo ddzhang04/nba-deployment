@@ -195,7 +195,6 @@ const NBAGuessGame = () => {
   const [confettiBurstId, setConfettiBurstId] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
-  const [sidePanelView, setSidePanelView] = useState('guesses'); // 'guesses' | 'top5'
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
@@ -1791,9 +1790,6 @@ const NBAGuessGame = () => {
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
-  useEffect(() => {
-    if (!isPostGameView) setSidePanelView('guesses');
-  }, [isPostGameView]);
 
   // When signed in, hydrate local daily completions from all devices linked to this account.
   useEffect(() => {
@@ -5587,45 +5583,7 @@ const NBAGuessGame = () => {
 
           {/* Guess history — always visible so new guesses appear immediately */}
           <div className="guess-history-aside">
-            {isPostGameView && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
-                <button
-                  type="button"
-                  onClick={() => setSidePanelView('guesses')}
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '10px',
-                    border: sidePanelView === 'guesses' ? '1px solid rgba(59,130,246,0.5)' : '1px solid rgba(71,85,105,0.85)',
-                    backgroundColor: sidePanelView === 'guesses' ? 'rgba(59,130,246,0.18)' : 'rgba(15,23,42,0.35)',
-                    color: sidePanelView === 'guesses' ? '#dbeafe' : '#94a3b8',
-                    fontWeight: 800,
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Recent guesses
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSidePanelView('top5')}
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: '10px',
-                    border: sidePanelView === 'top5' ? '1px solid rgba(16,185,129,0.5)' : '1px solid rgba(71,85,105,0.85)',
-                    backgroundColor: sidePanelView === 'top5' ? 'rgba(16,185,129,0.18)' : 'rgba(15,23,42,0.35)',
-                    color: sidePanelView === 'top5' ? '#d1fae5' : '#94a3b8',
-                    fontWeight: 800,
-                    fontSize: '12px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Top 5 similar
-                </button>
-              </div>
-            )}
-
-            {(!isPostGameView || sidePanelView === 'guesses') ? (
-              <>
+            <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <h3 style={{ fontSize: '1rem', margin: 0, color: '#cbd5e1', fontWeight: 800, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
                     Guesses ({guessHistory.length})
@@ -5693,7 +5651,10 @@ const NBAGuessGame = () => {
                     </div>
                   )
                 ) : (
-                  <div className="nm-guess-history-scroll">
+                  <div
+                    className="nm-guess-history-scroll"
+                    style={isPostGameView ? { maxHeight: '38%', overflowY: 'auto' } : undefined}
+                  >
                     {(guessHistorySort === 'chronological' ? guessHistory : guessHistory.slice().sort((a, b) => b.score - a.score)).map((item, index) => (
                       <div
                         key={index}
@@ -5766,50 +5727,50 @@ const NBAGuessGame = () => {
                     <div ref={guessHistoryEndRef} />
                   </div>
                 )}
-              </>
-            ) : (
-              <>
-                <h3 style={{ fontSize: '1rem', margin: '0 0 10px', color: '#e2e8f0', fontWeight: 800 }}>📈 Top 5 Most Similar</h3>
-                <div className="nm-guess-history-scroll">
-                  {top5Players.length > 0 ? (
-                    <div>
-                      {top5Players.map(([name, score], index) => (
-                        <div key={name} style={{ marginBottom: '11px', backgroundColor: 'rgba(15, 23, 42, 0.55)', border: '1px solid rgba(71,85,105,0.6)', borderRadius: '10px', padding: '10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '7px' }}>
-                            <span
-                              style={{
-                                backgroundColor: '#3b82f6',
-                                color: 'white',
-                                width: '24px',
-                                height: '24px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                flex: '0 0 auto',
-                              }}
-                            >
-                              {index + 1}
-                            </span>
-                            <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 34, radius: 8 })}</div>
-                            <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.98rem', lineHeight: 1.2 }}>{name}</span>
-                          </div>
-                          <ScoreBar score={score} />
+                {isPostGameView && (
+                  <div style={{ marginTop: '12px', borderTop: '1px solid rgba(71, 85, 105, 0.55)', paddingTop: '10px' }}>
+                    <h3 style={{ fontSize: '1rem', margin: '0 0 10px', color: '#e2e8f0', fontWeight: 800 }}>📈 Top 5 Most Similar</h3>
+                    <div className="nm-guess-history-scroll" style={{ maxHeight: '38%', overflowY: 'auto' }}>
+                      {top5Players.length > 0 ? (
+                        <div>
+                          {top5Players.map(([name, score], index) => (
+                            <div key={name} style={{ marginBottom: '11px', backgroundColor: 'rgba(15, 23, 42, 0.55)', border: '1px solid rgba(71,85,105,0.6)', borderRadius: '10px', padding: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '7px' }}>
+                                <span
+                                  style={{
+                                    backgroundColor: '#3b82f6',
+                                    color: 'white',
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '12px',
+                                    fontWeight: 'bold',
+                                    flex: '0 0 auto',
+                                  }}
+                                >
+                                  {index + 1}
+                                </span>
+                                <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 34, radius: 8 })}</div>
+                                <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.98rem', lineHeight: 1.2 }}>{name}</span>
+                              </div>
+                              <ScoreBar score={score} />
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
+                        <div style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                          {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
+                        </div>
+                      ) : (
+                        <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Top 5 will appear after this game.</div>
+                      )}
                     </div>
-                  ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
-                    <div style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
-                      {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
-                    </div>
-                  ) : (
-                    <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Top 5 will appear after this game.</div>
-                  )}
-                </div>
+                  </div>
+                )}
               </>
-            )}
           </div>
         </div>
       </div>
