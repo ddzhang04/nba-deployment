@@ -260,6 +260,7 @@ CREATE OR REPLACE FUNCTION public.get_leaderboard_snapshot(
 RETURNS TABLE (
   anon_id text,
   user_id uuid,
+  display_name text,
   completions bigint,
   wins bigint,
   total_guesses bigint,
@@ -269,6 +270,8 @@ RETURNS TABLE (
 )
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
   WITH RECURSIVE v_epoch AS (
     SELECT date '2026-03-25'::date AS d
@@ -354,6 +357,7 @@ AS $$
   SELECT
     wa.aid AS anon_id,
     wa.uid AS user_id,
+    p.display_name AS display_name,
     wa.c AS completions,
     wa.w AS wins,
     wa.tg AS total_guesses,
@@ -361,8 +365,12 @@ AS $$
     coalesce(ms.max_ls, 0::bigint) AS max_live_streak,
     coalesce(cs.cur_ls, 0::bigint) AS current_live_streak
   FROM win_agg wa
+  INNER JOIN public.profiles p ON p.user_id = wa.uid
   LEFT JOIN max_streak ms ON ms.aid = wa.aid
   LEFT JOIN cur_streak cs ON cs.aid = wa.aid
+  WHERE wa.uid IS NOT NULL
+    AND p.display_name IS NOT NULL
+    AND length(trim(p.display_name)) > 0
   ;
 $$;
 

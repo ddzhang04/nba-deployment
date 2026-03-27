@@ -370,30 +370,17 @@ const NBAGuessGame = () => {
       });
       if (rpcErr) throw rpcErr;
 
-      const hashAnonId = (str) => {
-        const s = String(str || '');
-        let h = 0x811c9dc5;
-        for (let i = 0; i < s.length; i++) {
-          h ^= s.charCodeAt(i);
-          h = Math.imul(h, 0x01000193);
-        }
-        return (h >>> 0).toString(16);
-      };
-
       const entries = (Array.isArray(rows) ? rows : [])
         .map((r) => {
-          const anon_id = String(r?.anon_id || '').trim();
-          if (!anon_id) return null;
+          const user = String(r?.display_name || '').trim();
+          if (!user) return null;
           const completions = Number(r?.completions) || 0;
           const wins = Number(r?.wins) || 0;
           const totalGuesses = Number(r?.total_guesses) || 0;
           const totalGuessesAll = Number(r?.total_guesses_all) || totalGuesses;
           const avgGuesses = wins > 0 ? totalGuesses / wins : null;
           return {
-            anon_id,
-            // Client-side path cannot read everyone’s profiles due to RLS; keep privacy-safe pseudonyms.
-            user: `Player ${hashAnonId(anon_id).slice(0, 4)}`,
-            verified: false,
+            user,
             completions,
             wins,
             totalGuessesAll,
@@ -4563,7 +4550,7 @@ const NBAGuessGame = () => {
                         <div>
                           {section.rows.slice(0, 10).map((entry, idx) => (
                             <div
-                              key={`${section.id}-${entry?.anon_id || idx}`}
+                              key={`${section.id}-${entry?.user || idx}`}
                               style={{
                                 display: 'grid',
                                 gridTemplateColumns: '40px minmax(0,1fr) auto',
