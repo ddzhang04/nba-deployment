@@ -3316,7 +3316,7 @@ const NBAGuessGame = () => {
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+          <div className="game-header__version" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
             <span
               style={{
                 display: 'inline-block',
@@ -3332,17 +3332,17 @@ const NBAGuessGame = () => {
               Version {APP_VERSION}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '6px' }}>
+          <div className="game-header__title-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '6px' }}>
             <span style={{ fontSize: '25px' }}>🏀</span>
             <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '25px' }}>🎯</span>
           </div>
 
-          <div style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
+          <div className="game-header__intro" style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
             <p style={{ color: '#dbeafe', margin: '0 0 4px', fontSize: '0.95rem', lineHeight: 1.25, fontWeight: 700 }}>
               Guess the mystery NBA player - each guess shows your similarity score.
             </p>
-            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', margin: '0 0 4px', lineHeight: 1.25 }}>
+            <div className="game-header__season-note" style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', margin: '0 0 4px', lineHeight: 1.25 }}>
               Data through the <strong>2024-2025</strong> NBA season (no current season info yet).
             </div>
             <p style={{ color: '#fbbf24', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.65, fontWeight: 700 }}>
@@ -3507,8 +3507,9 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Game Mode Selection */}
-          <div style={{ marginBottom: '10px' }}>
+          <div className="game-header__mode" style={{ marginBottom: '10px' }}>
             <div
+              className="game-header__mode-shell"
               style={{
                 maxWidth: '560px',
                 margin: '0 auto',
@@ -3584,7 +3585,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
             </div>
-            <div style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
+            <div className="game-header__meta" style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
                 `Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''}`}
               {gameMode === 'ballKnowledgeDaily' &&
@@ -3598,13 +3599,13 @@ const NBAGuessGame = () => {
             </div>
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+              <div className="game-header__rollover" style={{ marginTop: '4px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
                 Rollover date (ET): {todayYmdNY || '—'}
               </div>
             )}
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div className="game-header__past-row" style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => setShowPastDailyPicker(true)}
@@ -3643,7 +3644,7 @@ const NBAGuessGame = () => {
             )}
 
             {/* Status row (Guesses / Next / Best / Answer) */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '22px', flexWrap: 'wrap', fontSize: '1.05rem', alignItems: 'center', marginTop: '10px' }}>
+            <div className="game-header__status" style={{ display: 'flex', justifyContent: 'center', gap: '22px', flexWrap: 'wrap', fontSize: '1.05rem', alignItems: 'center', marginTop: '10px' }}>
               {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
                 <span style={{ color: '#fbbf24', fontWeight: 800 }}>Guesses: {guessCount}</span>
               )}
