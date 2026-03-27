@@ -609,6 +609,7 @@ const NBAGuessGame = () => {
         } catch {
           setSignInNudgeProminentUsed(false);
         }
+        setCloudHydrateTick(0);
       }
     });
     unsub = data?.subscription || null;
@@ -1180,14 +1181,12 @@ const NBAGuessGame = () => {
       const mantleKey = `${normalizeMantleRunMode(mode)}:${dn}`;
       const cloudSlotOccupied =
         !forceGuest && Number.isFinite(dn) && dn >= 1 && accountMantleSlotKeysRef.current.has(mantleKey);
-      // Account already has a row for this puzzle (canonical user or linked guest). Save under
-      // device anon + null user_id so we do not upsert a duplicate user:{id} row / double-count on
-      // user-scoped leaderboards, while the run still persists and global stats still see it.
+      // Account already has a row for this puzzle (canonical user or linked guest). Use device
+      // anon_id so we do not upsert over the existing user:{id} row; still set user_id on the
+      // row so get_leaderboard_snapshot can attribute reveals (won=false) and non-wins to the account.
       const emulateGuest = !!user_id && (forceGuest || cloudSlotOccupied);
-      const effective_user_id = emulateGuest ? null : user_id;
       // Table uniqueness is keyed by anon_id+mode+daily_number.
-      // Use a per-account key when signed in and this puzzle is not already occupied in cloud for this account.
-      const anon_id = effective_user_id ? `user:${effective_user_id}` : deviceAnonId;
+      const anon_id = emulateGuest || !user_id ? deviceAnonId : `user:${user_id}`;
       // Treat "unknown" as supported so we don't drop guess history on first save.
       const detailsOk = mantleRunsDetailsSupported !== false;
 
@@ -1199,7 +1198,7 @@ const NBAGuessGame = () => {
 
       const payload = {
         anon_id,
-        user_id: effective_user_id,
+        user_id,
         mode,
         daily_number: dailyNumber,
         date,
@@ -1221,7 +1220,7 @@ const NBAGuessGame = () => {
         if (detailsOk) {
           const retryPayload = {
             anon_id,
-            user_id: effective_user_id,
+            user_id,
             mode,
             daily_number: dailyNumber,
             date,
@@ -1440,6 +1439,7 @@ const NBAGuessGame = () => {
         } catch {}
         return merged;
       });
+      setCloudHydrateTick((t) => t + 1);
       return true;
     } catch (e) {
       console.warn('Cloud hydrate failed:', e?.message || e);
@@ -1901,6 +1901,8 @@ const NBAGuessGame = () => {
     return next;
   };
   const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => ({}));
+  /** Bumped after a successful signed-in cloud hydrate so puzzle UI re-reads the canonical completion. */
+  const [cloudHydrateTick, setCloudHydrateTick] = useState(0);
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   const [selectedHardcoreHistoryNum, setSelectedHardcoreHistoryNum] = useState('');
   // Lock out replaying any hardcore daily that already has a saved completion (today or past).
@@ -2295,8 +2297,16 @@ const NBAGuessGame = () => {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, dailyCompletions, ballKnowledgeDailyCompletions]);
+  }, [
+    gameMode,
+    activeDailyNumber,
+    dailyAlreadyPlayed,
+    ballKnowledgeDailyAlreadyPlayed,
+    dailyCompletions,
+    ballKnowledgeDailyCompletions,
+    authSession?.user?.id,
+    cloudHydrateTick,
+  ]);
 
   // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
   // Do not gate on targetPlayer — desktop often hydrates completion state before the answer string is restored.

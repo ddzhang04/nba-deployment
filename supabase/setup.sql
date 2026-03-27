@@ -399,7 +399,10 @@ AS $$
   SELECT
     a.aid AS anon_id,
     a.uid AS user_id,
-    p.display_name AS display_name,
+    coalesce(
+      nullif(trim(p.display_name), ''),
+      'Player ' || substr(replace(a.uid::text, '-', ''), 1, 8)
+    ) AS display_name,
     a.c AS completions,
     a.w AS wins,
     a.tg AS total_guesses,
@@ -407,11 +410,9 @@ AS $$
     coalesce(ms.max_ls, 0::bigint) AS max_live_streak,
     coalesce(cs.cur_ls, 0::bigint) AS current_live_streak
   FROM agg a
-  INNER JOIN public.profiles p ON p.user_id = a.uid
+  LEFT JOIN public.profiles p ON p.user_id = a.uid
   LEFT JOIN max_streak ms ON ms.uid = a.uid
   LEFT JOIN cur_streak cs ON cs.uid = a.uid
-  WHERE p.display_name IS NOT NULL
-    AND length(trim(p.display_name)) > 0
   ;
 $$;
 
