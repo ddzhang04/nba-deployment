@@ -375,22 +375,47 @@ const NBAGuessGame = () => {
           if (!user) return null;
           const completions = Number(r?.completions) || 0;
           const wins = Number(r?.wins) || 0;
-          const totalGuesses = Number(r?.total_guesses) || 0;
-          const totalGuessesAll = Number(r?.total_guesses_all) || totalGuesses;
-          const avgGuesses = wins > 0 ? totalGuesses / wins : null;
+          const totalGuessesWins = Number(r?.total_guesses) || 0;
+          const totalGuessesAll = Number(r?.total_guesses_all) || totalGuessesWins;
           return {
+            userId: String(r?.user_id || '').trim(),
             user,
             completions,
             wins,
+            totalGuessesWins,
             totalGuessesAll,
-            avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
             currentStreak: Number(r?.current_live_streak) || 0,
             maxStreak: Number(r?.max_live_streak) || 0,
           };
         })
         .filter(Boolean);
 
-      const wins = entries
+      // One signed-in person can have multiple historical anon_ids.
+      // Collapse by account so leaderboards show one row per real user.
+      const byUser = new Map();
+      for (const e of entries) {
+        const key = e.userId || e.user.toLowerCase();
+        const prev = byUser.get(key);
+        if (!prev) {
+          byUser.set(key, { ...e });
+          continue;
+        }
+        prev.completions += e.completions;
+        prev.wins += e.wins;
+        prev.totalGuessesWins += e.totalGuessesWins;
+        prev.totalGuessesAll += e.totalGuessesAll;
+        if (e.maxStreak > prev.maxStreak) prev.maxStreak = e.maxStreak;
+        if (e.currentStreak > prev.currentStreak) prev.currentStreak = e.currentStreak;
+      }
+      const mergedEntries = Array.from(byUser.values()).map((e) => {
+        const avgGuesses = e.wins > 0 ? e.totalGuessesWins / e.wins : null;
+        return {
+          ...e,
+          avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
+        };
+      });
+
+      const wins = mergedEntries
         .filter((e) => e.wins > 0)
         .sort((a, b) => {
           if (a.wins !== b.wins) return b.wins - a.wins;
@@ -401,7 +426,7 @@ const NBAGuessGame = () => {
         })
         .slice(0, limit);
 
-      const streaks = entries
+      const streaks = mergedEntries
         .filter((e) => e.maxStreak > 0)
         .sort((a, b) => {
           if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
@@ -410,7 +435,7 @@ const NBAGuessGame = () => {
         })
         .slice(0, limit);
 
-      const completed = entries
+      const completed = mergedEntries
         .filter((e) => e.completions > 0)
         .sort((a, b) => {
           if (a.completions !== b.completions) return b.completions - a.completions;
@@ -418,7 +443,7 @@ const NBAGuessGame = () => {
         })
         .slice(0, limit);
 
-      const guesses = entries
+      const guesses = mergedEntries
         .filter((e) => e.totalGuessesAll > 0)
         .sort((a, b) => {
           if (a.totalGuessesAll !== b.totalGuessesAll) return b.totalGuessesAll - a.totalGuessesAll;
