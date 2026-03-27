@@ -1278,6 +1278,14 @@ const NBAGuessGame = () => {
         ];
       }
 
+      const normalizeRunMode = (rawMode) => {
+        const m = String(rawMode || '').trim();
+        if (m === 'hardcore' || m === 'ballKnowledgeDaily' || m === 'ball_knowledge_daily' || m === 'hardcore_daily') {
+          return 'hardcore';
+        }
+        return 'daily';
+      };
+
       const rowMap = new Map();
       const rowScore = (row) => {
         const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
@@ -1286,8 +1294,7 @@ const NBAGuessGame = () => {
         return { n: gh + t5, ca };
       };
       for (const r of mergedRows) {
-        const m = String(r?.mode || '');
-        const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+        const normalizedMode = normalizeRunMode(r?.mode);
         const dn = Number(r?.daily_number);
         if (!Number.isFinite(dn) || dn < 1) continue;
         const logicalKey = `${normalizedMode}|${dn}`;
@@ -1305,8 +1312,7 @@ const NBAGuessGame = () => {
       const toCompletionMap = (modeKey) => {
         const out = {};
         for (const r of rows) {
-          const m = String(r?.mode || '');
-          const normalizedMode = m === 'hardcore' ? 'hardcore' : 'daily';
+          const normalizedMode = normalizeRunMode(r?.mode);
           if (normalizedMode !== modeKey) continue;
 
           const n = Number(r?.daily_number);
@@ -1400,7 +1406,7 @@ const NBAGuessGame = () => {
 
   // v2 key: older builds cached 12h from RPC that read mantle_run_attempts → stuck at "1 win".
   const GLOBAL_AVG_CACHE_TTL_MS = 1000 * 90; // 90s — stats should feel live; bust on each cloud save too.
-  const readCachedGlobalDailyAverage = ({ mode, dailyNumber }) => {
+  const readCachedGlobalDailyAverage = ({ mode, dailyNumber, allowStale = false }) => {
     const m = mode === 'hardcore' ? 'hardcore' : 'daily';
     const n = Number(dailyNumber);
     if (!Number.isFinite(n) || n < 1) return null;
@@ -1410,7 +1416,7 @@ const NBAGuessGame = () => {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed?.ts || typeof parsed.ts !== 'number') return null;
-      if (Date.now() - parsed.ts > GLOBAL_AVG_CACHE_TTL_MS) return null;
+      if (!allowStale && Date.now() - parsed.ts > GLOBAL_AVG_CACHE_TTL_MS) return null;
       return parsed?.value ?? null;
     } catch {
       return null;
@@ -1434,7 +1440,7 @@ const NBAGuessGame = () => {
 
     const cacheKey = key(`nba-mantle-global-daily-avg-v2-${m}-${n}`);
     if (!forceRefresh) {
-      const cached = readCachedGlobalDailyAverage({ mode: m, dailyNumber: n });
+      const cached = readCachedGlobalDailyAverage({ mode: m, dailyNumber: n, allowStale: false });
       if (cached != null) return cached;
     }
     const inFlight = globalDailyAvgInFlightRef.current.get(cacheKey);
@@ -2158,7 +2164,7 @@ const NBAGuessGame = () => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed]);
+  }, [gameMode, activeDailyNumber, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, dailyCompletions, ballKnowledgeDailyCompletions]);
 
   // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
   // Do not gate on targetPlayer — desktop often hydrates completion state before the answer string is restored.
@@ -2199,9 +2205,10 @@ const NBAGuessGame = () => {
     };
 
     // Apply cached value synchronously so the UI updates immediately.
-    const cached = readCachedGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber });
-    if (cached != null) {
-      setPostWinGlobalDailyAverage(cached);
+    const freshCached = readCachedGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, allowStale: false });
+    const staleCached = freshCached ?? readCachedGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, allowStale: true });
+    if (staleCached != null) {
+      setPostWinGlobalDailyAverage(staleCached);
       setPostWinGlobalDailyAverageLoading(false);
       void fetchAndApply({ forceRefresh: false, withLoading: false });
     } else {
@@ -2228,6 +2235,13 @@ const NBAGuessGame = () => {
     const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
     void fetchGlobalDailyAverage({ mode: modeKey, dailyNumber: activeDailyNumber, forceRefresh: false });
   }, [gameMode, activeDailyNumber]);
+
+  // After sign-in, warm global-average cache right away for both daily modes.
+  useEffect(() => {
+    if (!authSession?.user?.id) return;
+    void fetchGlobalDailyAverage({ mode: 'daily', dailyNumber: activeDailyNumber, forceRefresh: false });
+    void fetchGlobalDailyAverage({ mode: 'hardcore', dailyNumber: activeDailyNumber, forceRefresh: false });
+  }, [authSession?.user?.id, activeDailyNumber]);
 
   useEffect(() => {
     if (!showLeaderboards) return;
