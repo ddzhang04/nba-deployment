@@ -16,6 +16,47 @@ html, body {
   font-weight: 500;
 }
 
+/* Prevent desktop page scroll; scroll inside panels instead. */
+@media (min-width: 900px) {
+  html, body {
+    overflow-y: hidden;
+  }
+  .game-container {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+  .game-content {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .game-content-wrapper {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .game-header {
+    flex: 0 0 auto;
+  }
+  .main-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .play-stage {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .guess-history-aside {
+    min-height: 0;
+  }
+}
+
 /* Ensure form controls inherit the app font */
 button, input, textarea, select {
   font: inherit;
