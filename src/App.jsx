@@ -326,7 +326,10 @@ const NBAGuessGame = () => {
           let detail = '';
           try {
             const body = await res.json();
-            detail = body?.error || body?.details || body?.hint || '';
+            const err = body?.error ? String(body.error) : '';
+            const det = body?.details ? String(body.details) : '';
+            const hint = body?.hint ? String(body.hint) : '';
+            detail = [err, det && det !== err ? det : '', hint].filter(Boolean).join(' · ');
           } catch {
             try {
               detail = await res.text();
@@ -4549,7 +4552,7 @@ const NBAGuessGame = () => {
                 </div>
                 <div style={{ marginTop: '10px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
                   <a
-                    href="https://instagram.com/joshuam0y"
+                    href="https://instagram.com/jomohoops"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -4567,7 +4570,7 @@ const NBAGuessGame = () => {
                     }}
                   >
                     <span>📷</span>
-                    Instagram @joshuam0y
+                    Instagram @jomohoops
                   </a>
                   <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
                     Questions or bugs? DM me or email jmoy2077@gmail.com. Also—share it with friends.

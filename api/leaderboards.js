@@ -181,7 +181,7 @@ export default async function handler(req, res) {
     return json(res, 200, value);
   } catch (e) {
     return json(res, 500, {
-      error: 'Leaderboards server error',
+      error: `Leaderboards server error${e?.message ? `: ${e.message}` : ''}`,
       details: e?.message || String(e),
     });
   }
