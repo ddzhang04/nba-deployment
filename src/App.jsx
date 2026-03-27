@@ -4993,8 +4993,9 @@ const NBAGuessGame = () => {
                         <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '2px' }}>{section.subtitle}</div>
                       </div>
                       {section.rows.length ? (
-                        <div>
-                          {section.rows.slice(0, 10).map((entry, idx) => (
+                        <div style={{ maxHeight: 'min(360px, 55vh)', overflowY: 'auto' }}>
+                          {/* Backend returns up to ~21 rows (top 20 + optional pinned you); do not cap at 10 or rank 11+ is invisible. */}
+                          {section.rows.map((entry, idx) => (
                             <div
                               key={`${section.id}-${entry?.userId || entry?.user || idx}`}
                               style={{

@@ -284,7 +284,7 @@ AS $$
         END
       ) AS uid,
       mr.daily_number::int AS dn,
-      mr.guesses::int AS guesses,
+      coalesce(mr.guesses, 0)::int AS guesses,
       (mr.won = true) AS won,
       mr.created_at
     FROM public.mantle_runs mr
