@@ -129,6 +129,7 @@ const NBAGuessGame = () => {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showSecondaryPanel, setShowSecondaryPanel] = useState(false);
+  const [showHeaderInfo, setShowHeaderInfo] = useState(false);
   const [showLeaderboards, setShowLeaderboards] = useState(false);
   const [leaderboardMode, setLeaderboardMode] = useState('daily'); // 'daily' | 'hardcore'
   const [leaderboardData, setLeaderboardData] = useState(null);
@@ -3182,45 +3183,63 @@ const NBAGuessGame = () => {
         </div>
       )}
 
-      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
+      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '14px' }}>
         {/* Header */}
         <div className="game-header" style={{ 
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '12px',
-          padding: '18px',
-          paddingTop: '18px',
-          marginBottom: '24px',
+          padding: '12px',
+          paddingTop: '12px',
+          marginBottom: '12px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '18px' }}>
-            <span style={{ fontSize: '32px' }}>🏀</span>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
-            <span style={{ fontSize: '32px' }}>🎯</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '10px' }}>
+            <span style={{ fontSize: '25px' }}>🏀</span>
+            <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
+            <span style={{ fontSize: '25px' }}>🎯</span>
           </div>
 
-          <p style={{ color: '#94a3b8', margin: '0 auto 10px', fontSize: '1.06rem', lineHeight: 1.35, maxWidth: '62ch' }}>
-            Guess the mystery NBA player by finding similar players. Daily puzzle and unlimited free play modes.
-          </p>
-          <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.88rem', margin: '0 auto 18px', lineHeight: 1.3, maxWidth: '62ch' }}>
-            Data is current through the <strong>2024–2025</strong> NBA season (no current season yet).
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowHeaderInfo((v) => !v)}
+              style={{
+                padding: '5px 10px',
+                borderRadius: '999px',
+                border: '1px solid #334155',
+                backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                color: '#94a3b8',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              {showHeaderInfo ? 'Hide info' : 'Show info'}
+            </button>
           </div>
+          {showHeaderInfo && (
+            <div style={{ margin: '0 auto 10px', maxWidth: '62ch' }}>
+              <p style={{ color: '#94a3b8', margin: '0 0 6px', fontSize: '0.9rem', lineHeight: 1.3 }}>
+                Guess the mystery player by finding similar players.
+              </p>
+              <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.8rem', margin: '0 0 6px', lineHeight: 1.3 }}>
+                Data through the <strong>2024-2025</strong> NBA season.
+              </div>
+              <p style={{ color: '#f59e0b', margin: 0, fontSize: '0.82rem', opacity: targetMaxSimilar != null ? 1 : 0.55 }}>
+                {targetMaxSimilar != null ? (
+                  <>
+                    Ceiling: <span style={{ fontWeight: 700 }}>{targetMaxSimilar}/100</span>
+                  </>
+                ) : (
+                  <>Calculating ceiling...</>
+                )}
+              </p>
+            </div>
+          )}
 
-          <div style={{ minHeight: '26px', marginBottom: '16px' }}>
-            <p style={{ color: '#f59e0b', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.55 }}>
-              {targetMaxSimilar != null ? (
-                <>
-                  The closest any other player gets to this mystery player is about{' '}
-                  <span style={{ fontWeight: 700 }}>{targetMaxSimilar}/100</span>.
-                </>
-              ) : (
-                <>Calculating closest-player ceiling…</>
-              )}
-            </p>
-          </div>
-
-          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '6px', marginBottom: '4px' }}>
+          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px', marginBottom: '2px' }}>
             <button
               type="button"
               className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
@@ -3369,95 +3388,35 @@ const NBAGuessGame = () => {
           </div>
 
           {/* Game Mode Selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => handleModeChange('easy')}
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '4px' }}>
+              <select
+                value={gameMode}
+                onChange={(e) => handleModeChange(e.target.value)}
                 style={{
-                  padding: '10px 20px',
+                  width: '100%',
+                  maxWidth: '420px',
+                  padding: '10px 12px',
                   borderRadius: '10px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'easy' ? '#22c55e' : '#475569',
-                  color: 'white'
+                  border: '1px solid #475569',
+                  backgroundColor: '#0f172a',
+                  color: '#e2e8f0',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
                 }}
               >
-                😊 All Stars 1986 or Later
-              </button>
-              <button
-                onClick={() => handleModeChange('classic')}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'classic' ? '#3b82f6' : '#475569',
-                  color: 'white'
-                }}
-              >
-                🏆 Classic Mode
-              </button>
-              <button
-                onClick={() => handleModeChange('all')}
-                style={{
-                  padding: '10px 20px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'all' ? '#3b82f6' : '#475569',
-                  color: 'white'
-                }}
-              >
-                🌟 All Players
-              </button>
+                <option value="daily">{`📅 Daily #${todayDailyIndex + 1}`}</option>
+                <option value="ballKnowledgeDaily">{`🧠 Hardcore Daily #${todayDailyIndex + 1}`}</option>
+                <option value="easy">😊 All Stars 1986 or Later</option>
+                <option value="classic">🏆 Classic Mode</option>
+                <option value="all">🌟 All Players</option>
+              </select>
             </div>
-            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => handleModeChange('daily')}
-                style={{
-                  padding: '14px 32px',
-                  borderRadius: '10px',
-                  border: gameMode === 'daily' ? '2px solid #a78bfa' : '2px solid #475569',
-                  fontWeight: 'bold',
-                  fontSize: '1.1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'daily' ? '#8b5cf6' : '#475569',
-                  color: 'white',
-                  boxShadow: gameMode === 'daily' ? '0 4px 14px rgba(139, 92, 246, 0.4)' : 'none'
-                }}
-              >
-                📅 Daily #{todayDailyIndex + 1}
-              </button>
-              <button
-                onClick={() => handleModeChange('ballKnowledgeDaily')}
-                style={{
-                  padding: '14px 32px',
-                  borderRadius: '10px',
-                  border: gameMode === 'ballKnowledgeDaily' ? '2px solid #f59e0b' : '2px solid #475569',
-                  fontWeight: 'bold',
-                  fontSize: '1.1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  backgroundColor: gameMode === 'ballKnowledgeDaily' ? '#d97706' : '#475569',
-                  color: 'white',
-                  boxShadow: gameMode === 'ballKnowledgeDaily' ? '0 4px 14px rgba(217, 119, 6, 0.4)' : 'none'
-                }}
-              >
-                🧠 Hardcore Daily #{todayDailyIndex + 1}
-              </button>
-            </div>
-            <div style={{ marginTop: '8px', fontSize: '14px', color: '#94a3b8' }}>
+            <div style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
               {gameMode === 'daily' &&
-                `Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''} — Same puzzle for everyone • Reveal anytime`}
+                `Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''}`}
               {gameMode === 'ballKnowledgeDaily' &&
-                `Hardcore Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''} — Same puzzle for everyone • Reveal anytime`}
+                `Hardcore Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''}`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -3467,13 +3426,13 @@ const NBAGuessGame = () => {
             </div>
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div style={{ marginTop: '6px', fontSize: '12px', color: '#64748b', textAlign: 'center' }}>
+              <div style={{ marginTop: '4px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
                 Rollover date (ET): {todayYmdNY || '—'}
               </div>
             )}
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => setShowPastDailyPicker(true)}
@@ -5137,17 +5096,17 @@ const NBAGuessGame = () => {
           </div>
         )}
 
-        <div className="main-layout">
+        <div className={`main-layout${showSecondaryPanel ? ' main-layout--with-secondary' : ''}`}>
           <div className="play-stage">
             {/* Input Section */}
             <div style={{ 
               background: 'linear-gradient(135deg, #1e293b, #334155)',
               borderRadius: '16px',
-              padding: '24px',
+              padding: '16px',
               border: '1px solid #334155',
               textAlign: 'center',
             }} ref={guessSectionRef}>
-              <h3 style={{ fontSize: '1.35rem', marginBottom: '18px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
+              <h3 style={{ fontSize: '1.15rem', marginBottom: '12px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
               
               {(() => {
                 const end = getEndScreenModel();
@@ -5489,14 +5448,14 @@ const NBAGuessGame = () => {
               <div style={{ 
                 background: 'linear-gradient(135deg, #1e293b, #334155)',
                 borderRadius: '16px',
-                padding: '24px',
+                padding: '14px',
                 border: '1px solid #334155'
               }}>
-                <h3 style={{ fontSize: '1.3rem', marginBottom: '16px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
+                <h3 style={{ fontSize: '1.05rem', marginBottom: '10px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
                 <div>
                   {top5Players.map(([name, score], index) => (
-                    <div key={name} style={{ marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <div key={name} style={{ marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                         <span style={{ 
                           backgroundColor: '#3b82f6', 
                           color: 'white', 
@@ -5526,7 +5485,7 @@ const NBAGuessGame = () => {
               <div style={{
                 background: 'linear-gradient(135deg, #1e293b, #334155)',
                 borderRadius: '16px',
-                padding: '24px',
+                padding: '14px',
                 border: '1px solid #334155'
               }}>
                 <h3 style={{ fontSize: '1.3rem', marginBottom: '10px', color: '#f1f5f9' }}>📈 Top 5 Most Similar</h3>
