@@ -5830,7 +5830,7 @@ const NBAGuessGame = () => {
                 </div>
 
                 {postGameRightPanelView === 'top5' ? (
-                  <div ref={postGamePanelScrollRef} className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
+                  <div ref={postGamePanelScrollRef} className="nm-guess-history-scroll">
                     {top5Players.length > 0 ? (
                       <div>
                         {top5Players.map(([name, score], index) => (
@@ -5894,7 +5894,6 @@ const NBAGuessGame = () => {
                   <div
                     ref={postGamePanelScrollRef}
                     className="nm-guess-history-scroll"
-                    style={isPostGameView ? { maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' } : undefined}
                   >
                     {(guessHistorySort === 'chronological' ? guessHistory : guessHistory.slice().sort((a, b) => b.score - a.score)).map((item, index) => (
                       <div
