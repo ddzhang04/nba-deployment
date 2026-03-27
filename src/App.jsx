@@ -195,6 +195,7 @@ const NBAGuessGame = () => {
   const [confettiBurstId, setConfettiBurstId] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
+  const [postGameRightPanelView, setPostGameRightPanelView] = useState('guesses'); // 'guesses' | 'top5'
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
@@ -1799,6 +1800,11 @@ const NBAGuessGame = () => {
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
+  useEffect(() => {
+    if (!isPostGameView) {
+      setPostGameRightPanelView('guesses');
+    }
+  }, [isPostGameView]);
 
   // When signed in, hydrate local daily completions from all devices linked to this account.
   useEffect(() => {
@@ -5351,6 +5357,10 @@ const NBAGuessGame = () => {
                         <button
                           type="button"
                           onClick={() => {
+                            if (isPostGameView) {
+                              setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'));
+                              return;
+                            }
                             if (gameMode === 'daily') setSelectedDailyDetail(String(activeDailyNumber));
                             else setSelectedBallKnowledgeDetail(String(activeDailyNumber));
                           }}
@@ -5365,7 +5375,9 @@ const NBAGuessGame = () => {
                             fontSize: '0.9rem'
                           }}
                         >
-                          View your guesses
+                          {isPostGameView
+                            ? (postGameRightPanelView === 'guesses' ? 'Show Top 5 most similar' : 'Show your guesses')
+                            : 'View your guesses'}
                         </button>
                       )}
                       {end.canShare && (
@@ -5622,7 +5634,7 @@ const NBAGuessGame = () => {
               </div>
             </div>
 
-            {/* Top 5 Similar Players (stacked in main column during active play only) */}
+            {/* Top 5 Similar Players */}
             {!isPostGameView && top5Players.length > 0 && (
               <div style={{ 
                 background: 'linear-gradient(135deg, #1e293b, #334155)',
@@ -5700,9 +5712,10 @@ const NBAGuessGame = () => {
             <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <h3 style={{ fontSize: '1rem', margin: 0, color: '#cbd5e1', fontWeight: 800, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                    Guesses ({guessHistory.length})
+                    {postGameRightPanelView === 'top5' ? `Top 5 most similar (${top5Players.length})` : `Guesses (${guessHistory.length})`}
                   </h3>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {postGameRightPanelView !== 'top5' && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => setGuessHistorySort('score')}
@@ -5739,10 +5752,50 @@ const NBAGuessGame = () => {
                     >
                       Chronological
                     </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
 
-                {guessHistory.length === 0 ? (
+                {postGameRightPanelView === 'top5' ? (
+                  <div className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
+                    {top5Players.length > 0 ? (
+                      <div>
+                        {top5Players.map(([name, score], index) => (
+                          <div key={name} style={{ marginBottom: '11px', backgroundColor: 'rgba(15, 23, 42, 0.55)', border: '1px solid rgba(71,85,105,0.6)', borderRadius: '10px', padding: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '7px' }}>
+                              <span
+                                style={{
+                                  backgroundColor: '#3b82f6',
+                                  color: 'white',
+                                  width: '24px',
+                                  height: '24px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  flex: '0 0 auto',
+                                }}
+                              >
+                                {index + 1}
+                              </span>
+                              <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 34, radius: 8 })}</div>
+                              <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.98rem', lineHeight: 1.2 }}>{name}</span>
+                            </div>
+                            <ScoreBar score={score} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
+                      <div style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                        {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Top 5 is not available for this game yet.</div>
+                    )}
+                  </div>
+                ) : guessHistory.length === 0 ? (
                   loading ? (
                     <div style={{ padding: '12px 0' }}>
                       <div style={{ marginBottom: '12px', backgroundColor: '#0f172a', borderRadius: 12, border: '1px solid #334155', padding: 16 }}>
@@ -5841,49 +5894,7 @@ const NBAGuessGame = () => {
                     <div ref={guessHistoryEndRef} />
                   </div>
                 )}
-                {isPostGameView && (
-                  <div style={{ marginTop: '12px', borderTop: '1px solid rgba(71, 85, 105, 0.55)', paddingTop: '10px' }}>
-                    <h3 style={{ fontSize: '1rem', margin: '0 0 10px', color: '#e2e8f0', fontWeight: 800 }}>📈 Top 5 Most Similar</h3>
-                    <div className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
-                      {top5Players.length > 0 ? (
-                        <div>
-                          {top5Players.map(([name, score], index) => (
-                            <div key={name} style={{ marginBottom: '11px', backgroundColor: 'rgba(15, 23, 42, 0.55)', border: '1px solid rgba(71,85,105,0.6)', borderRadius: '10px', padding: '10px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '7px' }}>
-                                <span
-                                  style={{
-                                    backgroundColor: '#3b82f6',
-                                    color: 'white',
-                                    width: '24px',
-                                    height: '24px',
-                                    borderRadius: '50%',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '12px',
-                                    fontWeight: 'bold',
-                                    flex: '0 0 auto',
-                                  }}
-                                >
-                                  {index + 1}
-                                </span>
-                                <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 34, radius: 8 })}</div>
-                                <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.98rem', lineHeight: 1.2 }}>{name}</span>
-                              </div>
-                              <ScoreBar score={score} />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
-                        <div style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
-                          {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
-                        </div>
-                      ) : (
-                        <div style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Top 5 will appear after this game.</div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                
               </>
           </div>
         </div>
