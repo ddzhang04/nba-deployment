@@ -16,11 +16,11 @@
  */
 
 // Day index 0 = Daily #1 on the epoch date (see DAILY_PUZZLE_CALENDAR_TIMEZONE).
-export const DAILY_PUZZLE_EPOCH = '2026-03-27';
+export const DAILY_PUZZLE_EPOCH = '2026-03-26';
 
 // Bump when you reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v10';
-export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-27';
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v11';
+export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-26';
 
 /** Which calendar date defines "today's" daily # (shared by the app and serverless APIs). */
 export const DAILY_PUZZLE_CALENDAR_TIMEZONE = 'America/New_York';

@@ -3316,26 +3316,26 @@ const NBAGuessGame = () => {
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
         }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '3px 10px',
+                borderRadius: '999px',
+                border: '1px solid rgba(251, 191, 36, 0.55)',
+                color: '#fde68a',
+                fontSize: '11px',
+                fontWeight: 800,
+                backgroundColor: 'rgba(15, 23, 42, 0.65)',
+              }}
+            >
+              Version {APP_VERSION}
+            </span>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '10px' }}>
             <span style={{ fontSize: '25px' }}>🏀</span>
             <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '25px' }}>🎯</span>
-          </div>
-          <div style={{ marginTop: '-6px', marginBottom: '8px' }}>
-            <span
-              style={{
-                display: 'inline-block',
-                padding: '2px 8px',
-                borderRadius: '999px',
-                border: '1px solid rgba(148, 163, 184, 0.45)',
-                color: '#cbd5e1',
-                fontSize: '11px',
-                fontWeight: 700,
-                backgroundColor: 'rgba(15, 23, 42, 0.5)',
-              }}
-            >
-              {APP_VERSION}
-            </span>
           </div>
 
           <div style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
