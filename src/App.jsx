@@ -356,25 +356,118 @@ const NBAGuessGame = () => {
     setLeaderboardLoading(true);
     setLeaderboardError('');
     try {
-      const params = new URLSearchParams({
-        mode,
-        lookbackDays: '60',
-        limit: '20',
-        minWinsForSpeed: '3',
+      if (!supabase) throw new Error('Supabase is not configured');
+      const limit = 20;
+      const lookbackDays = 60;
+      const minWinsForSpeed = 3;
+      const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), -1) + 1;
+      const firstDailyNumber = Math.max(1, todayDailyNumber - lookbackDays + 1);
+
+      const { data: rows, error: rpcErr } = await supabase.rpc('get_leaderboard_snapshot', {
+        p_mode: mode,
+        p_first_daily: firstDailyNumber,
+        p_last_daily: todayDailyNumber,
       });
-      const data = await fetchJsonWithRetry(
-        `${SECURE_API_BASE}/leaderboards?${params.toString()}`,
-        {},
-        { timeoutMs: 20000, retries: 0, retryDelayMs: 800 }
-      );
-      setLeaderboardData(data || null);
+      if (rpcErr) throw rpcErr;
+
+      const hashAnonId = (str) => {
+        const s = String(str || '');
+        let h = 0x811c9dc5;
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 0x01000193);
+        }
+        return (h >>> 0).toString(16);
+      };
+
+      const entries = (Array.isArray(rows) ? rows : [])
+        .map((r) => {
+          const anon_id = String(r?.anon_id || '').trim();
+          if (!anon_id) return null;
+          const completions = Number(r?.completions) || 0;
+          const wins = Number(r?.wins) || 0;
+          const totalGuesses = Number(r?.total_guesses) || 0;
+          const totalGuessesAll = Number(r?.total_guesses_all) || totalGuesses;
+          const avgGuesses = wins > 0 ? totalGuesses / wins : null;
+          return {
+            anon_id,
+            // Client-side path cannot read everyone’s profiles due to RLS; keep privacy-safe pseudonyms.
+            user: `Player ${hashAnonId(anon_id).slice(0, 4)}`,
+            verified: false,
+            completions,
+            wins,
+            totalGuessesAll,
+            avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
+            currentStreak: Number(r?.current_live_streak) || 0,
+            maxStreak: Number(r?.max_live_streak) || 0,
+          };
+        })
+        .filter(Boolean);
+
+      const speed = entries
+        .filter((e) => e.wins >= minWinsForSpeed && e.avgGuesses != null)
+        .sort((a, b) => {
+          if (a.avgGuesses !== b.avgGuesses) return a.avgGuesses - b.avgGuesses;
+          if (a.wins !== b.wins) return b.wins - a.wins;
+          return b.maxStreak - a.maxStreak;
+        })
+        .slice(0, limit);
+
+      const wins = entries
+        .filter((e) => e.wins > 0)
+        .sort((a, b) => {
+          if (a.wins !== b.wins) return b.wins - a.wins;
+          const aa = Number.isFinite(a.avgGuesses) ? a.avgGuesses : Infinity;
+          const bb = Number.isFinite(b.avgGuesses) ? b.avgGuesses : Infinity;
+          if (aa !== bb) return aa - bb;
+          return b.maxStreak - a.maxStreak;
+        })
+        .slice(0, limit);
+
+      const streaks = entries
+        .filter((e) => e.maxStreak > 0)
+        .sort((a, b) => {
+          if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
+          if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
+          return b.wins - a.wins;
+        })
+        .slice(0, limit);
+
+      const completed = entries
+        .filter((e) => e.completions > 0)
+        .sort((a, b) => {
+          if (a.completions !== b.completions) return b.completions - a.completions;
+          return b.wins - a.wins;
+        })
+        .slice(0, limit);
+
+      const guesses = entries
+        .filter((e) => e.totalGuessesAll > 0)
+        .sort((a, b) => {
+          if (a.totalGuessesAll !== b.totalGuessesAll) return b.totalGuessesAll - a.totalGuessesAll;
+          return b.completions - a.completions;
+        })
+        .slice(0, limit);
+
+      setLeaderboardData({
+        mode,
+        todayDailyNumber,
+        lookbackDays,
+        minWinsForSpeed,
+        updatedAt: new Date().toISOString(),
+        speed,
+        wins,
+        streaks,
+        completed,
+        guesses,
+      });
     } catch (e) {
       setLeaderboardError(e?.message || 'Could not load leaderboards');
     } finally {
       leaderboardLoadInFlightRef.current = false;
       setLeaderboardLoading(false);
     }
-  }, [SECURE_API_BASE]);
+  }, [supabase]);
   const warmBackend = async ({ force = false, background = false } = {}) => {
     const now = Date.now();
     if (!force && now - backendLastWarmTsRef.current < 1000 * 60 * 5) return true;

@@ -21,14 +21,14 @@ Live: [https://nba-deployment.vercel.app/](https://nba-deployment.vercel.app/)
    VITE_SUPABASE_OAUTH_REDIRECT_TO=https://your-site.vercel.app/   # if using Google OAuth
    ```
 
-4. **Vercel env** (only for server routes under `api/` — leaderboard, profile, etc.):
+4. **Vercel env** (only needed for server routes under `api/` such as `leaderboard`/`profile`):
 
    ```bash
    SUPABASE_URL=https://xxxx.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=eyJ...   # never put this in the frontend
    ```
 
-   **Exactly where to put these in Vercel:**
+   **Exactly where to put these in Vercel (if you use those routes):**
    - Vercel project → **Settings** → **Environment Variables**
    - Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
    - Select environments: **Production** (and Preview/Development if needed)
@@ -73,7 +73,7 @@ Open the URL Vite prints (usually port 5173).
 - `POST /api/guess`, `POST /api/reveal`, `POST /api/ceiling` — daily/hardcore  
 - `GET /api/leaderboard`, `GET /api/leaderboards`, `GET /api/profile` — need `SUPABASE_*` on Vercel  
 
-Stats and saves use **Supabase directly** from the client after you run `setup.sql`.
+Stats, saves, and the in-app leaderboards use **Supabase directly** from the client after you run `setup.sql`.
 
 ## Edit daily puzzles
 
@@ -127,7 +127,7 @@ npm run healthcheck
 | History missing after sign-in | Re-run `setup.sql` (includes `get_my_mantle_runs`), sign in on each device once |
 | Global average empty | RPC + RLS from `setup.sql`; browser Network → calls to `supabase.co` |
 | Leaderboard/profile 500 on Vercel | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on that project |
-| Leaderboards slow or 503 | Re-run `setup.sql` so `get_leaderboard_snapshot` exists |
+| In-app Leaderboards error | Re-run `setup.sql` so `get_leaderboard_snapshot` exists and has execute grant to `anon/authenticated` |
 
 ### Quick fix: `Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY`
 

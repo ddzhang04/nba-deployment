@@ -367,4 +367,4 @@ AS $$
 $$;
 
 REVOKE ALL ON FUNCTION public.get_leaderboard_snapshot(text, integer, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_leaderboard_snapshot(text, integer, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard_snapshot(text, integer, integer) TO anon, authenticated, service_role;
