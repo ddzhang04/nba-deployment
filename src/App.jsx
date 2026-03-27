@@ -128,6 +128,7 @@ const NBAGuessGame = () => {
   const [playersData, setPlayersData] = useState({});
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showSecondaryPanel, setShowSecondaryPanel] = useState(false);
   const [showLeaderboards, setShowLeaderboards] = useState(false);
   const [leaderboardMode, setLeaderboardMode] = useState('daily'); // 'daily' | 'hardcore'
   const [leaderboardData, setLeaderboardData] = useState(null);
@@ -1107,7 +1108,15 @@ const NBAGuessGame = () => {
     { uiNotify = false } = {}
   ) => {
     try {
-      const user_id = authSession?.user?.id || null;
+      let user_id = authSession?.user?.id || null;
+      // Auth state can lag right after sign-in on some devices/browsers.
+      // Pull from Supabase session as fallback so signed-in saves keep user_id.
+      if (!user_id && supabase) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          user_id = data?.session?.user?.id || null;
+        } catch {}
+      }
       const deviceAnonId = getOrCreateAnalyticsId();
       // Table uniqueness is keyed by anon_id+mode+daily_number.
       // Use a per-account key when signed in so different accounts on one device do not collide.
@@ -1735,6 +1744,7 @@ const NBAGuessGame = () => {
 
   const [dailyCompletions, setDailyCompletions] = useState(() => ({}));
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
+  const [selectedDailyHistoryNum, setSelectedDailyHistoryNum] = useState('');
   // Lock out replaying any daily that already has a saved completion (today or past).
   const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(activeDailyNumber)] != null;
 
@@ -1746,6 +1756,7 @@ const NBAGuessGame = () => {
   };
   const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => ({}));
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
+  const [selectedHardcoreHistoryNum, setSelectedHardcoreHistoryNum] = useState('');
   // Lock out replaying any hardcore daily that already has a saved completion (today or past).
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
 
@@ -3260,6 +3271,26 @@ const NBAGuessGame = () => {
                 <span>Stats</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setShowSecondaryPanel((v) => !v)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '10px',
+                border: '1px solid #4b5563',
+                backgroundColor: showSecondaryPanel ? 'rgba(59, 130, 246, 0.18)' : '#111827',
+                color: showSecondaryPanel ? '#93c5fd' : '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Toggle history and advanced panels"
+            >
+              <span>🧾</span>
+              <span>{showSecondaryPanel ? 'Hide history' : 'Show history'}</span>
+            </button>
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <button
                 onClick={() => {
@@ -3603,7 +3634,7 @@ const NBAGuessGame = () => {
               </div>
             )}
 
-            {Object.keys(dailyCompletions).length > 0 && (
+            {showSecondaryPanel && Object.keys(dailyCompletions).length > 0 && (
               <div style={{
                 marginTop: '14px',
                 padding: '14px 16px',
@@ -3659,7 +3690,7 @@ const NBAGuessGame = () => {
                         </span>
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
-                        {showDailyHistoryPanel ? 'Click to hide' : 'Click to show'}
+                        {showDailyHistoryPanel ? 'Expanded' : 'Collapsed'}
                       </div>
                     </div>
                   </div>
@@ -3672,60 +3703,57 @@ const NBAGuessGame = () => {
                     </div>
                   </div>
                 </button>
-                {showDailyHistoryPanel && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-                  {Object.entries(dailyCompletions)
-                    .sort(([a], [b]) => Number(a) - Number(b))
-                    .map(([num, entry]) => {
-                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
-                      const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
-                      let displayDate = dateStr;
-                      try {
-                        const d = new Date(dateStr + 'T12:00:00');
-                        if (!isNaN(d.getTime())) {
-                          displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        }
-                      } catch {}
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setSelectedDailyDetail(num)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                            border: '1px solid rgba(139, 92, 246, 0.4)',
-                            fontSize: '13px',
-                            color: '#e9d5ff',
-                            cursor: 'pointer',
-                            font: 'inherit'
-                          }}
-                        >
-                          <span style={{ color: '#a78bfa', fontWeight: '600' }}>Daily #{num}</span>
-                          {entry?.answer && (
-                            <>
-                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                              <span style={{ color: '#e9d5ff' }}>{entry.answer}</span>
-                            </>
-                          )}
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                          <span style={{ color: '#c4b5fd' }}>{displayDate}</span>
-                          {guesses != null && (
-                            <>
-                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                              <span style={{ color: '#fbbf24', fontWeight: '600' }}>{guesses} guess{guesses !== 1 ? 'es' : ''}</span>
-                            </>
-                          )}
-                          <span style={{ color: entry?.won !== false ? '#10b981' : '#94a3b8', marginLeft: '2px' }}>{entry?.won !== false ? '✓' : '—'}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {showDailyHistoryPanel && (() => {
+                  const items = Object.entries(dailyCompletions).sort(([a], [b]) => Number(a) - Number(b));
+                  const selected = selectedDailyHistoryNum && dailyCompletions[selectedDailyHistoryNum]
+                    ? selectedDailyHistoryNum
+                    : (items.length ? String(items[items.length - 1][0]) : '');
+                  return (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={selected}
+                        onChange={(e) => setSelectedDailyHistoryNum(e.target.value)}
+                        style={{
+                          flex: '1 1 240px',
+                          minWidth: '220px',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                          border: '1px solid rgba(139, 92, 246, 0.45)',
+                          color: '#e9d5ff',
+                          fontSize: '13px'
+                        }}
+                      >
+                        {items.map(([num, entry]) => {
+                          const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
+                          const answer = typeof entry === 'object' && entry != null ? String(entry?.answer || '').trim() : '';
+                          const won = !(typeof entry === 'object' && entry != null && entry?.won === false);
+                          return (
+                            <option key={num} value={num} style={{ color: '#0f172a' }}>
+                              {`Daily #${num} • ${won ? 'win' : 'reveal'}${guesses != null ? ` • ${guesses} guesses` : ''}${answer ? ` • ${answer}` : ''}`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => selected && setSelectedDailyDetail(selected)}
+                        disabled={!selected}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(139, 92, 246, 0.45)',
+                          backgroundColor: selected ? 'rgba(139, 92, 246, 0.22)' : 'rgba(51, 65, 85, 0.35)',
+                          color: selected ? '#e9d5ff' : '#94a3b8',
+                          fontWeight: 700,
+                          cursor: selected ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -3817,7 +3845,7 @@ const NBAGuessGame = () => {
             )}
 
             {/* Past Hardcore Dailies */}
-            {Object.keys(ballKnowledgeDailyCompletions).length > 0 && (
+            {showSecondaryPanel && Object.keys(ballKnowledgeDailyCompletions).length > 0 && (
               <div style={{
                 marginTop: '14px',
                 padding: '14px 16px',
@@ -3873,7 +3901,7 @@ const NBAGuessGame = () => {
                         </span>
                       </div>
                       <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '3px' }}>
-                        {showHardcoreHistoryPanel ? 'Click to hide' : 'Click to show'}
+                        {showHardcoreHistoryPanel ? 'Expanded' : 'Collapsed'}
                       </div>
                     </div>
                   </div>
@@ -3886,60 +3914,57 @@ const NBAGuessGame = () => {
                     </div>
                   </div>
                 </button>
-                {showHardcoreHistoryPanel && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
-                  {Object.entries(ballKnowledgeDailyCompletions)
-                    .sort(([a], [b]) => Number(a) - Number(b))
-                    .map(([num, entry]) => {
-                      const dateStr = typeof entry === 'string' ? entry : entry?.date ?? '';
-                      const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
-                      let displayDate = dateStr;
-                      try {
-                        const d = new Date(dateStr + 'T12:00:00');
-                        if (!isNaN(d.getTime())) {
-                          displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                        }
-                      } catch {}
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setSelectedBallKnowledgeDetail(num)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            backgroundColor: 'rgba(217, 119, 6, 0.2)',
-                            border: '1px solid rgba(217, 119, 6, 0.4)',
-                            fontSize: '13px',
-                            color: '#fef3c7',
-                            cursor: 'pointer',
-                            font: 'inherit'
-                          }}
-                        >
-                          <span style={{ color: '#f59e0b', fontWeight: '600' }}>Hardcore #{num}</span>
-                          {entry?.answer && (
-                            <>
-                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                              <span style={{ color: '#fef3c7' }}>{entry.answer}</span>
-                            </>
-                          )}
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                          <span style={{ color: '#fcd34d' }}>{displayDate}</span>
-                          {guesses != null && (
-                            <>
-                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>·</span>
-                              <span style={{ color: '#fbbf24', fontWeight: '600' }}>{guesses} guess{guesses !== 1 ? 'es' : ''}</span>
-                            </>
-                          )}
-                          <span style={{ color: entry?.won !== false ? '#10b981' : '#94a3b8', marginLeft: '2px' }}>{entry?.won !== false ? '✓' : '—'}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {showHardcoreHistoryPanel && (() => {
+                  const items = Object.entries(ballKnowledgeDailyCompletions).sort(([a], [b]) => Number(a) - Number(b));
+                  const selected = selectedHardcoreHistoryNum && ballKnowledgeDailyCompletions[selectedHardcoreHistoryNum]
+                    ? selectedHardcoreHistoryNum
+                    : (items.length ? String(items[items.length - 1][0]) : '');
+                  return (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={selected}
+                        onChange={(e) => setSelectedHardcoreHistoryNum(e.target.value)}
+                        style={{
+                          flex: '1 1 240px',
+                          minWidth: '220px',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                          border: '1px solid rgba(217, 119, 6, 0.45)',
+                          color: '#fef3c7',
+                          fontSize: '13px'
+                        }}
+                      >
+                        {items.map(([num, entry]) => {
+                          const guesses = typeof entry === 'object' && entry != null ? entry.guesses : null;
+                          const answer = typeof entry === 'object' && entry != null ? String(entry?.answer || '').trim() : '';
+                          const won = !(typeof entry === 'object' && entry != null && entry?.won === false);
+                          return (
+                            <option key={num} value={num} style={{ color: '#0f172a' }}>
+                              {`Hardcore #${num} • ${won ? 'win' : 'reveal'}${guesses != null ? ` • ${guesses} guesses` : ''}${answer ? ` • ${answer}` : ''}`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => selected && setSelectedBallKnowledgeDetail(selected)}
+                        disabled={!selected}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(217, 119, 6, 0.45)',
+                          backgroundColor: selected ? 'rgba(217, 119, 6, 0.22)' : 'rgba(51, 65, 85, 0.35)',
+                          color: selected ? '#fef3c7' : '#94a3b8',
+                          fontWeight: 700,
+                          cursor: selected ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        Open
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -4498,7 +4523,7 @@ const NBAGuessGame = () => {
                     {
                       id: 'wins',
                       title: 'Most Wins',
-                      subtitle: 'Most solved dailies in the recent window.',
+                      subtitle: 'Top by wins',
                       rows: Array.isArray(leaderboardData?.wins) ? leaderboardData.wins : [],
                       metric: (e) => `${e?.wins ?? 0} wins`,
                       extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg` : '—'),
@@ -4506,7 +4531,7 @@ const NBAGuessGame = () => {
                     {
                       id: 'streaks',
                       title: 'Longest Streak',
-                      subtitle: 'Best streak plus your current streak.',
+                      subtitle: 'Best + current',
                       rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
                       metric: (e) => `${e?.maxStreak ?? 0} best`,
                       extra: (e) => `${e?.currentStreak ?? 0} current`,
@@ -4514,7 +4539,7 @@ const NBAGuessGame = () => {
                     {
                       id: 'guesses',
                       title: 'Most Guesses',
-                      subtitle: 'Total guesses submitted (volume leaderboard).',
+                      subtitle: 'Top by volume',
                       rows: Array.isArray(leaderboardData?.guesses) ? leaderboardData.guesses : [],
                       metric: (e) => `${e?.totalGuessesAll ?? 0} guesses`,
                       extra: (e) => `${e?.completions ?? 0} completed`,
@@ -4566,7 +4591,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
               <div style={{ marginTop: '10px', color: '#64748b', fontSize: '0.78rem' }}>
-                Window: last {leaderboardData?.lookbackDays ?? 60} dailies · tap Refresh to update
+                Last {leaderboardData?.lookbackDays ?? 60} dailies
               </div>
             </div>
           </div>
@@ -5532,7 +5557,8 @@ const NBAGuessGame = () => {
             )}
           </div>
 
-          {/* Guess history — secondary, scrollable strip */}
+          {/* Guess history — secondary, optional for demo-day compact first screen */}
+          {showSecondaryPanel && (
           <div className="guess-history-aside">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: '0.95rem', margin: 0, color: '#94a3b8', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
@@ -5675,6 +5701,7 @@ const NBAGuessGame = () => {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
