@@ -6,7 +6,7 @@ import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
 /** Bump to wipe versioned localStorage keys (daily progress, caches, etc.). */
-const STORAGE_RESET_VERSION = 'v16';
+const STORAGE_RESET_VERSION = 'v17';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 const APP_VERSION = 'v1.0';
 

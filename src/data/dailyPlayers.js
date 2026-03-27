@@ -19,7 +19,7 @@
 export const DAILY_PUZZLE_EPOCH = '2026-03-26';
 
 // Bump when you reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v12';
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v13';
 export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-26';
 
 /** Which calendar date defines "today's" daily # (shared by the app and serverless APIs). */
@@ -101,16 +101,16 @@ export const shuffleDeterministic = (arr, seedStr) => {
 };
 
 const BASE_DAILY_PLAYERS = [
-  "Kevin Garnett",
-  "Allen Iverson",
-  "De'Andre Hunter",
-  "Jeff Green",
-  "Detlef Schrempf",
-  "Mike Conley",
-  "Dwight Howard",
-  "Aaron Gordon",
-  "Hakeem Olajuwon",
-  "Ivica Zubac",
+  "Steve Nash",
+  "Paul Pierce",
+  "Klay Thompson",
+  "Damian Lillard",
+  "Carmelo Anthony",
+  "Pau Gasol",
+  "Ray Allen",
+  "Chris Webber",
+  "Tony Parker",
+  "Manu Ginóbili",
   "Isiah Thomas",
   "Lamar Odom",
   "Bojan Bogdanović",
