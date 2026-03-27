@@ -443,6 +443,14 @@ const NBAGuessGame = () => {
         })
         .slice(0, limit);
 
+      const completed = mergedEntries
+        .filter((e) => e.completions > 0)
+        .sort((a, b) => {
+          if (a.completions !== b.completions) return b.completions - a.completions;
+          return b.wins - a.wins;
+        })
+        .slice(0, limit);
+
       setLeaderboardData({
         mode,
         todayDailyNumber,
@@ -450,6 +458,7 @@ const NBAGuessGame = () => {
         updatedAt: new Date().toISOString(),
         wins,
         streaks,
+        completed,
         guesses,
       });
     } catch (e) {
@@ -3822,6 +3831,7 @@ const NBAGuessGame = () => {
                     } catch {}
                     // Display in saved order only (chronological—never sort)
                     const history = Array.isArray(entry?.guessHistory) ? entry.guessHistory : [];
+                    const top5 = Array.isArray(entry?.top5) ? entry.top5 : [];
                     return (
                       <>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -3837,7 +3847,7 @@ const NBAGuessGame = () => {
                             ×
                           </button>
                         </div>
-                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Each player you guessed (in order)</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Recent guesses</div>
                         {history.length === 0 ? (
                           <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guesses saved for this daily.</p>
                         ) : (
@@ -3859,6 +3869,35 @@ const NBAGuessGame = () => {
                                 <ScoreBar score={item.score} showLabel={false} />
                               </div>
                             ))}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 most similar</div>
+                        {top5.length === 0 ? (
+                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No Top 5 saved for this daily.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {top5.map((item, idx) => {
+                              const name = Array.isArray(item) ? item[0] : item?.name;
+                              const score = Array.isArray(item) ? item[1] : item?.score;
+                              return (
+                                <div
+                                  key={`top5-${idx}-${String(name || '')}`}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+                                    border: '1px solid #334155',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{idx + 1}. {name || 'Unknown'}</span>
+                                    <span style={{ color: getScoreColor(score), fontWeight: 'bold', fontSize: '14px' }}>
+                                      {Number.isFinite(Number(score)) ? `${Number(score)}/100` : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </>
@@ -4032,6 +4071,7 @@ const NBAGuessGame = () => {
                       }
                     } catch {}
                     const history = Array.isArray(entry?.guessHistory) ? entry.guessHistory : [];
+                    const top5 = Array.isArray(entry?.top5) ? entry.top5 : [];
                     return (
                       <>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -4047,7 +4087,7 @@ const NBAGuessGame = () => {
                             ×
                           </button>
                         </div>
-                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Each player you guessed (in order)</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '10px' }}>Recent guesses</div>
                         {history.length === 0 ? (
                           <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No guesses saved for this daily.</p>
                         ) : (
@@ -4069,6 +4109,35 @@ const NBAGuessGame = () => {
                                 <ScoreBar score={item.score} showLabel={false} />
                               </div>
                             ))}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 most similar</div>
+                        {top5.length === 0 ? (
+                          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No Top 5 saved for this daily.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {top5.map((item, idx) => {
+                              const name = Array.isArray(item) ? item[0] : item?.name;
+                              const score = Array.isArray(item) ? item[1] : item?.score;
+                              return (
+                                <div
+                                  key={`top5-hardcore-${idx}-${String(name || '')}`}
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+                                    border: '1px solid #334155',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 600, color: '#f1f5f9' }}>{idx + 1}. {name || 'Unknown'}</span>
+                                    <span style={{ color: getScoreColor(score), fontWeight: 'bold', fontSize: '14px' }}>
+                                      {Number.isFinite(Number(score)) ? `${Number(score)}/100` : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </>
@@ -4598,12 +4667,20 @@ const NBAGuessGame = () => {
                       extra: (e) => `${e?.currentStreak ?? 0} current`,
                     },
                     {
+                      id: 'completed',
+                      title: 'Most Completed',
+                      subtitle: 'Top by completed days',
+                      rows: Array.isArray(leaderboardData?.completed) ? leaderboardData.completed : [],
+                      metric: (e) => `${e?.completions ?? 0} completed`,
+                      extra: (e) => `${e?.wins ?? 0} wins`,
+                    },
+                    {
                       id: 'guesses',
                       title: 'Most Guesses',
                       subtitle: 'Top by volume',
                       rows: Array.isArray(leaderboardData?.guesses) ? leaderboardData.guesses : [],
                       metric: (e) => `${e?.totalGuessesAll ?? 0} guesses`,
-                      extra: (e) => `${e?.completions ?? 0} completed`,
+                      extra: (e) => `${e?.wins ?? 0} wins`,
                     },
                   ].map((section) => (
                     <div
