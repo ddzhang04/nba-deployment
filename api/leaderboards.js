@@ -57,7 +57,8 @@ export default async function handler(req, res) {
     const minWinsForSpeed = Math.min(20, Math.max(1, Number(req.query?.minWinsForSpeed) || 3));
 
     const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET) + 1;
-    const firstDailyNumber = Math.max(1, todayDailyNumber - lookbackDays + 1);
+    // Match app: aggregate from daily #1 through today so early puzzles always count.
+    const firstDailyNumber = 1;
     const cacheKey = `${mode}:${limit}:${lookbackDays}:${minWinsForSpeed}:${todayDailyNumber}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts <= TTL_MS) return json(res, 200, cached.value);

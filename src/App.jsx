@@ -390,9 +390,10 @@ const NBAGuessGame = () => {
     try {
       if (!supabase) throw new Error('Supabase is not configured');
       const limit = 20;
-      const lookbackDays = 60;
       const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), -1) + 1;
-      const firstDailyNumber = Math.max(1, todayDailyNumber - lookbackDays + 1);
+      // Include every daily from #1 through today so past dailies (e.g. #1 after many days)
+      // still count toward totals. Cap the window at `today` to avoid future-dated junk.
+      const firstDailyNumber = 1;
 
       const { data: rows, error: rpcErr } = await supabase.rpc('get_leaderboard_snapshot', {
         p_mode: mode,
@@ -403,14 +404,18 @@ const NBAGuessGame = () => {
 
       const entries = (Array.isArray(rows) ? rows : [])
         .map((r) => {
-          const user = String(r?.display_name || '').trim();
-          if (!user) return null;
+          const uidRaw = r?.user_id;
+          const userId = uidRaw != null ? String(uidRaw).trim() : '';
+          const user =
+            String(r?.display_name || '').trim() ||
+            (userId ? `Player ${userId.replace(/-/g, '').slice(0, 8)}` : '');
+          if (!userId || !user) return null;
           const completions = Number(r?.completions) || 0;
           const wins = Number(r?.wins) || 0;
           const totalGuessesWins = Number(r?.total_guesses) || 0;
           const totalGuessesAll = Number(r?.total_guesses_all) || totalGuessesWins;
           return {
-            userId: String(r?.user_id || '').trim(),
+            userId,
             user,
             completions,
             wins,
@@ -447,6 +452,38 @@ const NBAGuessGame = () => {
         };
       });
 
+      const viewerId = authSession?.user?.id ? String(authSession.user.id).trim() : '';
+      const viewerIdNorm = viewerId.toLowerCase();
+      const viewerLabel =
+        (safeAccountDisplayName || '').trim() ||
+        (viewerId ? `Player ${viewerId.replace(/-/g, '').slice(0, 8)}` : '');
+      const viewerRowFromRpc = viewerIdNorm
+        ? mergedEntries.find((e) => String(e.userId).toLowerCase() === viewerIdNorm)
+        : null;
+      const viewerRowFallback =
+        viewerId && viewerLabel
+          ? {
+              userId: viewerId,
+              user: viewerLabel,
+              completions: 0,
+              wins: 0,
+              totalGuessesWins: 0,
+              totalGuessesAll: 0,
+              currentStreak: 0,
+              maxStreak: 0,
+              avgGuesses: null,
+            }
+          : null;
+      const getViewerSnapshot = () => viewerRowFromRpc || viewerRowFallback;
+
+      const pinViewerIfMissing = (list, shouldIncludeViewer) => {
+        if (!viewerId || !shouldIncludeViewer()) return list;
+        if (list.some((e) => String(e.userId).toLowerCase() === viewerIdNorm)) return list;
+        const snap = getViewerSnapshot();
+        if (!snap) return list;
+        return [...list, { ...snap, viewerPinned: true }];
+      };
+
       const wins = mergedEntries
         .filter((e) => e.wins > 0)
         .sort((a, b) => {
@@ -458,34 +495,48 @@ const NBAGuessGame = () => {
         })
         .slice(0, limit);
 
-      const streaks = mergedEntries
-        .sort((a, b) => {
-          if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
-          if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
-          return b.wins - a.wins;
-        })
-        .slice(0, limit);
+      const streaks = pinViewerIfMissing(
+        mergedEntries
+          .sort((a, b) => {
+            if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
+            if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
+            return b.wins - a.wins;
+          })
+          .slice(0, limit),
+        () => true
+      );
 
-      const guesses = mergedEntries
-        .filter((e) => e.totalGuessesAll > 0)
-        .sort((a, b) => {
-          if (a.totalGuessesAll !== b.totalGuessesAll) return b.totalGuessesAll - a.totalGuessesAll;
-          return b.completions - a.completions;
-        })
-        .slice(0, limit);
+      const guesses = pinViewerIfMissing(
+        mergedEntries
+          .filter((e) => e.totalGuessesAll > 0)
+          .sort((a, b) => {
+            if (a.totalGuessesAll !== b.totalGuessesAll) return b.totalGuessesAll - a.totalGuessesAll;
+            return b.completions - a.completions;
+          })
+          .slice(0, limit),
+        () => {
+          const v = getViewerSnapshot();
+          return !!(v && v.totalGuessesAll > 0);
+        }
+      );
 
-      const completed = mergedEntries
-        .filter((e) => e.completions > 0)
-        .sort((a, b) => {
-          if (a.completions !== b.completions) return b.completions - a.completions;
-          return b.wins - a.wins;
-        })
-        .slice(0, limit);
+      const completed = pinViewerIfMissing(
+        mergedEntries
+          .filter((e) => e.completions > 0)
+          .sort((a, b) => {
+            if (a.completions !== b.completions) return b.completions - a.completions;
+            return b.wins - a.wins;
+          })
+          .slice(0, limit),
+        () => {
+          const v = getViewerSnapshot();
+          return !!(v && v.completions > 0);
+        }
+      );
 
       setLeaderboardData({
         mode,
         todayDailyNumber,
-        lookbackDays,
         updatedAt: new Date().toISOString(),
         wins,
         streaks,
@@ -498,7 +549,7 @@ const NBAGuessGame = () => {
       leaderboardLoadInFlightRef.current = false;
       setLeaderboardLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, authSession?.user?.id, safeAccountDisplayName]);
   const warmBackend = async ({ force = false, background = false } = {}) => {
     const now = Date.now();
     if (!force && now - backendLastWarmTsRef.current < 1000 * 60 * 5) return true;
@@ -4945,7 +4996,7 @@ const NBAGuessGame = () => {
                         <div>
                           {section.rows.slice(0, 10).map((entry, idx) => (
                             <div
-                              key={`${section.id}-${entry?.user || idx}`}
+                              key={`${section.id}-${entry?.userId || entry?.user || idx}`}
                               style={{
                                 display: 'grid',
                                 gridTemplateColumns: '40px minmax(0,1fr) auto',
@@ -4974,7 +5025,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
               <div style={{ marginTop: '10px', color: '#64748b', fontSize: '0.78rem' }}>
-                Last {leaderboardData?.lookbackDays ?? 60} dailies
+                Dailies 1–{leaderboardData?.todayDailyNumber ?? '—'} (all days counted)
               </div>
             </div>
           </div>
