@@ -2768,7 +2768,11 @@ const NBAGuessGame = () => {
               const dateStr = isPastDailySelected
                 ? getISODateForDailyIndex(activeDailyIndex)
                 : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
-              const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
+              const fullHistory = [...guessHistory, newGuess].map((g) => ({
+                name: g.name,
+                score: g.score,
+                ...(g?.breakdown && typeof g.breakdown === 'object' ? { breakdown: g.breakdown } : {}),
+              }));
               if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
                 const answerToStore = resolvedAnswer || targetPlayer;
@@ -2783,7 +2787,11 @@ const NBAGuessGame = () => {
               const dateStr = isPastDailySelected
                 ? getISODateForDailyIndex(activeDailyIndex)
                 : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
-              const fullHistory = [...guessHistory, newGuess].map((g) => ({ name: g.name, score: g.score }));
+              const fullHistory = [...guessHistory, newGuess].map((g) => ({
+                name: g.name,
+                score: g.score,
+                ...(g?.breakdown && typeof g.breakdown === 'object' ? { breakdown: g.breakdown } : {}),
+              }));
               if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
                 const top5ToStore = (top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []);
                 const answerToStore = resolvedAnswer || targetPlayer;
@@ -2874,7 +2882,11 @@ const NBAGuessGame = () => {
       const dateStr = isPastDailySelected
         ? getISODateForDailyIndex(activeDailyIndex)
         : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
-      const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
+      const history = guessHistory.map((g) => ({
+        name: g.name,
+        score: g.score,
+        ...(g?.breakdown && typeof g.breakdown === 'object' ? { breakdown: g.breakdown } : {}),
+      }));
       if (!isPastDailySelected || dailyCompletions[String(activeDailyNumber)] == null) {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
@@ -2888,7 +2900,11 @@ const NBAGuessGame = () => {
       const dateStr = isPastDailySelected
         ? getISODateForDailyIndex(activeDailyIndex)
         : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
-      const history = guessHistory.map((g) => ({ name: g.name, score: g.score }));
+      const history = guessHistory.map((g) => ({
+        name: g.name,
+        score: g.score,
+        ...(g?.breakdown && typeof g.breakdown === 'object' ? { breakdown: g.breakdown } : {}),
+      }));
       if (!isPastDailySelected || ballKnowledgeDailyCompletions[String(activeDailyNumber)] == null) {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
