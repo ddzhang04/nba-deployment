@@ -3304,14 +3304,14 @@ const NBAGuessGame = () => {
         </div>
       )}
 
-      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '8px' }}>
+      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '6px' }}>
         {/* Header */}
         <div className="game-header" style={{ 
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '12px',
-          padding: '8px',
-          paddingTop: '8px',
-          marginBottom: '6px',
+          padding: '6px',
+          paddingTop: '6px',
+          marginBottom: '5px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'
@@ -3332,17 +3332,17 @@ const NBAGuessGame = () => {
               Version {APP_VERSION}
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginBottom: '6px' }}>
             <span style={{ fontSize: '25px' }}>🏀</span>
             <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '25px' }}>🎯</span>
           </div>
 
           <div style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
-            <p style={{ color: '#dbeafe', margin: '0 0 6px', fontSize: '1rem', lineHeight: 1.28, fontWeight: 700 }}>
+            <p style={{ color: '#dbeafe', margin: '0 0 4px', fontSize: '0.95rem', lineHeight: 1.25, fontWeight: 700 }}>
               Guess the mystery NBA player - each guess shows your similarity score.
             </p>
-            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.88rem', margin: '0 0 6px', lineHeight: 1.3 }}>
+            <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', margin: '0 0 4px', lineHeight: 1.25 }}>
               Data through the <strong>2024-2025</strong> NBA season (no current season info yet).
             </div>
             <p style={{ color: '#fbbf24', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.65, fontWeight: 700 }}>
