@@ -187,6 +187,7 @@ const NBAGuessGame = () => {
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
   const postWinGlobalAvgReqIdRef = useRef(0);
   const postWinGlobalAvgInFlightRef = useRef(false);
+  const globalDailyAvgInFlightRef = useRef(new Map()); // cacheKey -> Promise<value|null>
   const [supabaseDebug, setSupabaseDebug] = useState({ lastSubmitOk: null, lastError: '' });
   const [backendWarming, setBackendWarming] = useState(false);
   const backendWarmPromiseRef = useRef(null);
@@ -1415,6 +1416,15 @@ const NBAGuessGame = () => {
       return null;
     }
   };
+  const writeCachedGlobalDailyAverage = ({ mode, dailyNumber, value }) => {
+    const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+    const n = Number(dailyNumber);
+    if (!Number.isFinite(n) || n < 1) return;
+    const cacheKey = key(`nba-mantle-global-daily-avg-v2-${m}-${n}`);
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value }));
+    } catch {}
+  };
 
   const fetchGlobalDailyAverage = async ({ mode, dailyNumber, forceRefresh = false }) => {
     // mode: 'daily' | 'hardcore'
@@ -1427,77 +1437,86 @@ const NBAGuessGame = () => {
       const cached = readCachedGlobalDailyAverage({ mode: m, dailyNumber: n });
       if (cached != null) return cached;
     }
+    const inFlight = globalDailyAvgInFlightRef.current.get(cacheKey);
+    if (inFlight) return inFlight;
 
     // Global averages: Supabase RPC aggregates mantle_runs in SQL (see setup.sql).
     // Keep this fast: if Supabase is slow/unreachable, return quickly (UI treats it as optional).
-    const RPC_TIMEOUT_MS = 4000;
+    const RPC_TIMEOUT_MS = 2200;
     const withRpcTimeout = (promise) =>
       Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), RPC_TIMEOUT_MS)),
       ]);
 
-    // Preferred: single-daily RPC (AVG + COUNT in Postgres).
-    if (supabase) {
-      try {
-        const { data: rpcData, error: rpcErr } = await withRpcTimeout(supabase.rpc(
-          'get_mantle_answer_averages_for_daily',
-          { p_mode: m, p_daily_number: n }
-        ));
-        if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
-          const row = rpcData[0] ?? {};
-          const avg = row?.avg == null ? null : Number(row.avg);
-          const wins = row?.wins == null ? null : Number(row.wins);
-          if (avg == null) {
-            const value = { avg: null, wins: Number.isFinite(wins) ? wins : null };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
+    const run = (async () => {
+      // Preferred: single-daily RPC (AVG + COUNT in Postgres).
+      if (supabase) {
+        try {
+          const { data: rpcData, error: rpcErr } = await withRpcTimeout(supabase.rpc(
+            'get_mantle_answer_averages_for_daily',
+            { p_mode: m, p_daily_number: n }
+          ));
+          if (!rpcErr && Array.isArray(rpcData) && rpcData.length > 0) {
+            const row = rpcData[0] ?? {};
+            const avg = row?.avg == null ? null : Number(row.avg);
+            const wins = row?.wins == null ? null : Number(row.wins);
+            if (avg == null) {
+              const value = { avg: null, wins: Number.isFinite(wins) ? wins : null };
+              writeCachedGlobalDailyAverage({ mode: m, dailyNumber: n, value });
+              return value;
+            }
+            if (Number.isFinite(avg)) {
+              const value = { avg, wins: Number.isFinite(wins) ? wins : null };
+              writeCachedGlobalDailyAverage({ mode: m, dailyNumber: n, value });
+              return value;
+            }
           }
-          if (Number.isFinite(avg)) {
-            const value = { avg, wins: Number.isFinite(wins) ? wins : null };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
-          }
+        } catch {
+          // RPC missing, slow, or old — fall back below.
         }
-      } catch {
-        // RPC missing, slow, or old — fall back below.
+
+        // Fallback: compute from mantle_runs rows if RPC is unavailable.
+        try {
+          const { data: rows, error: rowsErr } = await withRpcTimeout(
+            supabase
+              .from('mantle_runs')
+              .select('guesses')
+              .eq('mode', m)
+              .eq('daily_number', n)
+              .eq('won', true)
+              .limit(50000)
+          );
+          if (!rowsErr && Array.isArray(rows)) {
+            const wins = rows.length;
+            if (wins === 0) {
+              const value = { avg: null, wins: 0 };
+              writeCachedGlobalDailyAverage({ mode: m, dailyNumber: n, value });
+              return value;
+            }
+            let total = 0;
+            for (const r of rows) {
+              const g = Number(r?.guesses);
+              if (Number.isFinite(g)) total += g;
+            }
+            const avg = total / Math.max(1, wins);
+            if (Number.isFinite(avg)) {
+              const value = { avg, wins };
+              writeCachedGlobalDailyAverage({ mode: m, dailyNumber: n, value });
+              return value;
+            }
+          }
+        } catch {}
       }
+      return null;
+    })();
 
-      // Fallback: compute from mantle_runs rows if RPC is unavailable.
-      // This keeps the UI working even when the optional RPC hasn't been deployed yet.
-      try {
-        const { data: rows, error: rowsErr } = await withRpcTimeout(
-          supabase
-            .from('mantle_runs')
-            .select('guesses')
-            .eq('mode', m)
-            .eq('daily_number', n)
-            .eq('won', true)
-            .limit(50000)
-        );
-        if (!rowsErr && Array.isArray(rows)) {
-          const wins = rows.length;
-          if (wins === 0) {
-            const value = { avg: null, wins: 0 };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
-          }
-          let total = 0;
-          for (const r of rows) {
-            const g = Number(r?.guesses);
-            if (Number.isFinite(g)) total += g;
-          }
-          const avg = total / Math.max(1, wins);
-          if (Number.isFinite(avg)) {
-            const value = { avg, wins };
-            try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), value })); } catch {}
-            return value;
-          }
-        }
-      } catch {}
+    globalDailyAvgInFlightRef.current.set(cacheKey, run);
+    try {
+      return await run;
+    } finally {
+      globalDailyAvgInFlightRef.current.delete(cacheKey);
     }
-
-    return null;
   };
 
   // Cache player name list locally so the UI feels instant on repeat visits.
@@ -1832,6 +1851,21 @@ const NBAGuessGame = () => {
     }, 12000);
     return () => clearInterval(id);
   }, [authSession?.user?.id, identityInitialized, anonId, hydrateCompletionsFromCloud]);
+
+  // Right after sign-in, force a cloud hydrate immediately and once again shortly after.
+  // This makes Daily/Hardcore recent guesses appear without waiting for the periodic poll.
+  useEffect(() => {
+    if (!authSession?.user?.id) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+    cloudHydrateLastTsRef.current = 0;
+    void hydrateCompletionsFromCloud({ force: true });
+    const t = setTimeout(() => {
+      cloudHydrateLastTsRef.current = 0;
+      void hydrateCompletionsFromCloud({ force: true });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [authSession?.user?.id, identityInitialized, anonId, anonLinksLinkedForDevice, hydrateCompletionsFromCloud]);
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
   // On sign-in, push local history once so it becomes available on other devices.
@@ -2169,7 +2203,7 @@ const NBAGuessGame = () => {
     if (cached != null) {
       setPostWinGlobalDailyAverage(cached);
       setPostWinGlobalDailyAverageLoading(false);
-      void fetchAndApply({ forceRefresh: true, withLoading: false });
+      void fetchAndApply({ forceRefresh: false, withLoading: false });
     } else {
       // No cache: fetch now with loading state.
       void fetchAndApply({ forceRefresh: false, withLoading: true });
@@ -3439,8 +3473,8 @@ const NBAGuessGame = () => {
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '6px' }}>
                 {[
-                  { id: 'daily', icon: '📅', label: `Daily #${todayDailyIndex + 1}`, isActive: gameMode === 'daily', onClick: () => handleModeChange('daily') },
-                  { id: 'hardcore', icon: '🧠', label: `Hardcore #${todayDailyIndex + 1}`, isActive: gameMode === 'ballKnowledgeDaily', onClick: () => handleModeChange('ballKnowledgeDaily') },
+                  { id: 'daily', icon: '📅', label: 'Daily', isActive: gameMode === 'daily', onClick: () => handleModeChange('daily') },
+                  { id: 'hardcore', icon: '🧠', label: 'Hardcore', isActive: gameMode === 'ballKnowledgeDaily', onClick: () => handleModeChange('ballKnowledgeDaily') },
                   { id: 'freeplay', icon: '🎮', label: 'Free Play', isActive: gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all', onClick: () => handleModeChange(gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all' ? gameMode : 'easy') },
                 ].map((pill) => (
                   <button
@@ -3448,24 +3482,24 @@ const NBAGuessGame = () => {
                     type="button"
                     onClick={pill.onClick}
                     style={{
-                      minHeight: '38px',
+                      minHeight: '36px',
                       borderRadius: '9px',
                       border: pill.isActive ? '1px solid rgba(125, 211, 252, 0.6)' : '1px solid rgba(71, 85, 105, 0.85)',
                       background: pill.isActive ? 'linear-gradient(135deg, rgba(30, 64, 175, 0.52), rgba(124, 58, 237, 0.45))' : 'rgba(15, 23, 42, 0.6)',
                       color: pill.isActive ? '#dbeafe' : '#94a3b8',
                       fontWeight: 800,
-                      fontSize: '12px',
+                      fontSize: 'clamp(10px, 2.7vw, 12px)',
                       letterSpacing: '0.01em',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '5px',
-                      padding: '6px 8px',
+                      gap: '4px',
+                      padding: '6px',
                     }}
                   >
                     <span>{pill.icon}</span>
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pill.label}</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>{pill.label}</span>
                   </button>
                 ))}
               </div>
@@ -4891,10 +4925,10 @@ const NBAGuessGame = () => {
               inset: 0,
               backgroundColor: 'rgba(15,23,42,0.88)',
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               justifyContent: 'center',
               zIndex: 55,
-              padding: '16px',
+              padding: 'max(10px, env(safe-area-inset-top)) 16px max(14px, env(safe-area-inset-bottom))',
               overflowY: 'auto',
             }}
           >
@@ -4904,7 +4938,7 @@ const NBAGuessGame = () => {
               style={{
                 width: '100%',
                 maxWidth: '420px',
-                maxHeight: '90vh',
+                maxHeight: 'calc(100dvh - max(10px, env(safe-area-inset-top)) - max(14px, env(safe-area-inset-bottom)))',
                 overflowY: 'auto',
                 background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 borderRadius: '16px',
