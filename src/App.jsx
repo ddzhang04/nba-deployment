@@ -195,6 +195,7 @@ const NBAGuessGame = () => {
   const [confettiBurstId, setConfettiBurstId] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
+  const [showPostGameTop5, setShowPostGameTop5] = useState(false);
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
@@ -1761,6 +1762,9 @@ const NBAGuessGame = () => {
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
+  useEffect(() => {
+    if (!isPostGameView) setShowPostGameTop5(false);
+  }, [isPostGameView]);
 
   // When signed in, hydrate local daily completions from all devices linked to this account.
   useEffect(() => {
@@ -5554,57 +5558,6 @@ const NBAGuessGame = () => {
 
           {/* Guess history — always visible so new guesses appear immediately */}
           <div className="guess-history-aside">
-            {isPostGameView && (
-              <div
-                style={{
-                  marginBottom: '10px',
-                  background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(51, 65, 85, 0.86))',
-                  borderRadius: '12px',
-                  padding: '10px',
-                  border: '1px solid rgba(71, 85, 105, 0.8)',
-                  maxHeight: '44%',
-                  overflowY: 'auto',
-                }}
-              >
-                <h3 style={{ fontSize: '0.9rem', margin: '0 0 8px', color: '#e2e8f0', fontWeight: 800 }}>📈 Top 5 Most Similar</h3>
-                {top5Players.length > 0 ? (
-                  <div>
-                    {top5Players.map(([name, score], index) => (
-                      <div key={name} style={{ marginBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
-                          <span
-                            style={{
-                              backgroundColor: '#3b82f6',
-                              color: 'white',
-                              width: '20px',
-                              height: '20px',
-                              borderRadius: '50%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '11px',
-                              fontWeight: 'bold',
-                              flex: '0 0 auto',
-                            }}
-                          >
-                            {index + 1}
-                          </span>
-                          <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 26, radius: 6 })}</div>
-                          <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.88rem', lineHeight: 1.15 }}>{name}</span>
-                        </div>
-                        <ScoreBar score={score} showLabel={false} />
-                      </div>
-                    ))}
-                  </div>
-                ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
-                  <div style={{ color: '#cbd5e1', fontSize: '0.84rem' }}>
-                    {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
-                  </div>
-                ) : (
-                  <div style={{ color: '#94a3b8', fontSize: '0.84rem' }}>Top 5 will appear after this game.</div>
-                )}
-              </div>
-            )}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: '0.95rem', margin: 0, color: '#94a3b8', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
                 Guesses ({guessHistory.length})
@@ -5743,6 +5696,78 @@ const NBAGuessGame = () => {
                   </div>
                 ))}
                 <div ref={guessHistoryEndRef} />
+              </div>
+            )}
+            {isPostGameView && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(51, 65, 85, 0.86))',
+                  borderRadius: '12px',
+                  padding: '10px',
+                  border: '1px solid rgba(71, 85, 105, 0.8)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowPostGameTop5((v) => !v)}
+                  style={{
+                    width: '100%',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#e2e8f0',
+                    fontWeight: 800,
+                    fontSize: '0.9rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  <span>📈 Top 5 Most Similar</span>
+                  <span style={{ color: '#93c5fd', fontSize: '0.82rem' }}>{showPostGameTop5 ? 'Hide' : 'Show'}</span>
+                </button>
+                {showPostGameTop5 && (
+                  <div style={{ marginTop: '8px', maxHeight: '240px', overflowY: 'auto', paddingRight: '2px' }}>
+                    {top5Players.length > 0 ? (
+                      <div>
+                        {top5Players.map(([name, score], index) => (
+                          <div key={name} style={{ marginBottom: '9px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '5px' }}>
+                              <span
+                                style={{
+                                  backgroundColor: '#3b82f6',
+                                  color: 'white',
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '11px',
+                                  fontWeight: 'bold',
+                                  flex: '0 0 auto',
+                                }}
+                              >
+                                {index + 1}
+                              </span>
+                              <div style={{ flexShrink: 0 }}>{renderPlayerAvatar(name, { size: 28, radius: 6 })}</div>
+                              <span style={{ fontWeight: 'bold', color: '#f1f5f9', fontSize: '0.9rem', lineHeight: 1.15 }}>{name}</span>
+                            </div>
+                            <ScoreBar score={score} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (prefetchedTargetTop5Loading || restoringTop5) ? (
+                      <div style={{ color: '#cbd5e1', fontSize: '0.84rem' }}>
+                        {restoringTop5 ? 'Loading this daily Top 5...' : 'Generating closest guesses...'}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#94a3b8', fontSize: '0.84rem' }}>Top 5 will appear after this game.</div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
