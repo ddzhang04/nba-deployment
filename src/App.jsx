@@ -1122,7 +1122,8 @@ const NBAGuessGame = () => {
       // Table uniqueness is keyed by anon_id+mode+daily_number.
       // Use a per-account key when signed in so different accounts on one device do not collide.
       const anon_id = user_id ? `user:${user_id}` : deviceAnonId;
-      const detailsOk = mantleRunsDetailsSupported === true;
+      // Treat "unknown" as supported so we don't drop guess history on first save.
+      const detailsOk = mantleRunsDetailsSupported !== false;
 
       if (!supabase) {
         setSupabaseDebug({ lastSubmitOk: false, lastError: 'Supabase not configured (missing VITE env vars)' });
@@ -1150,11 +1151,41 @@ const NBAGuessGame = () => {
         });
         if (ins?.error) throw ins.error;
       } catch (e) {
+        // Fallback for older DBs that don't have detail columns yet.
+        if (detailsOk) {
+          const retryPayload = {
+            anon_id,
+            user_id,
+            mode,
+            daily_number: dailyNumber,
+            date,
+            answer,
+            guesses,
+            won,
+          };
+          try {
+            const retry = await supabase.from('mantle_runs').upsert(retryPayload, {
+              onConflict: 'anon_id,mode,daily_number',
+            });
+            if (!retry?.error) {
+              setMantleRunsDetailsSupported(false);
+            } else {
+              throw retry.error;
+            }
+          } catch (retryErr) {
+            const msg = retryErr?.message || 'Save failed';
+            console.error('Supabase mantle_runs insert error:', retryErr);
+            setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
+            if (uiNotify) showAccountActivityToast(`Cloud save failed: ${msg}`, 'error');
+            return;
+          }
+        } else {
         const msg = e?.message || 'Save failed';
         console.error('Supabase mantle_runs insert error:', e);
         setSupabaseDebug({ lastSubmitOk: false, lastError: msg });
         if (uiNotify) showAccountActivityToast(`Cloud save failed: ${msg}`, 'error');
         return;
+        }
       }
 
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
@@ -1204,7 +1235,7 @@ const NBAGuessGame = () => {
       if (!rpcErr && Array.isArray(rpcRows)) {
         mergedRows = rpcRows;
       } else {
-        const columns = detailsOk
+          const columns = detailsOk
           ? 'anon_id,mode,daily_number,date,answer,guesses,won,created_at,guess_history,top5'
           : 'anon_id,mode,daily_number,date,answer,guesses,won,created_at';
         const userQuery = supabase.from('mantle_runs').select(columns).eq('user_id', userId).limit(5000);
@@ -1276,8 +1307,8 @@ const NBAGuessGame = () => {
           const guesses = typeof r?.guesses === 'number' ? r.guesses : null;
           const won = r?.won !== false;
           const answer = typeof r?.answer === 'string' ? r.answer : '';
-          const guessHistory = detailsOk && Array.isArray(r?.guess_history) ? r.guess_history : [];
-          const top5 = detailsOk && Array.isArray(r?.top5) ? r.top5 : [];
+          const guessHistory = Array.isArray(r?.guess_history) ? r.guess_history : [];
+          const top5 = Array.isArray(r?.top5) ? r.top5 : [];
 
           const prev = out[keyNum];
           if (!prev || (completedAt && prev.completedAt && completedAt > prev.completedAt) || (!prev.completedAt && completedAt)) {
@@ -3206,7 +3237,7 @@ const NBAGuessGame = () => {
 
           <div style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
             <p style={{ color: '#dbeafe', margin: '0 0 6px', fontSize: '1rem', lineHeight: 1.28, fontWeight: 700 }}>
-              Chase down the mystery NBA star - every guess shows how close your comp is.
+              Guess the mystery NBA player - each guess shows your similarity score.
             </p>
             <div style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.88rem', margin: '0 0 6px', lineHeight: 1.3 }}>
               Data through the <strong>2024-2025</strong> NBA season (no current season info yet).
