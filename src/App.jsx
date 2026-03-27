@@ -6,8 +6,9 @@ import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
 
 /** Bump to wipe versioned localStorage keys (daily progress, caches, etc.). */
-const STORAGE_RESET_VERSION = 'v14';
+const STORAGE_RESET_VERSION = 'v15';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
+const APP_VERSION = 'v1.0';
 
 /** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
 const getRedirectToWithSid = (baseRedirectTo) => {
@@ -3320,6 +3321,22 @@ const NBAGuessGame = () => {
             <h1 style={{ fontSize: '2rem', fontWeight: 700, margin: 0, letterSpacing: '0.2px', background: 'linear-gradient(45deg, #fbbf24, #fb7185)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>NBA Mantle</h1>
             <span style={{ fontSize: '25px' }}>🎯</span>
           </div>
+          <div style={{ marginTop: '-6px', marginBottom: '8px' }}>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '2px 8px',
+                borderRadius: '999px',
+                border: '1px solid rgba(148, 163, 184, 0.45)',
+                color: '#cbd5e1',
+                fontSize: '11px',
+                fontWeight: 700,
+                backgroundColor: 'rgba(15, 23, 42, 0.5)',
+              }}
+            >
+              {APP_VERSION}
+            </span>
+          </div>
 
           <div style={{ margin: '0 auto 10px', maxWidth: '64ch' }}>
             <p style={{ color: '#dbeafe', margin: '0 0 6px', fontSize: '1rem', lineHeight: 1.28, fontWeight: 700 }}>
@@ -3952,7 +3969,7 @@ const NBAGuessGame = () => {
                             ))}
                           </div>
                         )}
-                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 most similar</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 Most Similar</div>
                         {top5.length === 0 ? (
                           <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No Top 5 saved for this daily.</p>
                         ) : (
@@ -4192,7 +4209,7 @@ const NBAGuessGame = () => {
                             ))}
                           </div>
                         )}
-                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 most similar</div>
+                        <div style={{ fontSize: '13px', color: '#94a3b8', margin: '16px 0 10px' }}>Top 5 Most Similar</div>
                         {top5.length === 0 ? (
                           <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No Top 5 saved for this daily.</p>
                         ) : (
@@ -4258,6 +4275,7 @@ const NBAGuessGame = () => {
         {/* How to Play Modal */}
         {showHowToPlay && (
           <div
+            className="nm-howto-overlay"
             onClick={() => setShowHowToPlay(false)}
             style={{
               position: 'fixed',
@@ -4271,6 +4289,7 @@ const NBAGuessGame = () => {
             }}
           >
             <div
+              className="nm-howto-modal"
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: '100%',
@@ -4369,26 +4388,26 @@ const NBAGuessGame = () => {
                   }}
                 >
                   <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '10px' }}>🕹️ Modes</div>
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                      <span style={{ color: '#e9d5ff', fontWeight: 700 }}>📅 Daily</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>One puzzle/day • one saved completion/day</span>
+                  <div className="nm-howto-modes" style={{ display: 'grid', gap: '8px' }}>
+                    <div className="nm-howto-mode-row" style={{ display: 'grid', gridTemplateColumns: '170px minmax(0, 1fr)', gap: '10px', alignItems: 'center' }}>
+                      <span className="nm-howto-mode-name" style={{ color: '#e9d5ff', fontWeight: 700 }}>📅 Daily</span>
+                      <span className="nm-howto-mode-desc" style={{ color: '#94a3b8', fontSize: '0.9rem' }}>One puzzle/day • one saved completion/day</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                      <span style={{ color: '#fef3c7', fontWeight: 700 }}>🧠 Hardcore Daily</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Harder list • one saved completion/day</span>
+                    <div className="nm-howto-mode-row" style={{ display: 'grid', gridTemplateColumns: '170px minmax(0, 1fr)', gap: '10px', alignItems: 'center' }}>
+                      <span className="nm-howto-mode-name" style={{ color: '#fef3c7', fontWeight: 700 }}>🧠 Hardcore Daily</span>
+                      <span className="nm-howto-mode-desc" style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Harder list • one saved completion/day</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                      <span style={{ color: '#bbf7d0', fontWeight: 700 }}>😊 All Stars 1986+</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>All-Star players only</span>
+                    <div className="nm-howto-mode-row" style={{ display: 'grid', gridTemplateColumns: '170px minmax(0, 1fr)', gap: '10px', alignItems: 'center' }}>
+                      <span className="nm-howto-mode-name" style={{ color: '#bbf7d0', fontWeight: 700 }}>😊 All Stars 1986+</span>
+                      <span className="nm-howto-mode-desc" style={{ color: '#94a3b8', fontSize: '0.9rem' }}>All-Star players only</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                      <span style={{ color: '#bfdbfe', fontWeight: 700 }}>🏆 Classic</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Modern (2011+) • 6+ seasons</span>
+                    <div className="nm-howto-mode-row" style={{ display: 'grid', gridTemplateColumns: '170px minmax(0, 1fr)', gap: '10px', alignItems: 'center' }}>
+                      <span className="nm-howto-mode-name" style={{ color: '#bfdbfe', fontWeight: 700 }}>🏆 Classic</span>
+                      <span className="nm-howto-mode-desc" style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Modern (2011+) • 6+ seasons</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-                      <span style={{ color: '#fde68a', fontWeight: 700 }}>🌟 All Players</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Full database</span>
+                    <div className="nm-howto-mode-row" style={{ display: 'grid', gridTemplateColumns: '170px minmax(0, 1fr)', gap: '10px', alignItems: 'center' }}>
+                      <span className="nm-howto-mode-name" style={{ color: '#fde68a', fontWeight: 700 }}>🌟 All Players</span>
+                      <span className="nm-howto-mode-desc" style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Full database</span>
                     </div>
                   </div>
                 </div>
@@ -5661,7 +5680,7 @@ const NBAGuessGame = () => {
                       fontSize: '16px'
                     }}
                   >
-                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5' : '📝 Show Guesses'}
+                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
                   </button>
                 )}
                 {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
@@ -5782,7 +5801,7 @@ const NBAGuessGame = () => {
             <>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                   <h3 style={{ fontSize: '1rem', margin: 0, color: '#cbd5e1', fontWeight: 800, letterSpacing: '0.02em', textTransform: 'uppercase' }}>
-                    {postGameRightPanelView === 'top5' ? `Top 5 most similar (${top5Players.length})` : `Guesses (${guessHistory.length})`}
+                    {postGameRightPanelView === 'top5' ? `Top 5 Most Similar (${top5Players.length})` : `Guesses (${guessHistory.length})`}
                   </h3>
                   {postGameRightPanelView !== 'top5' && (
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
