@@ -5301,6 +5301,9 @@ const NBAGuessGame = () => {
               padding: '16px',
               border: '1px solid #334155',
               textAlign: 'center',
+              minHeight: isPostGameView ? 'min(430px, 45vh)' : undefined,
+              display: 'flex',
+              flexDirection: 'column',
             }} ref={guessSectionRef}>
               <h3 style={{ fontSize: '1.15rem', marginBottom: '12px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
               
