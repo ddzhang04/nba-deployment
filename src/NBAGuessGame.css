@@ -221,8 +221,8 @@ button, input, textarea, select {
   }
 
   .guess-history-aside {
-    max-height: min(310px, 36vh);
-    min-height: min(310px, 36vh);
+    max-height: min(420px, 48vh);
+    min-height: min(420px, 48vh);
   }
 }
 

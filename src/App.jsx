@@ -3642,6 +3642,32 @@ const NBAGuessGame = () => {
               </div>
             )}
 
+            {/* Status row (Guesses / Next / Best / Answer) */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '22px', flexWrap: 'wrap', fontSize: '1.05rem', alignItems: 'center', marginTop: '10px' }}>
+              {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
+                <span style={{ color: '#fbbf24', fontWeight: 800 }}>Guesses: {guessCount}</span>
+              )}
+              {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !isPastDailySelected && nextDailyCountdown != null && (
+                <span style={{ color: '#60a5fa', fontWeight: 800, fontSize: '1rem' }}>
+                  Next in {nextDailyCountdown} ET
+                </span>
+              )}
+              {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && bestSoFar != null && (
+                <span style={{ color: '#34d399', fontWeight: 800, fontSize: '1rem' }}>
+                  Best: {bestSoFar}{bestDelta != null ? ` (+${bestDelta})` : ''}
+                </span>
+              )}
+              {gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && (
+                <span style={{ color: '#fbbf24', fontWeight: 800 }}>⚡ Attempt #{guessCount}</span>
+              )}
+              {!gameWon && !showAnswer && (
+                <span style={{ color: '#94a3b8', fontWeight: 700 }}>Mystery Player: ???</span>
+              )}
+              {(gameWon || showAnswer) && (
+                <span style={{ color: '#10b981', fontWeight: 800 }}>Answer: {targetPlayer}</span>
+              )}
+            </div>
+
             {showPastDailyPicker && (
               <div
                 onClick={() => setShowPastDailyPicker(false)}
