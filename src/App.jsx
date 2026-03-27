@@ -4514,14 +4514,6 @@ const NBAGuessGame = () => {
                       extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg` : '—'),
                     },
                     {
-                      id: 'streaks',
-                      title: 'Longest Live Streak',
-                      subtitle: 'Streaks count only scheduled-day solves.',
-                      rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
-                      metric: (e) => `${e?.maxStreak ?? 0} best`,
-                      extra: (e) => `${e?.currentStreak ?? 0} live`,
-                    },
-                    {
                       id: 'completed',
                       title: 'Most Completed',
                       subtitle: 'Most Daily/Hardcore dailies completed in the window.',

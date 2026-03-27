@@ -276,101 +276,128 @@ AS $$
   WITH RECURSIVE v_epoch AS (
     SELECT date '2026-03-25'::date AS d
   ),
-  win_agg AS (
+  base AS (
     SELECT
       mr.anon_id::text AS aid,
-      coalesce(min(mr.user_id::text), min(al.user_id::text))::uuid AS uid,
-      count(*)::bigint AS c,
-      count(*) FILTER (WHERE mr.won = true)::bigint AS w,
-      coalesce(sum(mr.guesses) FILTER (WHERE mr.won = true), 0)::bigint AS tg,
-      coalesce(sum(mr.guesses), 0)::bigint AS tga
+      coalesce(mr.user_id, al.user_id) AS uid,
+      mr.daily_number::int AS dn,
+      mr.guesses::int AS guesses,
+      (mr.won = true) AS won,
+      mr.created_at
     FROM public.mantle_runs mr
     LEFT JOIN public.anon_links al ON al.anon_id = mr.anon_id
     WHERE mr.mode = p_mode
       AND mr.daily_number >= p_first_daily
       AND mr.daily_number <= p_last_daily
-    GROUP BY mr.anon_id
+      AND coalesce(mr.user_id, al.user_id) IS NOT NULL
+  ),
+  -- Deduplicate: one row per signed-in user per daily_number.
+  -- Prefer a winning row, then latest timestamp.
+  dedup AS (
+    SELECT
+      b.aid,
+      b.uid,
+      b.dn,
+      b.guesses,
+      b.won,
+      b.created_at
+    FROM (
+      SELECT
+        b.*,
+        row_number() OVER (
+          PARTITION BY b.uid, b.dn
+          ORDER BY b.won DESC, b.created_at DESC
+        ) AS rn
+      FROM base b
+    ) b
+    WHERE b.rn = 1
+  ),
+  agg AS (
+    SELECT
+      min(d.aid) AS aid,
+      d.uid AS uid,
+      count(*)::bigint AS c,
+      count(*) FILTER (WHERE d.won = true)::bigint AS w,
+      coalesce(sum(d.guesses) FILTER (WHERE d.won = true), 0)::bigint AS tg,
+      coalesce(sum(d.guesses), 0)::bigint AS tga
+    FROM dedup d
+    GROUP BY d.uid
   ),
   live AS (
     SELECT
-      mr.anon_id::text AS aid,
-      mr.daily_number::int AS dn
-    FROM public.mantle_runs mr, v_epoch e
-    WHERE mr.mode = p_mode
-      AND mr.daily_number >= p_first_daily
-      AND mr.daily_number <= p_last_daily
-      AND mr.won = true
-      AND (timezone('America/New_York', mr.created_at))::date
-        = (e.d + (mr.daily_number - 1))
+      d.uid,
+      d.dn
+    FROM dedup d, v_epoch e
+    WHERE d.won = true
+      AND (timezone('America/New_York', d.created_at))::date = (e.d + (d.dn - 1))
   ),
   live_grp AS (
     SELECT
-      l.aid,
+      l.uid,
       l.dn,
-      l.dn - row_number() OVER (PARTITION BY l.aid ORDER BY l.dn) AS g
+      l.dn - row_number() OVER (PARTITION BY l.uid ORDER BY l.dn) AS g
     FROM live l
   ),
   live_streaks AS (
-    SELECT lg.aid, lg.g, count(*)::bigint AS streak_len
+    SELECT lg.uid, lg.g, count(*)::bigint AS streak_len
     FROM live_grp lg
-    GROUP BY lg.aid, lg.g
+    GROUP BY lg.uid, lg.g
   ),
   max_streak AS (
-    SELECT ls.aid, max(ls.streak_len)::bigint AS max_ls
+    SELECT ls.uid, max(ls.streak_len)::bigint AS max_ls
     FROM live_streaks ls
-    GROUP BY ls.aid
+    GROUP BY ls.uid
   ),
   ss AS (
     SELECT
-      x.aid,
+      x.uid,
       CASE
-        WHEN EXISTS (SELECT 1 FROM live l WHERE l.aid = x.aid AND l.dn = p_last_daily)
+        WHEN EXISTS (SELECT 1 FROM live l WHERE l.uid = x.uid AND l.dn = p_last_daily)
           THEN p_last_daily
         ELSE p_last_daily - 1
       END AS start_dn
-    FROM (SELECT DISTINCT live.aid FROM live) x
+    FROM (SELECT DISTINCT live.uid FROM live) x
   ),
   rec AS (
     SELECT
-      ss.aid,
+      ss.uid,
       ss.start_dn AS n,
       CASE
-        WHEN EXISTS (SELECT 1 FROM live l WHERE l.aid = ss.aid AND l.dn = ss.start_dn)
+        WHEN EXISTS (SELECT 1 FROM live l WHERE l.uid = ss.uid AND l.dn = ss.start_dn)
           THEN 1::bigint
         ELSE 0::bigint
       END AS len
     FROM ss
     UNION ALL
     SELECT
-      r.aid,
+      r.uid,
       r.n - 1,
       r.len + 1
     FROM rec r
-    INNER JOIN live l ON l.aid = r.aid AND l.dn = r.n - 1
+    INNER JOIN live l ON l.uid = r.uid AND l.dn = r.n - 1
     WHERE r.len >= 1
       AND r.n > p_first_daily
   ),
   cur_streak AS (
-    SELECT r.aid, max(r.len)::bigint AS cur_ls
+    SELECT r.uid, max(r.len)::bigint AS cur_ls
     FROM rec r
-    GROUP BY r.aid
+    GROUP BY r.uid
   )
   SELECT
-    wa.aid AS anon_id,
-    wa.uid AS user_id,
+    a.aid AS anon_id,
+    a.uid AS user_id,
     p.display_name AS display_name,
-    wa.c AS completions,
-    wa.w AS wins,
-    wa.tg AS total_guesses,
-    wa.tga AS total_guesses_all,
+    a.c AS completions,
+    a.w AS wins,
+    a.tg AS total_guesses,
+    a.tga AS total_guesses_all,
     coalesce(ms.max_ls, 0::bigint) AS max_live_streak,
     coalesce(cs.cur_ls, 0::bigint) AS current_live_streak
-  FROM win_agg wa
-  INNER JOIN public.profiles p ON p.user_id = wa.uid
-  LEFT JOIN max_streak ms ON ms.aid = wa.aid
-  LEFT JOIN cur_streak cs ON cs.aid = wa.aid
-  WHERE wa.uid IS NOT NULL
-    AND p.display_name IS NOT NULL
+  FROM agg a
+  INNER JOIN public.profiles p ON p.user_id = a.uid
+  LEFT JOIN max_streak ms ON ms.uid = a.uid
+  LEFT JOIN cur_streak cs ON cs.uid = a.uid
+  WHERE p.display_name IS NOT NULL
     AND length(trim(p.display_name)) > 0
   ;
 $$;
