@@ -19,6 +19,14 @@ const normalizeMantleRunMode = (rawMode) => {
   return 'daily';
 };
 
+/** True for account-scoped mantle rows (not device-anon guest). */
+const isCanonicalMantleUserRow = (row) => {
+  const uid = row?.user_id;
+  if (uid != null && String(uid).trim() !== '') return true;
+  const aid = String(row?.anon_id ?? '').trim();
+  return aid.startsWith('user:');
+};
+
 /** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
 const getRedirectToWithSid = (baseRedirectTo) => {
   try {
@@ -1346,6 +1354,12 @@ const NBAGuessGame = () => {
           rowMap.set(logicalKey, r);
           continue;
         }
+        const prevCanon = isCanonicalMantleUserRow(prev);
+        const rCanon = isCanonicalMantleUserRow(r);
+        if (prevCanon !== rCanon) {
+          rowMap.set(logicalKey, rCanon ? r : prev);
+          continue;
+        }
         const a = rowScore(prev);
         const b = rowScore(r);
         if (b.n > a.n || (b.n === a.n && b.ca > a.ca)) rowMap.set(logicalKey, r);
@@ -1397,6 +1411,11 @@ const NBAGuessGame = () => {
             next[k] = v;
             continue;
           }
+          if (userId) {
+            // Signed in: per-day cloud data wins so a prior guest session cannot mask the canonical account run.
+            next[k] = v;
+            continue;
+          }
           const localEntry = next[k];
           const hasLocalDetails =
             Array.isArray(localEntry?.guessHistory) && localEntry.guessHistory.length > 0
@@ -1407,10 +1426,20 @@ const NBAGuessGame = () => {
         return next;
       };
 
-      // Signed-in cloud sync is the source of truth, but preserve richer local in-memory
-      // details (guessHistory/top5) when cloud rows are missing detail columns.
-      setDailyCompletions((prev) => merge(prev, dailyFromCloud || {}));
-      setBallKnowledgeDailyCompletions((prev) => merge(prev, hardcoreFromCloud || {}));
+      setDailyCompletions((prev) => {
+        const merged = merge(prev, dailyFromCloud || {});
+        try {
+          localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
+      setBallKnowledgeDailyCompletions((prev) => {
+        const merged = merge(prev, hardcoreFromCloud || {});
+        try {
+          localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
       return true;
     } catch (e) {
       console.warn('Cloud hydrate failed:', e?.message || e);
