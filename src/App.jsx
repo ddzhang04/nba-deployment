@@ -427,18 +427,9 @@ const NBAGuessGame = () => {
         .slice(0, limit);
 
       const streaks = mergedEntries
-        .filter((e) => e.maxStreak > 0)
         .sort((a, b) => {
           if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
           if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
-          return b.wins - a.wins;
-        })
-        .slice(0, limit);
-
-      const completed = mergedEntries
-        .filter((e) => e.completions > 0)
-        .sort((a, b) => {
-          if (a.completions !== b.completions) return b.completions - a.completions;
           return b.wins - a.wins;
         })
         .slice(0, limit);
@@ -458,7 +449,6 @@ const NBAGuessGame = () => {
         updatedAt: new Date().toISOString(),
         wins,
         streaks,
-        completed,
         guesses,
       });
     } catch (e) {
@@ -4514,12 +4504,12 @@ const NBAGuessGame = () => {
                       extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg` : '—'),
                     },
                     {
-                      id: 'completed',
-                      title: 'Most Completed',
-                      subtitle: 'Most Daily/Hardcore dailies completed in the window.',
-                      rows: Array.isArray(leaderboardData?.completed) ? leaderboardData.completed : [],
-                      metric: (e) => `${e?.completions ?? 0} done`,
-                      extra: (e) => `${e?.wins ?? 0} wins`,
+                      id: 'streaks',
+                      title: 'Longest Streak',
+                      subtitle: 'Best streak plus your current streak.',
+                      rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
+                      metric: (e) => `${e?.maxStreak ?? 0} best`,
+                      extra: (e) => `${e?.currentStreak ?? 0} current`,
                     },
                     {
                       id: 'guesses',
