@@ -1428,9 +1428,12 @@ const NBAGuessGame = () => {
       if (!Number.isFinite(num) || num <= 0) return false;
       if (!(typeof entry === 'object' && entry != null && entry?.won !== false)) return false;
       const completedAt = entry?.completedAt ?? '';
-      // completedAt is an ISO timestamp; compare just the YYYY-MM-DD.
-      if (typeof completedAt !== 'string') return false;
-      const completedDate = completedAt.slice(0, 10);
+      if (typeof completedAt !== 'string' || !completedAt) return false;
+      // IMPORTANT: compare using the puzzle timezone (ET), not UTC.
+      // ISO timestamps are stored in UTC (`Z`), so slicing YYYY-MM-DD can incorrectly
+      // shift late-evening ET solves into the next day and break streaks.
+      const completedDate = getYmdInTimeZone(new Date(completedAt), 'America/New_York');
+      if (!completedDate) return false;
 
       // Compare against the *live puzzle calendar day*, not the displayed/stored date.
       // If dailyNumber = num corresponds to dayIndex = num-1, then live day for that index is:
