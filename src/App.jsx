@@ -334,30 +334,33 @@ const NBAGuessGame = () => {
     }
     throw lastErr || new Error('Request failed');
   };
+  const leaderboardLoadInFlightRef = useRef(false);
   const loadLeaderboards = useCallback(async (modeInput, { force = false } = {}) => {
     const mode = modeInput === 'hardcore' ? 'hardcore' : 'daily';
-    if (!force && leaderboardLoading) return;
+    if (!force && leaderboardLoadInFlightRef.current) return;
+    leaderboardLoadInFlightRef.current = true;
     setLeaderboardLoading(true);
     setLeaderboardError('');
     try {
       const params = new URLSearchParams({
         mode,
-        lookbackDays: '120',
+        lookbackDays: '60',
         limit: '20',
         minWinsForSpeed: '3',
       });
       const data = await fetchJsonWithRetry(
         `${SECURE_API_BASE}/leaderboards?${params.toString()}`,
         {},
-        { timeoutMs: 12000, retries: 1, retryDelayMs: 800 }
+        { timeoutMs: 20000, retries: 0, retryDelayMs: 800 }
       );
       setLeaderboardData(data || null);
     } catch (e) {
       setLeaderboardError(e?.message || 'Could not load leaderboards');
     } finally {
+      leaderboardLoadInFlightRef.current = false;
       setLeaderboardLoading(false);
     }
-  }, [SECURE_API_BASE, leaderboardLoading]);
+  }, [SECURE_API_BASE]);
   const warmBackend = async ({ force = false, background = false } = {}) => {
     const now = Date.now();
     if (!force && now - backendLastWarmTsRef.current < 1000 * 60 * 5) return true;
@@ -2030,10 +2033,6 @@ const NBAGuessGame = () => {
   useEffect(() => {
     if (!showLeaderboards) return;
     void loadLeaderboards(leaderboardMode, { force: true });
-    const id = setInterval(() => {
-      void loadLeaderboards(leaderboardMode, { force: true });
-    }, 60000);
-    return () => clearInterval(id);
   }, [showLeaderboards, leaderboardMode, loadLeaderboards]);
 
   // Auto-dismiss confetti after a win.
@@ -4398,11 +4397,27 @@ const NBAGuessGame = () => {
                     },
                     {
                       id: 'streaks',
-                      title: 'Best Live Streak',
+                      title: 'Longest Live Streak',
                       subtitle: 'Streaks count only scheduled-day solves.',
                       rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
                       metric: (e) => `${e?.maxStreak ?? 0} best`,
                       extra: (e) => `${e?.currentStreak ?? 0} live`,
+                    },
+                    {
+                      id: 'completed',
+                      title: 'Most Completed',
+                      subtitle: 'Most Daily/Hardcore dailies completed in the window.',
+                      rows: Array.isArray(leaderboardData?.completed) ? leaderboardData.completed : [],
+                      metric: (e) => `${e?.completions ?? 0} done`,
+                      extra: (e) => `${e?.wins ?? 0} wins`,
+                    },
+                    {
+                      id: 'guesses',
+                      title: 'Most Guesses',
+                      subtitle: 'Total guesses submitted (volume leaderboard).',
+                      rows: Array.isArray(leaderboardData?.guesses) ? leaderboardData.guesses : [],
+                      metric: (e) => `${e?.totalGuessesAll ?? 0} guesses`,
+                      extra: (e) => `${e?.completions ?? 0} completed`,
                     },
                   ].map((section) => (
                     <div
@@ -4451,7 +4466,7 @@ const NBAGuessGame = () => {
                 </div>
               )}
               <div style={{ marginTop: '10px', color: '#64748b', fontSize: '0.78rem' }}>
-                Window: last {leaderboardData?.lookbackDays ?? 120} dailies · updates about every minute
+                Window: last {leaderboardData?.lookbackDays ?? 60} dailies · tap Refresh to update
               </div>
             </div>
           </div>

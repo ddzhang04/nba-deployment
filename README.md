@@ -8,9 +8,10 @@ Live: [https://nba-deployment.vercel.app/](https://nba-deployment.vercel.app/)
 1. **Supabase project** — Create a project at [supabase.com](https://supabase.com).
 
 2. **Run the SQL** — In Supabase: **SQL Editor → New query**, paste everything in [`supabase/setup.sql`](supabase/setup.sql), **Run**.  
-   That creates tables, RLS, and two RPCs:
+   That creates tables, RLS, and RPCs including:
    - `get_mantle_answer_averages` — global averages (called from the browser)
    - `get_my_mantle_runs` — your daily/hardcore history when signed in (cross-device)
+   - `get_leaderboard_snapshot` — fast leaderboards (used by `/api/leaderboards` on Vercel)
 
 3. **Frontend env** (`.env.local` or Vercel **Environment Variables** for the site):
 
@@ -64,7 +65,7 @@ Open the URL Vite prints (usually port 5173).
 ## `api/` routes (game secrets only)
 
 - `POST /api/guess`, `POST /api/reveal`, `POST /api/ceiling` — daily/hardcore  
-- `GET /api/leaderboard`, `GET /api/profile` — need `SUPABASE_*` on Vercel  
+- `GET /api/leaderboard`, `GET /api/leaderboards`, `GET /api/profile` — need `SUPABASE_*` on Vercel  
 
 Stats and saves use **Supabase directly** from the client after you run `setup.sql`.
 
@@ -120,3 +121,4 @@ npm run healthcheck
 | History missing after sign-in | Re-run `setup.sql` (includes `get_my_mantle_runs`), sign in on each device once |
 | Global average empty | RPC + RLS from `setup.sql`; browser Network → calls to `supabase.co` |
 | Leaderboard/profile 500 on Vercel | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on that project |
+| Leaderboards slow or 503 | Re-run `setup.sql` so `get_leaderboard_snapshot` exists |

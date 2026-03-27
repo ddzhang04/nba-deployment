@@ -244,3 +244,127 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_my_mantle_runs() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_mantle_runs() TO authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 7) Leaderboards — aggregate in Postgres (Vercel API calls via service role)
+-- Must match scheduled-day logic in the app: completion date (America/New_York)
+-- equals calendar day for that daily_number from DAILY_PUZZLE_EPOCH in src/data/dailyPlayers.js
+-- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.get_leaderboard_snapshot(text, integer, integer) CASCADE;
+
+CREATE OR REPLACE FUNCTION public.get_leaderboard_snapshot(
+  p_mode text,
+  p_first_daily integer,
+  p_last_daily integer
+)
+RETURNS TABLE (
+  anon_id text,
+  user_id uuid,
+  completions bigint,
+  wins bigint,
+  total_guesses bigint,
+  total_guesses_all bigint,
+  max_live_streak bigint,
+  current_live_streak bigint
+)
+LANGUAGE sql
+STABLE
+AS $$
+  WITH v_epoch AS (
+    SELECT date '2026-03-25'::date AS d
+  ),
+  win_agg AS (
+    SELECT
+      mr.anon_id::text AS aid,
+      max(mr.user_id) AS uid,
+      count(*)::bigint AS c,
+      count(*) FILTER (WHERE mr.won = true)::bigint AS w,
+      coalesce(sum(mr.guesses) FILTER (WHERE mr.won = true), 0)::bigint AS tg,
+      coalesce(sum(mr.guesses), 0)::bigint AS tga
+    FROM public.mantle_runs mr
+    WHERE mr.mode = p_mode
+      AND mr.daily_number >= p_first_daily
+      AND mr.daily_number <= p_last_daily
+    GROUP BY mr.anon_id
+  ),
+  live AS (
+    SELECT
+      mr.anon_id::text AS aid,
+      mr.daily_number::int AS dn
+    FROM public.mantle_runs mr, v_epoch e
+    WHERE mr.mode = p_mode
+      AND mr.daily_number >= p_first_daily
+      AND mr.daily_number <= p_last_daily
+      AND mr.won = true
+      AND (timezone('America/New_York', mr.created_at))::date
+        = (e.d + (mr.daily_number - 1))
+  ),
+  live_grp AS (
+    SELECT
+      l.aid,
+      l.dn,
+      l.dn - row_number() OVER (PARTITION BY l.aid ORDER BY l.dn) AS g
+    FROM live l
+  ),
+  live_streaks AS (
+    SELECT lg.aid, lg.g, count(*)::bigint AS streak_len
+    FROM live_grp lg
+    GROUP BY lg.aid, lg.g
+  ),
+  max_streak AS (
+    SELECT ls.aid, max(ls.streak_len)::bigint AS max_ls
+    FROM live_streaks ls
+    GROUP BY ls.aid
+  ),
+  ss AS (
+    SELECT
+      x.aid,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM live l WHERE l.aid = x.aid AND l.dn = p_last_daily)
+          THEN p_last_daily
+        ELSE p_last_daily - 1
+      END AS start_dn
+    FROM (SELECT DISTINCT live.aid FROM live) x
+  ),
+  rec AS (
+    SELECT
+      ss.aid,
+      ss.start_dn AS n,
+      CASE
+        WHEN EXISTS (SELECT 1 FROM live l WHERE l.aid = ss.aid AND l.dn = ss.start_dn)
+          THEN 1::bigint
+        ELSE 0::bigint
+      END AS len
+    FROM ss
+    UNION ALL
+    SELECT
+      r.aid,
+      r.n - 1,
+      r.len + 1
+    FROM rec r
+    INNER JOIN live l ON l.aid = r.aid AND l.dn = r.n - 1
+    WHERE r.len >= 1
+      AND r.n > p_first_daily
+  ),
+  cur_streak AS (
+    SELECT r.aid, max(r.len)::bigint AS cur_ls
+    FROM rec r
+    GROUP BY r.aid
+  )
+  SELECT
+    wa.aid AS anon_id,
+    wa.uid AS user_id,
+    wa.c AS completions,
+    wa.w AS wins,
+    wa.tg AS total_guesses,
+    wa.tga AS total_guesses_all,
+    coalesce(ms.max_ls, 0::bigint) AS max_live_streak,
+    coalesce(cs.cur_ls, 0::bigint) AS current_live_streak
+  FROM win_agg wa
+  LEFT JOIN max_streak ms ON ms.aid = wa.aid
+  LEFT JOIN cur_streak cs ON cs.aid = wa.aid
+  ;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_leaderboard_snapshot(text, integer, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_leaderboard_snapshot(text, integer, integer) TO service_role;

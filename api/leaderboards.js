@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { getDailyPuzzleDayIndex, getISODateForDailyIndexFromEpoch } from '../src/data/dailyPlayers.js';
+import { getDailyPuzzleDayIndex } from '../src/data/dailyPlayers.js';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -21,8 +21,10 @@ function parseMode(modeRaw) {
   return modeRaw === 'hardcore' ? 'hardcore' : 'daily';
 }
 
+/** Keep in sync with `DAILY_PUZZLE_INDEX_OFFSET` in `src/App.jsx`. */
+const DAILY_PUZZLE_INDEX_OFFSET = -1;
+
 function hashAnonId(str) {
-  // FNV-1a 32-bit
   const s = String(str || '');
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -32,51 +34,18 @@ function hashAnonId(str) {
   return (h >>> 0).toString(16);
 }
 
-function getYmdInTimeZone(date, timeZone) {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(date);
-    const y = parts.find((p) => p.type === 'year')?.value;
-    const m = parts.find((p) => p.type === 'month')?.value;
-    const d = parts.find((p) => p.type === 'day')?.value;
-    if (!y || !m || !d) return '';
-    return `${y}-${m}-${d}`;
-  } catch {
-    return '';
-  }
-}
+const VERIFIED_ANON_IDS = (() => {
+  const raw = process.env.VERIFIED_ANON_IDS || '';
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+})();
 
-function computeCurrentStreak(winDailyNums, todayDailyNumber, firstDailyNumber) {
-  const start = winDailyNums.has(todayDailyNumber) ? todayDailyNumber : todayDailyNumber - 1;
-  let streak = 0;
-  for (let n = start; n >= firstDailyNumber; n--) {
-    if (!winDailyNums.has(n)) break;
-    streak++;
-  }
-  return streak;
-}
-
-function computeMaxStreak(winDailyNums, todayDailyNumber, firstDailyNumber) {
-  let run = 0;
-  let best = 0;
-  for (let n = firstDailyNumber; n <= todayDailyNumber; n++) {
-    if (winDailyNums.has(n)) {
-      run++;
-      if (run > best) best = run;
-    } else {
-      run = 0;
-    }
-  }
-  return best;
-}
-
-// Tiny in-memory cache (per serverless instance)
 const cache = new Map();
-const TTL_MS = 1000 * 45;
+const TTL_MS = 1000 * 90;
 
 export default async function handler(req, res) {
   try {
@@ -84,63 +53,35 @@ export default async function handler(req, res) {
 
     const mode = parseMode(req.query?.mode);
     const limit = Math.min(50, Math.max(5, Number(req.query?.limit) || 20));
-    const lookbackDays = Math.min(365, Math.max(30, Number(req.query?.lookbackDays) || 120));
+    const lookbackDays = Math.min(180, Math.max(14, Number(req.query?.lookbackDays) || 60));
     const minWinsForSpeed = Math.min(20, Math.max(1, Number(req.query?.minWinsForSpeed) || 3));
 
-    const todayDailyNumber = getDailyPuzzleDayIndex() + 1;
+    const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET) + 1;
     const firstDailyNumber = Math.max(1, todayDailyNumber - lookbackDays + 1);
     const cacheKey = `${mode}:${limit}:${lookbackDays}:${minWinsForSpeed}:${todayDailyNumber}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.ts <= TTL_MS) return json(res, 200, cached.value);
 
     const supabase = getSupabase();
-    const { data, error } = await supabase
-      .from('mantle_runs')
-      .select('anon_id,user_id,daily_number,guesses,won,created_at')
-      .eq('mode', mode)
-      .gte('daily_number', firstDailyNumber)
-      .lte('daily_number', todayDailyNumber)
-      .limit(200000);
 
-    if (error) return json(res, 500, { error: 'Failed to load leaderboard data' });
+    const { data: rows, error: rpcErr } = await supabase.rpc('get_leaderboard_snapshot', {
+      p_mode: mode,
+      p_first_daily: firstDailyNumber,
+      p_last_daily: todayDailyNumber,
+    });
 
-    const rows = Array.isArray(data) ? data : [];
-    const byAnon = new Map();
-    for (const r of rows) {
-      const anonId = String(r?.anon_id || '').trim();
-      if (!anonId) continue;
-      const dailyNum = Number(r?.daily_number);
-      if (!Number.isFinite(dailyNum) || dailyNum < 1) continue;
-
-      let agg = byAnon.get(anonId);
-      if (!agg) {
-        agg = {
-          anon_id: anonId,
-          user_id: null,
-          wins: 0,
-          totalGuesses: 0,
-          liveWinDailyNums: new Set(),
-        };
-        byAnon.set(anonId, agg);
-      }
-
-      if (r?.user_id) agg.user_id = r.user_id;
-      if (r?.won !== true) continue;
-
-      const g = Number(r?.guesses);
-      agg.wins += 1;
-      if (Number.isFinite(g)) agg.totalGuesses += g;
-
-      const expectedDate = getISODateForDailyIndexFromEpoch(dailyNum - 1);
-      const completedDate = typeof r?.created_at === 'string' ? getYmdInTimeZone(new Date(r.created_at), 'America/New_York') : '';
-      if (completedDate && completedDate === expectedDate) {
-        agg.liveWinDailyNums.add(dailyNum);
-      }
+    if (rpcErr) {
+      return json(res, 503, {
+        error: 'Leaderboards unavailable',
+        hint: 'Run supabase/setup.sql in your Supabase SQL editor (get_leaderboard_snapshot).',
+        details: rpcErr.message || String(rpcErr),
+      });
     }
 
-    const userIds = Array.from(new Set(
-      Array.from(byAnon.values()).map((x) => x.user_id).filter(Boolean)
-    ));
+    const rawRows = Array.isArray(rows) ? rows : [];
+    const userIds = Array.from(
+      new Set(rawRows.map((r) => r?.user_id).filter(Boolean))
+    );
     const profileByUserId = new Map();
     if (userIds.length) {
       try {
@@ -152,24 +93,29 @@ export default async function handler(req, res) {
           profileByUserId.set(p.user_id, p);
         }
       } catch {
-        // Optional table may not exist in some deployments.
+        // optional
       }
     }
 
-    const entries = Array.from(byAnon.values()).map((x) => {
-      const prof = x.user_id ? profileByUserId.get(x.user_id) : null;
-      const avgGuesses = x.wins > 0 ? x.totalGuesses / x.wins : null;
-      const currentStreak = computeCurrentStreak(x.liveWinDailyNums, todayDailyNumber, firstDailyNumber);
-      const maxStreak = computeMaxStreak(x.liveWinDailyNums, todayDailyNumber, firstDailyNumber);
+    const entries = rawRows.map((r) => {
+      const anon_id = String(r?.anon_id || '').trim();
+      const prof = r?.user_id ? profileByUserId.get(r.user_id) : null;
+      const completions = Number(r?.completions) || 0;
+      const wins = Number(r?.wins) || 0;
+      const totalGuesses = Number(r?.total_guesses) || 0;
+      const totalGuessesAll = Number(r?.total_guesses_all) || totalGuesses;
+      const avgGuesses = wins > 0 ? totalGuesses / wins : null;
       return {
-        anon_id: x.anon_id,
-        user: prof?.display_name || `Player ${hashAnonId(x.anon_id).slice(0, 4)}`,
+        anon_id,
+        user: prof?.display_name || `Player ${hashAnonId(anon_id).slice(0, 4)}`,
         avatarUrl: prof?.avatar_url || '',
-        verified: prof?.is_verified === true,
-        wins: x.wins,
+        verified: prof?.is_verified === true || VERIFIED_ANON_IDS.has(anon_id),
+        completions,
+        wins,
+        totalGuessesAll,
         avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
-        currentStreak,
-        maxStreak,
+        currentStreak: Number(r?.current_live_streak) || 0,
+        maxStreak: Number(r?.max_live_streak) || 0,
       };
     });
 
@@ -180,7 +126,8 @@ export default async function handler(req, res) {
         if (a.wins !== b.wins) return b.wins - a.wins;
         return b.maxStreak - a.maxStreak;
       })
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((e) => ({ ...e, avgGuesses: Number(e.avgGuesses.toFixed(2)) }));
 
     const wins = entries
       .filter((e) => e.wins > 0)
@@ -202,6 +149,22 @@ export default async function handler(req, res) {
       })
       .slice(0, limit);
 
+    const completed = entries
+      .filter((e) => e.completions > 0)
+      .sort((a, b) => {
+        if (a.completions !== b.completions) return b.completions - a.completions;
+        return b.wins - a.wins;
+      })
+      .slice(0, limit);
+
+    const guesses = entries
+      .filter((e) => e.totalGuessesAll > 0)
+      .sort((a, b) => {
+        if (a.totalGuessesAll !== b.totalGuessesAll) return b.totalGuessesAll - a.totalGuessesAll;
+        return b.completions - a.completions;
+      })
+      .slice(0, limit);
+
     const value = {
       mode,
       todayDailyNumber,
@@ -211,10 +174,12 @@ export default async function handler(req, res) {
       speed,
       wins,
       streaks,
+      completed,
+      guesses,
     };
     cache.set(cacheKey, { ts: Date.now(), value });
     return json(res, 200, value);
-  } catch {
+  } catch (e) {
     return json(res, 500, { error: 'Server misconfigured' });
   }
 }
