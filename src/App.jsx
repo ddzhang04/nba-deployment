@@ -5641,25 +5641,6 @@ const NBAGuessGame = () => {
               {/* Universal end screen handles win/reveal/already-played */}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                {isPostGameView && (
-                  <button
-                    type="button"
-                    onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
-                    style={{
-                      flex: 1,
-                      padding: '12px 20px',
-                      borderRadius: '8px',
-                      border: 'none',
-                      backgroundColor: '#7c3aed',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      fontSize: '16px'
-                    }}
-                  >
-                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
-                  </button>
-                )}
                 {!dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                   <button 
                     onClick={() => setConfirmAction('newGame')}
@@ -5822,31 +5803,6 @@ const NBAGuessGame = () => {
                   )}
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '18px', flexWrap: 'wrap', fontSize: '0.98rem', alignItems: 'center', marginBottom: '10px' }}>
-                  {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-                    <span style={{ color: '#fbbf24', fontWeight: 800 }}>Guesses: {guessCount}</span>
-                  )}
-                  {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !isPastDailySelected && nextDailyCountdown != null && (
-                    <span style={{ color: '#60a5fa', fontWeight: 800, fontSize: '0.95rem' }}>
-                      Next in {nextDailyCountdown} ET
-                    </span>
-                  )}
-                  {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && bestSoFar != null && (
-                    <span style={{ color: '#34d399', fontWeight: 800, fontSize: '0.95rem' }}>
-                      Best: {bestSoFar}{bestDelta != null ? ` (+${bestDelta})` : ''}
-                    </span>
-                  )}
-                  {gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily' && (
-                    <span style={{ color: '#fbbf24', fontWeight: 800 }}>⚡ Attempt #{guessCount}</span>
-                  )}
-                  {!gameWon && !showAnswer && (
-                    <span style={{ color: '#94a3b8', fontWeight: 700 }}>Mystery: ???</span>
-                  )}
-                  {(gameWon || showAnswer) && (
-                    <span style={{ color: '#10b981', fontWeight: 800 }}>Answer: {targetPlayer}</span>
-                  )}
-                </div>
-
                 {postGameRightPanelView === 'top5' ? (
                   <div ref={postGamePanelScrollRef} className="nm-guess-history-scroll" style={{ maxHeight: 'clamp(150px, 30vh, 260px)', overflowY: 'auto' }}>
                     {top5Players.length > 0 ? (
@@ -5985,6 +5941,27 @@ const NBAGuessGame = () => {
                     ))}
                     <div ref={guessHistoryEndRef} />
                   </div>
+                )}
+
+                {isPostGameView && (
+                  <button
+                    type="button"
+                    onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
+                    style={{
+                      width: '100%',
+                      marginTop: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(124, 58, 237, 0.55)',
+                      backgroundColor: 'rgba(124, 58, 237, 0.22)',
+                      color: '#ede9fe',
+                      fontWeight: 900,
+                      cursor: 'pointer',
+                      fontSize: '0.95rem',
+                    }}
+                  >
+                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
+                  </button>
                 )}
                 
               </>
