@@ -10,6 +10,15 @@ const STORAGE_RESET_VERSION = 'v18';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 const APP_VERSION = 'v1.0';
 
+/** Canonical mode key for mantle_runs (daily | hardcore). */
+const normalizeMantleRunMode = (rawMode) => {
+  const m = String(rawMode || '').trim();
+  if (m === 'hardcore' || m === 'ballKnowledgeDaily' || m === 'ball_knowledge_daily' || m === 'hardcore_daily') {
+    return 'hardcore';
+  }
+  return 'daily';
+};
+
 /** Return URL Supabase may send in the password-reset email (must be allowlisted in Supabase Auth). */
 const getRedirectToWithSid = (baseRedirectTo) => {
   try {
@@ -199,6 +208,13 @@ const NBAGuessGame = () => {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
   const [postGameRightPanelView, setPostGameRightPanelView] = useState('guesses'); // 'guesses' | 'top5'
+  const [signInNudgeProminentUsed, setSignInNudgeProminentUsed] = useState(() => {
+    try {
+      return localStorage.getItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used')) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
@@ -258,6 +274,9 @@ const NBAGuessGame = () => {
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
+  const accountBackfillInFlightRef = useRef(false);
+  /** Signed-in only: `(daily|hardcore):number` keys that already exist in cloud for this account (incl. linked guest rows). */
+  const accountMantleSlotKeysRef = useRef(new Set());
   const accountDetailsSyncMarkerRef = useRef('');
   const cloudHydrateInFlightRef = useRef(false);
   const cloudHydrateLastTsRef = useRef(0);
@@ -562,6 +581,11 @@ const NBAGuessGame = () => {
         setPasswordRecoveryMode(false);
         setNewRecoveryPassword('');
         setNewRecoveryPassword2('');
+        accountBackfillMarkerRef.current = '';
+        accountBackfillInFlightRef.current = false;
+        try {
+          accountMantleSlotKeysRef.current.clear();
+        } catch {}
         try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
         try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
         setDailyCompletions({});
@@ -572,6 +596,11 @@ const NBAGuessGame = () => {
         setAccountAvatarUrl('');
         setAccountIsVerified(false);
         setAuthNotice('');
+        try {
+          setSignInNudgeProminentUsed(localStorage.getItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used')) === '1');
+        } catch {
+          setSignInNudgeProminentUsed(false);
+        }
       }
     });
     unsub = data?.subscription || null;
@@ -784,6 +813,14 @@ const NBAGuessGame = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession?.user?.id, identityInitialized, anonId]);
+
+  useEffect(() => {
+    if (!authSession?.user) return;
+    try {
+      localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
+    } catch {}
+    setSignInNudgeProminentUsed(true);
+  }, [authSession?.user?.id]);
 
   const handleSignInWithEmail = async () => {
     if (!supabase) return;
@@ -1118,7 +1155,7 @@ const NBAGuessGame = () => {
 
   const submitCompletionToCloud = async (
     { mode, dailyNumber, date, answer, guesses, won, guessHistory = [], top5 = [] },
-    { uiNotify = false } = {}
+    { uiNotify = false, forceGuest = false } = {}
   ) => {
     try {
       let user_id = authSession?.user?.id || null;
@@ -1131,9 +1168,18 @@ const NBAGuessGame = () => {
         } catch {}
       }
       const deviceAnonId = getOrCreateAnalyticsId();
+      const dn = Number(dailyNumber);
+      const mantleKey = `${normalizeMantleRunMode(mode)}:${dn}`;
+      const cloudSlotOccupied =
+        !forceGuest && Number.isFinite(dn) && dn >= 1 && accountMantleSlotKeysRef.current.has(mantleKey);
+      // Account already has a row for this puzzle (canonical user or linked guest). Save under
+      // device anon + null user_id so we do not upsert a duplicate user:{id} row / double-count on
+      // user-scoped leaderboards, while the run still persists and global stats still see it.
+      const emulateGuest = !!user_id && (forceGuest || cloudSlotOccupied);
+      const effective_user_id = emulateGuest ? null : user_id;
       // Table uniqueness is keyed by anon_id+mode+daily_number.
-      // Use a per-account key when signed in so different accounts on one device do not collide.
-      const anon_id = user_id ? `user:${user_id}` : deviceAnonId;
+      // Use a per-account key when signed in and this puzzle is not already occupied in cloud for this account.
+      const anon_id = effective_user_id ? `user:${effective_user_id}` : deviceAnonId;
       // Treat "unknown" as supported so we don't drop guess history on first save.
       const detailsOk = mantleRunsDetailsSupported !== false;
 
@@ -1145,7 +1191,7 @@ const NBAGuessGame = () => {
 
       const payload = {
         anon_id,
-        user_id,
+        user_id: effective_user_id,
         mode,
         daily_number: dailyNumber,
         date,
@@ -1167,7 +1213,7 @@ const NBAGuessGame = () => {
         if (detailsOk) {
           const retryPayload = {
             anon_id,
-            user_id,
+            user_id: effective_user_id,
             mode,
             daily_number: dailyNumber,
             date,
@@ -1202,6 +1248,10 @@ const NBAGuessGame = () => {
 
       setSupabaseDebug({ lastSubmitOk: true, lastError: '' });
       if (uiNotify) showAccountActivityToast('Saved to cloud.', 'success');
+
+      if (user_id && !emulateGuest && Number.isFinite(dn) && dn >= 1) {
+        accountMantleSlotKeysRef.current.add(mantleKey);
+      }
 
       // After a successful write, refresh cloud completions so stats/past games update immediately.
       try {
@@ -1279,14 +1329,6 @@ const NBAGuessGame = () => {
         ];
       }
 
-      const normalizeRunMode = (rawMode) => {
-        const m = String(rawMode || '').trim();
-        if (m === 'hardcore' || m === 'ballKnowledgeDaily' || m === 'ball_knowledge_daily' || m === 'hardcore_daily') {
-          return 'hardcore';
-        }
-        return 'daily';
-      };
-
       const rowMap = new Map();
       const rowScore = (row) => {
         const gh = Array.isArray(row?.guess_history) ? row.guess_history.length : 0;
@@ -1295,7 +1337,7 @@ const NBAGuessGame = () => {
         return { n: gh + t5, ca };
       };
       for (const r of mergedRows) {
-        const normalizedMode = normalizeRunMode(r?.mode);
+        const normalizedMode = normalizeMantleRunMode(r?.mode);
         const dn = Number(r?.daily_number);
         if (!Number.isFinite(dn) || dn < 1) continue;
         const logicalKey = `${normalizedMode}|${dn}`;
@@ -1310,10 +1352,19 @@ const NBAGuessGame = () => {
       }
       const rows = Array.from(rowMap.values());
 
+      try {
+        accountMantleSlotKeysRef.current.clear();
+        for (const r of rows) {
+          const nm = normalizeMantleRunMode(r?.mode);
+          const n = Number(r?.daily_number);
+          if (Number.isFinite(n) && n >= 1) accountMantleSlotKeysRef.current.add(`${nm}:${n}`);
+        }
+      } catch {}
+
       const toCompletionMap = (modeKey) => {
         const out = {};
         for (const r of rows) {
-          const normalizedMode = normalizeRunMode(r?.mode);
+          const normalizedMode = normalizeMantleRunMode(r?.mode);
           if (normalizedMode !== modeKey) continue;
 
           const n = Number(r?.daily_number);
@@ -1876,72 +1927,123 @@ const NBAGuessGame = () => {
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
   // On sign-in, push local history once so it becomes available on other devices.
+  // Skip any (mode, daily_number) that already exists in cloud for this account (including linked
+  // guest rows) so we never overwrite an existing saved game.
+  // If we cannot list existing rows after retries, skip all uploads: an empty key set would risk
+  // overwriting real cloud saves on transient errors.
   useEffect(() => {
     if (!authSession?.user?.id) return;
     if (!supabase) return;
     if (!identityInitialized) return;
     if (!anonId) return;
+    if (!anonLinksLinkedForDevice) return;
 
-    const marker = `${authSession.user.id}:${anonId}`;
+    const userId = authSession.user.id;
+    const marker = `${userId}:${anonId}`;
     if (accountBackfillMarkerRef.current === marker) return;
-    accountBackfillMarkerRef.current = marker;
+    if (accountBackfillInFlightRef.current) return;
+    accountBackfillInFlightRef.current = true;
+
+    const buildExistingKeySet = (rows) => {
+      const set = new Set();
+      for (const r of rows || []) {
+        const nm = normalizeMantleRunMode(r?.mode);
+        const dn = Number(r?.daily_number);
+        if (Number.isFinite(dn) && dn >= 1) set.add(`${nm}:${dn}`);
+      }
+      return set;
+    };
+
+    const loadExistingCloudRunKeysWithRetry = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const { data: rpcRows, error: rpcErr } = await supabase.rpc('get_my_mantle_runs');
+          if (!rpcErr && Array.isArray(rpcRows)) {
+            return { ok: true, keys: buildExistingKeySet(rpcRows) };
+          }
+          const { data, error } = await supabase
+            .from('mantle_runs')
+            .select('mode, daily_number')
+            .eq('user_id', userId)
+            .limit(5000);
+          if (!error) return { ok: true, keys: buildExistingKeySet(data) };
+        } catch (e) {
+          console.warn('Guest-to-account backfill: read existing runs attempt failed', e?.message || e);
+        }
+        await new Promise((r) => setTimeout(r, 450 * (attempt + 1)));
+      }
+      return { ok: false };
+    };
 
     void (async () => {
       try {
-        // Same race as hydration: ensure the client is authenticated before writing.
-        if (authSession?.access_token && authSession?.refresh_token) {
-          await supabase.auth.setSession({
-            access_token: authSession.access_token,
-            refresh_token: authSession.refresh_token,
-          });
+        try {
+          if (authSession?.access_token && authSession?.refresh_token) {
+            await supabase.auth.setSession({
+              access_token: authSession.access_token,
+              refresh_token: authSession.refresh_token,
+            });
+          }
+        } catch {
+          // Best-effort: even if setSession fails, writes may still go through.
         }
-      } catch {
-        // Best-effort: even if setSession fails, writes may still go through.
-      }
 
-      const dailyLocal = getDailyCompletionsFromStorage();
-      const hardcoreLocal = getBallKnowledgeDailyFromStorage();
+        const loaded = await loadExistingCloudRunKeysWithRetry();
+        if (!loaded.ok) {
+          console.warn(
+            'Guest-to-account backfill: could not verify existing cloud saves after retries; skipping upload (avoids overwrite).'
+          );
+          return;
+        }
+        const existingKeys = loaded.keys;
 
-      const jobs = [];
-      for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
-        const n = Number(numStr);
-        if (!Number.isFinite(n) || n < 1) continue;
-        jobs.push(
-          submitCompletionToCloud({
-            mode: 'daily',
-            dailyNumber: n,
-            date: typeof entry?.date === 'string' ? entry.date : '',
-            answer: typeof entry?.answer === 'string' ? entry.answer : '',
-            guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
-            won: entry?.won !== false,
-            guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
-            top5: Array.isArray(entry?.top5) ? entry.top5 : [],
-          })
-        );
-      }
-      for (const [numStr, entry] of Object.entries(hardcoreLocal || {})) {
-        const n = Number(numStr);
-        if (!Number.isFinite(n) || n < 1) continue;
-        jobs.push(
-          submitCompletionToCloud({
-            mode: 'hardcore',
-            dailyNumber: n,
-            date: typeof entry?.date === 'string' ? entry.date : '',
-            answer: typeof entry?.answer === 'string' ? entry.answer : '',
-            guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
-            won: entry?.won !== false,
-            guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
-            top5: Array.isArray(entry?.top5) ? entry.top5 : [],
-          })
-        );
-      }
+        const dailyLocal = getDailyCompletionsFromStorage();
+        const hardcoreLocal = getBallKnowledgeDailyFromStorage();
 
-      if (jobs.length) {
-        Promise.allSettled(jobs).catch(() => {});
+        const jobs = [];
+        for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
+          const n = Number(numStr);
+          if (!Number.isFinite(n) || n < 1) continue;
+          if (existingKeys.has(`daily:${n}`)) continue;
+          jobs.push(
+            submitCompletionToCloud({
+              mode: 'daily',
+              dailyNumber: n,
+              date: typeof entry?.date === 'string' ? entry.date : '',
+              answer: typeof entry?.answer === 'string' ? entry.answer : '',
+              guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+              won: entry?.won !== false,
+              guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+              top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+            })
+          );
+        }
+        for (const [numStr, entry] of Object.entries(hardcoreLocal || {})) {
+          const n = Number(numStr);
+          if (!Number.isFinite(n) || n < 1) continue;
+          if (existingKeys.has(`hardcore:${n}`)) continue;
+          jobs.push(
+            submitCompletionToCloud({
+              mode: 'hardcore',
+              dailyNumber: n,
+              date: typeof entry?.date === 'string' ? entry.date : '',
+              answer: typeof entry?.answer === 'string' ? entry.answer : '',
+              guesses: Number.isFinite(Number(entry?.guesses)) ? Number(entry.guesses) : 0,
+              won: entry?.won !== false,
+              guessHistory: Array.isArray(entry?.guessHistory) ? entry.guessHistory : [],
+              top5: Array.isArray(entry?.top5) ? entry.top5 : [],
+            })
+          );
+        }
+
+        if (jobs.length) await Promise.allSettled(jobs);
+      } finally {
+        accountBackfillInFlightRef.current = false;
+        accountBackfillMarkerRef.current = marker;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authSession, identityInitialized, anonId]);
+  }, [authSession, identityInitialized, anonId, anonLinksLinkedForDevice]);
   useEffect(() => {
     // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
     try {
@@ -5480,6 +5582,58 @@ const NBAGuessGame = () => {
                         </button>
                       )}
                     </div>
+
+                    {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') &&
+                      !authLoading &&
+                      !authSession?.user &&
+                      (!signInNudgeProminentUsed ? (
+                        <div className="nm-sign-in-nudge nm-sign-in-nudge--prominent">
+                          <div className="nm-sign-in-nudge__title">Save your progress?</div>
+                          <p className="nm-sign-in-nudge__text">
+                            Sign in to sync Daily and Hardcore games across devices. If you already have saves on your
+                            account, those stay as they are — we only upload guest games that aren&apos;t already in the
+                            cloud.
+                          </p>
+                          <div className="nm-sign-in-nudge__actions">
+                            <button
+                              type="button"
+                              className="nm-sign-in-nudge__btn nm-sign-in-nudge__btn--primary"
+                              onClick={() => {
+                                try {
+                                  localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
+                                } catch {}
+                                setSignInNudgeProminentUsed(true);
+                                setShowAccountModal(true);
+                              }}
+                            >
+                              Sign in
+                            </button>
+                            <button
+                              type="button"
+                              className="nm-sign-in-nudge__btn nm-sign-in-nudge__btn--ghost"
+                              onClick={() => {
+                                try {
+                                  localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
+                                } catch {}
+                                setSignInNudgeProminentUsed(true);
+                              }}
+                            >
+                              Not now
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="nm-sign-in-nudge nm-sign-in-nudge--subtle">
+                          <span className="nm-sign-in-nudge__hint">Playing on this device only.</span>{' '}
+                          <button
+                            type="button"
+                            className="nm-sign-in-nudge__link"
+                            onClick={() => setShowAccountModal(true)}
+                          >
+                            Sign in to sync
+                          </button>
+                        </div>
+                      ))}
                   </div>
                 );
               })()}
