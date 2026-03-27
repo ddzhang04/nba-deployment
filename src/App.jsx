@@ -4426,6 +4426,39 @@ const NBAGuessGame = () => {
 
                 const dailyTint = { bg: 'rgba(139, 92, 246, 0.14)', border: 'rgba(139, 92, 246, 0.40)', fg: '#e9d5ff' };
                 const bkdTint = { bg: 'rgba(217, 119, 6, 0.12)', border: 'rgba(217, 119, 6, 0.34)', fg: '#fef3c7' };
+                const renderRecentGuesses = (label, stats, tint) => (
+                  <div
+                    style={{
+                      borderRadius: '12px',
+                      border: `1px solid ${tint.border}`,
+                      backgroundColor: tint.bg,
+                      padding: '10px 12px',
+                    }}
+                  >
+                    <div style={{ color: tint.fg, fontSize: '12px', fontWeight: 800, marginBottom: '8px' }}>
+                      {label} recent guesses
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {(Array.isArray(stats?.recent) ? stats.recent : []).map((r) => (
+                        <span
+                          key={`recent-${r?.num ?? 'x'}`}
+                          title={`Daily #${r?.num ?? '—'}`}
+                          style={{
+                            borderRadius: '999px',
+                            border: '1px solid rgba(148, 163, 184, 0.45)',
+                            padding: '4px 8px',
+                            color: '#e2e8f0',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(15, 23, 42, 0.55)',
+                          }}
+                        >
+                          #{r?.num ?? '—'}: {r?.guesses == null ? '—' : r.guesses}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
 
                 return (
                   <div>
@@ -4439,6 +4472,10 @@ const NBAGuessGame = () => {
                     </div>
                     <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '12px', lineHeight: 1.35 }}>
                       Streaks only count when you solve on the scheduled day. Solving past days won’t change streaks.
+                    </div>
+                    <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                      {renderRecentGuesses('Daily', dailyStats, dailyTint)}
+                      {renderRecentGuesses('Hardcore', bkdStats, bkdTint)}
                     </div>
                   </div>
                 );
