@@ -16,6 +16,18 @@ const TIMEOUT_MS = Number(process.env.HEALTHCHECK_TIMEOUT_MS || 12000);
 const RETRIES = Number(process.env.HEALTHCHECK_RETRIES || 2);
 const STRICT_SUPABASE = process.env.HEALTHCHECK_STRICT_SUPABASE === '1';
 
+async function getTodayDailyNumber() {
+  try {
+    const mod = await import('../src/data/dailyPlayers.js');
+    const fn = mod?.getDailyPuzzleDayIndex;
+    if (typeof fn !== 'function') return 1;
+    // Keep in sync with the app's offset (DAILY_PUZZLE_INDEX_OFFSET = -1 in App.jsx)
+    return fn(new Date(), -1) + 1;
+  } catch {
+    return 1;
+  }
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -26,11 +38,15 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
   }
 }
 
-async function fetchJsonWithRetry(url, options = {}) {
+async function fetchJsonWithRetry(url, options = {}, { timeoutMs = TIMEOUT_MS, retries = RETRIES } = {}) {
   let lastErr = null;
-  for (let attempt = 0; attempt <= RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetchWithTimeout(url, { ...options, headers: { ...(options.headers || {}), accept: 'application/json' } });
+      const res = await fetchWithTimeout(
+        url,
+        { ...options, headers: { ...(options.headers || {}), accept: 'application/json' } },
+        timeoutMs
+      );
       const text = await res.text();
       let body = null;
       try {
@@ -44,8 +60,8 @@ async function fetchJsonWithRetry(url, options = {}) {
       return body;
     } catch (e) {
       lastErr = e;
-      if (attempt < RETRIES) {
-        const wait = 700 * (attempt + 1);
+      if (attempt < retries) {
+        const wait = 900 * (attempt + 1);
         await new Promise((r) => setTimeout(r, wait));
         continue;
       }
@@ -87,24 +103,34 @@ async function assertProfile() {
 }
 
 async function assertCeiling() {
+  const todayDailyNumber = await getTodayDailyNumber();
   const url = `${API_BASE}/ceiling`;
-  const body = await fetchJsonWithRetry(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ mode: 'daily', dailyNumber: 1 }),
-  });
+  const body = await fetchJsonWithRetry(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ mode: 'daily', dailyNumber: todayDailyNumber }),
+    },
+    { timeoutMs: Math.max(TIMEOUT_MS, 25000), retries: Math.max(RETRIES, 4) }
+  );
   if (!body || typeof body !== 'object') throw new Error('Ceiling payload not an object');
   if (!('ceiling' in body)) throw new Error('Ceiling payload missing ceiling');
   console.log('OK ceiling');
 }
 
 async function assertReveal() {
+  const todayDailyNumber = await getTodayDailyNumber();
   const url = `${API_BASE}/reveal`;
-  const body = await fetchJsonWithRetry(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ mode: 'daily', dailyNumber: 1 }),
-  });
+  const body = await fetchJsonWithRetry(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ mode: 'daily', dailyNumber: todayDailyNumber }),
+    },
+    { timeoutMs: Math.max(TIMEOUT_MS, 25000), retries: Math.max(RETRIES, 4) }
+  );
   if (!body || typeof body !== 'object') throw new Error('Reveal payload not an object');
   if (typeof body.answer !== 'string' || !body.answer) throw new Error('Reveal payload missing answer');
   if (!Array.isArray(body.top_5)) throw new Error('Reveal payload missing top_5[]');

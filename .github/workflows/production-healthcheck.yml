@@ -30,5 +30,7 @@ jobs:
         env:
           HEALTHCHECK_BASE_URL: ${{ vars.HEALTHCHECK_BASE_URL || 'https://nba-deployment.vercel.app' }}
           HEALTHCHECK_API_BASE_URL: ${{ vars.HEALTHCHECK_API_BASE_URL || '' }}
+          HEALTHCHECK_TIMEOUT_MS: ${{ vars.HEALTHCHECK_TIMEOUT_MS || '25000' }}
+          HEALTHCHECK_RETRIES: ${{ vars.HEALTHCHECK_RETRIES || '4' }}
         run: node scripts/healthcheck.js
 

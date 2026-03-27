@@ -19,7 +19,7 @@
 export const DAILY_PUZZLE_EPOCH = '2026-03-26';
 
 // Bump when you reshuffle the rotation for everyone.
-export const ROTATION_SHUFFLE_VERSION = 'shuffle-v11';
+export const ROTATION_SHUFFLE_VERSION = 'shuffle-v12';
 export const ROTATION_SHUFFLE_SEED_EPOCH = '2026-03-26';
 
 /** Which calendar date defines "today's" daily # (shared by the app and serverless APIs). */
