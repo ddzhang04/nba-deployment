@@ -322,7 +322,18 @@ const NBAGuessGame = () => {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetchWithTimeout(url, options, timeoutMs);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          let detail = '';
+          try {
+            const body = await res.json();
+            detail = body?.error || body?.details || body?.hint || '';
+          } catch {
+            try {
+              detail = await res.text();
+            } catch {}
+          }
+          throw new Error(detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`);
+        }
         return await res.json();
       } catch (e) {
         lastErr = e;

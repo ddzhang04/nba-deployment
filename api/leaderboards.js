@@ -180,6 +180,9 @@ export default async function handler(req, res) {
     cache.set(cacheKey, { ts: Date.now(), value });
     return json(res, 200, value);
   } catch (e) {
-    return json(res, 500, { error: 'Server misconfigured' });
+    return json(res, 500, {
+      error: 'Leaderboards server error',
+      details: e?.message || String(e),
+    });
   }
 }

@@ -270,13 +270,13 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
-  WITH v_epoch AS (
+  WITH RECURSIVE v_epoch AS (
     SELECT date '2026-03-25'::date AS d
   ),
   win_agg AS (
     SELECT
       mr.anon_id::text AS aid,
-      max(mr.user_id) AS uid,
+      min(mr.user_id::text)::uuid AS uid,
       count(*)::bigint AS c,
       count(*) FILTER (WHERE mr.won = true)::bigint AS w,
       coalesce(sum(mr.guesses) FILTER (WHERE mr.won = true), 0)::bigint AS tg,
