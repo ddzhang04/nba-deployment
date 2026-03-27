@@ -3304,14 +3304,14 @@ const NBAGuessGame = () => {
         </div>
       )}
 
-      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '14px' }}>
+      <div className="game-content-wrapper" style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px' }}>
         {/* Header */}
         <div className="game-header" style={{ 
           background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.82), rgba(30, 41, 59, 0.72))',
           borderRadius: '12px',
-          padding: '12px',
-          paddingTop: '12px',
-          marginBottom: '12px',
+          padding: '10px',
+          paddingTop: '10px',
+          marginBottom: '8px',
           textAlign: 'center',
           border: '1px solid rgba(255, 255, 255, 0.10)',
           backdropFilter: 'blur(6px)'

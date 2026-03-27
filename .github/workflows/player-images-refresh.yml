@@ -31,6 +31,7 @@ jobs:
         run: node scripts/fetch-nba-player-images.js --targetsFrom=gameplayLists
 
       - name: Create Pull Request (if changed)
+        id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
           branch: chore/auto-refresh-player-images
@@ -47,4 +48,13 @@ jobs:
           labels: |
             automation
             data
+
+      # Auto-merge the PR so changes land on main (and Vercel redeploys) without manual intervention.
+      # Requires repository setting: Settings → General → Pull Requests → "Allow auto-merge" enabled.
+      - name: Enable PR auto-merge (if created)
+        if: steps.cpr.outputs.pull-request-number != ''
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          pull-request-number: ${{ steps.cpr.outputs.pull-request-number }}
+          merge-method: squash
 
