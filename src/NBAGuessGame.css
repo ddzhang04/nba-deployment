@@ -212,17 +212,17 @@ button, input, textarea, select {
 
 @media (min-width: 1100px) {
   .main-layout.main-layout--with-history .guess-history-aside {
-    flex: 0 0 500px;
-    width: 500px;
-    max-width: 500px;
+    flex: 0 0 480px;
+    width: 480px;
+    max-width: 480px;
     margin: 0;
     position: sticky;
     top: 10px;
   }
 
   .guess-history-aside {
-    max-height: min(420px, 48vh);
-    min-height: min(420px, 48vh);
+    max-height: min(360px, 42vh);
+    min-height: min(360px, 42vh);
   }
 }
 
