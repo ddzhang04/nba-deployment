@@ -4090,11 +4090,11 @@ const NBAGuessGame = () => {
                   <div style={{ display: 'grid', gap: '8px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                       <span style={{ color: '#e9d5ff', fontWeight: 700 }}>📅 Daily</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>One puzzle/day • Reveal anytime</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>One puzzle/day • one saved completion/day</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                       <span style={{ color: '#fef3c7', fontWeight: 700 }}>🧠 Hardcore Daily</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Harder list • One puzzle/day</span>
+                      <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Harder list • one saved completion/day</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
                       <span style={{ color: '#bbf7d0', fontWeight: 700 }}>😊 All Stars 1986+</span>
@@ -4108,6 +4108,25 @@ const NBAGuessGame = () => {
                       <span style={{ color: '#fde68a', fontWeight: 700 }}>🌟 All Players</span>
                       <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Full database</span>
                     </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
+                  <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>☁️ Cloud, streaks, leaderboards</div>
+                  <div style={{ display: 'grid', gap: '6px', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: 1.45 }}>
+                    <div>Sign in to sync Daily + Hardcore progress across devices.</div>
+                    <div>Live streaks only count if you solve on that puzzle&apos;s scheduled ET day.</div>
+                    <div>Use <strong>Stats</strong> for your personal numbers and <strong>Leaderboards</strong> for global rankings.</div>
+                  </div>
+                  <div style={{ marginTop: '6px', color: '#94a3b8', fontSize: '0.82rem' }}>
+                    Gmail note: if your account was made with Google OAuth, use <strong>Continue with Google</strong> (not email/password).
                   </div>
                 </div>
 

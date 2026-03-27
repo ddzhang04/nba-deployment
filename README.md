@@ -28,6 +28,12 @@ Live: [https://nba-deployment.vercel.app/](https://nba-deployment.vercel.app/)
    SUPABASE_SERVICE_ROLE_KEY=eyJ...   # never put this in the frontend
    ```
 
+   **Exactly where to put these in Vercel:**
+   - Vercel project → **Settings** → **Environment Variables**
+   - Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+   - Select environments: **Production** (and Preview/Development if needed)
+   - Save, then **redeploy** so serverless `/api/*` picks up the new values
+
 5. **Deploy** — Push to GitHub / deploy on Vercel.
 
 6. **(Optional) Brand auth emails** — Supabase sends confirmation/reset emails by default.
@@ -122,3 +128,13 @@ npm run healthcheck
 | Global average empty | RPC + RLS from `setup.sql`; browser Network → calls to `supabase.co` |
 | Leaderboard/profile 500 on Vercel | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` on that project |
 | Leaderboards slow or 503 | Re-run `setup.sql` so `get_leaderboard_snapshot` exists |
+
+### Quick fix: `Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY`
+
+If Leaderboards shows this error:
+
+1. Go to Vercel project **Settings → Environment Variables**
+2. Add:
+   - `SUPABASE_URL` = your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` = service role key from Supabase **Project Settings → API**
+3. Redeploy the Vercel project
