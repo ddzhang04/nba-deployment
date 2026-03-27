@@ -279,17 +279,16 @@ AS $$
   base AS (
     SELECT
       mr.anon_id::text AS aid,
-      coalesce(mr.user_id, al.user_id) AS uid,
+      mr.user_id AS uid,
       mr.daily_number::int AS dn,
       mr.guesses::int AS guesses,
       (mr.won = true) AS won,
       mr.created_at
     FROM public.mantle_runs mr
-    LEFT JOIN public.anon_links al ON al.anon_id = mr.anon_id
     WHERE mr.mode = p_mode
       AND mr.daily_number >= p_first_daily
       AND mr.daily_number <= p_last_daily
-      AND coalesce(mr.user_id, al.user_id) IS NOT NULL
+      AND mr.user_id IS NOT NULL
   ),
   -- Deduplicate: one row per signed-in user per daily_number.
   -- Prefer a winning row, then latest timestamp.
