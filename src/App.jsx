@@ -31,6 +31,9 @@ const isPageReload = () => {
   return false;
 };
 
+/** Set before OAuth redirect so a reload-style return doesn’t wipe `IN_PROGRESS_DRAFT_KEY` in the guest effect. */
+const OAUTH_RETURN_EXPECTED_KEY = 'nba-mantle-oauth-return-expected';
+
 /** Gmail / @googlemail.com must use Google OAuth — not email+password or recovery-by-email flows. */
 const GMAIL_USE_GOOGLE_ONLY_MSG =
   'Gmail addresses cannot use email and password on this site. Use “Continue with Google” below.';
@@ -1094,6 +1097,11 @@ const NBAGuessGame = () => {
     setAuthError('');
     setAuthNotice('');
     try {
+      try {
+        sessionStorage.setItem(OAUTH_RETURN_EXPECTED_KEY, '1');
+      } catch {
+        // ignore
+      }
       // Supabase will use its configured Site URL / redirect rules.
       // Only provide redirectTo when explicitly configured to avoid
       // "redirect_to parameter is not allowed" failures.
@@ -1116,6 +1124,11 @@ const NBAGuessGame = () => {
     } catch (e) {
       console.error('Google sign-in error:', e);
       setAuthError(e?.message || 'Google sign-in failed');
+      try {
+        sessionStorage.removeItem(OAUTH_RETURN_EXPECTED_KEY);
+      } catch {
+        // ignore
+      }
     } finally {
       setEmailAuthAction(null);
     }
@@ -2399,10 +2412,17 @@ const NBAGuessGame = () => {
     if (authLoading) return;
     if (authSession?.user?.id) return;
     if (isPageReload()) {
+      let preserveInProgressDraft = false;
+      try {
+        preserveInProgressDraft = sessionStorage.getItem(OAUTH_RETURN_EXPECTED_KEY) === '1';
+        if (preserveInProgressDraft) sessionStorage.removeItem(OAUTH_RETURN_EXPECTED_KEY);
+      } catch {
+        // ignore
+      }
       try {
         localStorage.removeItem(DAILY_COMPLETIONS_KEY);
         localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY);
-        localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
+        if (!preserveInProgressDraft) localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
       } catch {}
     }
     setDailyCompletions({});
@@ -2506,22 +2526,38 @@ const NBAGuessGame = () => {
     if (!identityInitialized) return;
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
 
-    const played = gameMode === 'daily' ? dailyAlreadyPlayed : ballKnowledgeDailyAlreadyPlayed;
-    if (played) {
-      clearInProgressDraftStorage();
-      return;
-    }
-
     const playedMap = gameMode === 'daily' ? dailyCompletions : ballKnowledgeDailyCompletions;
     let raw = null;
     try {
       raw = localStorage.getItem(IN_PROGRESS_DRAFT_KEY);
     } catch {}
     const d = parseMantleInProgressDraft(raw);
-    if (!d || d.mode !== gameMode) return;
-    if (playedMap && playedMap[String(d.dailyNumber)] != null) {
+    const draftMidGame =
+      d &&
+      d.mode === gameMode &&
+      Array.isArray(d.guessHistory) &&
+      d.guessHistory.length > 0;
+    const todayEntry = playedMap?.[String(activeDailyNumber)];
+    const todayIsRevealOnly = typeof todayEntry === 'object' && todayEntry != null && todayEntry.won === false;
+    // Hydrate can attach a linked guest *reveal* row for today while this tab is still mid-guess.
+    // Treat that as "not played" so we restore the draft instead of wiping it.
+    const played =
+      (gameMode === 'daily' ? dailyAlreadyPlayed : ballKnowledgeDailyAlreadyPlayed) &&
+      !(todayIsRevealOnly && draftMidGame && d?.dailyNumber === activeDailyNumber);
+
+    if (played) {
       clearInProgressDraftStorage();
       return;
+    }
+
+    if (!d || d.mode !== gameMode) return;
+    if (playedMap && playedMap[String(d.dailyNumber)] != null) {
+      const ent = playedMap[String(d.dailyNumber)];
+      const entryIsRevealOnly = typeof ent === 'object' && ent != null && ent.won === false;
+      if (!(entryIsRevealOnly && draftMidGame && d.dailyNumber === activeDailyNumber)) {
+        clearInProgressDraftStorage();
+        return;
+      }
     }
 
     if (d.activeDailyIndex !== activeDailyIndex) {
@@ -2574,6 +2610,25 @@ const NBAGuessGame = () => {
     if (inProgress) return;
 
     const completion = getActiveCompletionEntry();
+
+    let draftRawForCompletion = null;
+    try {
+      draftRawForCompletion = localStorage.getItem(IN_PROGRESS_DRAFT_KEY);
+    } catch {}
+    const draftForCompletion = parseMantleInProgressDraft(draftRawForCompletion);
+    if (
+      draftForCompletion &&
+      draftForCompletion.mode === gameMode &&
+      draftForCompletion.dailyNumber === activeDailyNumber &&
+      Array.isArray(draftForCompletion.guessHistory) &&
+      draftForCompletion.guessHistory.length > 0
+    ) {
+      // Hydrate can mark today "completed" (e.g. linked guest reveal) while this tab is mid-guess.
+      // Keep the draft unless cloud/local map shows a win for today (finished on another device).
+      const cloudWin = completion && completion.won !== false;
+      if (!cloudWin) return;
+    }
+
     if (!completion) return;
 
     const restoredHistory = Array.isArray(completion?.guessHistory) ? completion.guessHistory : [];
@@ -3887,18 +3942,10 @@ const NBAGuessGame = () => {
             <div className="game-header__season-note" style={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.84rem', margin: '0 0 4px', lineHeight: 1.25 }}>
               Data through the <strong>2024-2025</strong> NBA season (no current season info yet).
             </div>
-            <p style={{ color: '#fbbf24', margin: 0, fontSize: '0.95rem', opacity: targetMaxSimilar != null ? 1 : 0.65, fontWeight: 700 }}>
-              {targetMaxSimilar != null ? (
-                <>
-                  Closest player is about <span style={{ fontWeight: 900 }}>{targetMaxSimilar}/100</span>.
-                </>
-              ) : (
-                <>Finding today&apos;s closest player range...</>
-              )}
-            </p>
           </div>
 
-          <div className="header-buttons" style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '2px', marginBottom: '2px' }}>
+          <div className="header-buttons" style={{ marginTop: '2px', marginBottom: '2px' }}>
+            <div className="header-buttons__primary">
             <button
               type="button"
               className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
@@ -4027,8 +4074,11 @@ const NBAGuessGame = () => {
                 🧹 Reset local data
               </button>
             )}
+            </div>
 
             <button
+              type="button"
+              className="header-buttons__more"
               onClick={() => setShowMoreGames(true)}
               style={{
                 padding: '6px 12px',
@@ -4044,7 +4094,7 @@ const NBAGuessGame = () => {
               }}
             >
               <span>🎮</span>
-              <span>More / About</span>
+              <span className="header-buttons__more-label">More / About</span>
             </button>
           </div>
 
@@ -5918,7 +5968,29 @@ const NBAGuessGame = () => {
               display: 'flex',
               flexDirection: 'column',
             }} ref={guessSectionRef}>
-              <h3 style={{ fontSize: '1.15rem', marginBottom: '12px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
+              <h3 style={{ fontSize: '1.15rem', marginBottom: '8px', color: '#f1f5f9', fontWeight: 800 }}>Guess a player</h3>
+
+              {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
+                <div className="nm-ceiling-hint" role="status" aria-live="polite">
+                  {targetMaxSimilar != null ? (
+                    gameMode === 'daily' || gameMode === 'ballKnowledgeDaily' ? (
+                      <span>
+                        Closest possible guess for this puzzle:{' '}
+                        <strong className="nm-ceiling-hint__value">{targetMaxSimilar}/100</strong>
+                        <span className="nm-ceiling-hint__fine"> (best single guess score)</span>
+                      </span>
+                    ) : (
+                      <span>
+                        Closest possible guess this round:{' '}
+                        <strong className="nm-ceiling-hint__value">{targetMaxSimilar}/100</strong>
+                        <span className="nm-ceiling-hint__fine"> (best single guess score)</span>
+                      </span>
+                    )
+                  ) : (
+                    <span className="nm-ceiling-hint--loading">Finding similarity range…</span>
+                  )}
+                </div>
+              )}
               
               {(() => {
                 const end = getEndScreenModel();
