@@ -194,6 +194,19 @@ const parseMantleInProgressDraft = (raw) => {
   }
 };
 
+/**
+ * Distinguish in-progress cloud/local rows (won=false, no stored answer yet) from reveal (won=false + answer).
+ * Without this, partial runs look like "already played" and completion restore opens the reveal screen.
+ */
+const isMantleCompletionInProgress = (entry) => {
+  if (!entry || typeof entry !== 'object') return false;
+  if (entry.won !== false) return false;
+  const ans = typeof entry.answer === 'string' ? entry.answer.trim() : '';
+  if (ans !== '') return false;
+  const gh = Array.isArray(entry.guessHistory) ? entry.guessHistory.length : 0;
+  return gh > 0;
+};
+
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
@@ -2070,8 +2083,11 @@ const NBAGuessGame = () => {
   const [dailyCompletions, setDailyCompletions] = useState(() => ({}));
   const [selectedDailyDetail, setSelectedDailyDetail] = useState(null);
   const [selectedDailyHistoryNum, setSelectedDailyHistoryNum] = useState('');
-  // Lock out replaying any daily that already has a saved completion (today or past).
-  const dailyAlreadyPlayed = gameMode === 'daily' && dailyCompletions[String(activeDailyNumber)] != null;
+  // Lock out replaying when there's a finished run (win or reveal). In-progress partials must stay playable.
+  const dailyAlreadyPlayed =
+    gameMode === 'daily' &&
+    dailyCompletions[String(activeDailyNumber)] != null &&
+    !isMantleCompletionInProgress(dailyCompletions[String(activeDailyNumber)]);
 
   const getBallKnowledgeDailyFromStorage = () => (ballKnowledgeDailyCompletions || {});
   const saveBallKnowledgeDailyToStorage = (dailyNumber, dateStr, guesses = null, guessHistory = [], won = true, answer = '', top5 = []) => {
@@ -2093,8 +2109,10 @@ const NBAGuessGame = () => {
   const [cloudHydrateTick, setCloudHydrateTick] = useState(0);
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
   const [selectedHardcoreHistoryNum, setSelectedHardcoreHistoryNum] = useState('');
-  // Lock out replaying any hardcore daily that already has a saved completion (today or past).
-  const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
+  const ballKnowledgeDailyAlreadyPlayed =
+    gameMode === 'ballKnowledgeDaily' &&
+    ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null &&
+    !isMantleCompletionInProgress(ballKnowledgeDailyCompletions[String(activeDailyNumber)]);
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
 
@@ -2191,10 +2209,9 @@ const NBAGuessGame = () => {
     IN_PROGRESS_DRAFT_KEY,
   ]);
 
-  // Signed in: keep mantle_runs in sync with an in-progress Daily/Hardcore so cloud hydration + other devices
-  // see the latest guess list (won=false until win or reveal).
+  // Guest + signed in: upsert partial progress to mantle_runs after each guess (debounced) so a mid-game
+  // sign-in can merge from cloud; guests write under the device anon_id until they link an account.
   useEffect(() => {
-    if (!authSession?.user?.id) return;
     if (!supabase) return;
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
     if (gameWon || showAnswer) return;
@@ -2230,7 +2247,6 @@ const NBAGuessGame = () => {
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- submitCompletionToCloud identity changes every render
   }, [
-    authSession?.user?.id,
     supabase,
     gameMode,
     gameWon,
@@ -2291,6 +2307,16 @@ const NBAGuessGame = () => {
       void hydrateCompletionsFromCloud({ force: true });
     }, 1200);
     return () => clearTimeout(t);
+  }, [authSession?.user?.id, identityInitialized, anonId, anonLinksLinkedForDevice, hydrateCompletionsFromCloud]);
+
+  // Guest guesses are keyed by device anon_id until anon_links exists; RPC get_my_mantle_runs needs the link.
+  useEffect(() => {
+    if (!authSession?.user?.id) return;
+    if (!identityInitialized) return;
+    if (!anonId) return;
+    if (!anonLinksLinkedForDevice) return;
+    cloudHydrateLastTsRef.current = 0;
+    void hydrateCompletionsFromCloud({ force: true });
   }, [authSession?.user?.id, identityInitialized, anonId, anonLinksLinkedForDevice, hydrateCompletionsFromCloud]);
 
   // If a user solved Daily/Hardcore while signed out, those completions exist only locally.
@@ -2668,7 +2694,11 @@ const NBAGuessGame = () => {
       Array.isArray(d.guessHistory) &&
       d.guessHistory.length > 0;
     const todayEntry = playedMap?.[String(activeDailyNumber)];
-    const todayIsRevealOnly = typeof todayEntry === 'object' && todayEntry != null && todayEntry.won === false;
+    const todayIsRevealOnly =
+      typeof todayEntry === 'object' &&
+      todayEntry != null &&
+      todayEntry.won === false &&
+      !isMantleCompletionInProgress(todayEntry);
     // Hydrate can attach a linked guest *reveal* row for today while this tab is still mid-guess.
     // Treat that as "not played" so we restore the draft instead of wiping it.
     let played =
@@ -2705,7 +2735,8 @@ const NBAGuessGame = () => {
           return;
         }
       }
-      const entryIsRevealOnly = typeof ent === 'object' && ent != null && ent.won === false;
+      const entryIsRevealOnly =
+        typeof ent === 'object' && ent != null && ent.won === false && !isMantleCompletionInProgress(ent);
       const draftAheadOfCloud =
         draftMidGame &&
         d.dailyNumber === activeDailyNumber &&
@@ -2795,10 +2826,18 @@ const NBAGuessGame = () => {
     if (!completion) return;
 
     const restoredHistory = Array.isArray(completion?.guessHistory) ? completion.guessHistory : [];
+    const won = completion?.won !== false;
     setGuessHistory(restoredHistory);
     setGuessCount(typeof completion?.guesses === 'number' ? completion.guesses : restoredHistory.length);
 
-    const won = completion?.won !== false;
+    // Partial in-progress (won=false, no answer yet): keep playing — do not open reveal UI.
+    if (isMantleCompletionInProgress(completion)) {
+      setGameWon(false);
+      setShowAnswer(false);
+      void fetchDailyCeilingRef.current?.();
+      return;
+    }
+
     setGameWon(won);
     setShowAnswer(!won);
 
@@ -4278,9 +4317,30 @@ const NBAGuessGame = () => {
             >
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '6px' }}>
                 {[
-                  { id: 'daily', icon: '📅', label: 'Daily', isActive: gameMode === 'daily', onClick: () => handleModeChange('daily') },
-                  { id: 'hardcore', icon: '🧠', label: 'Hardcore', isActive: gameMode === 'ballKnowledgeDaily', onClick: () => handleModeChange('ballKnowledgeDaily') },
-                  { id: 'freeplay', icon: '🎮', label: 'Free Play', isActive: gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all', onClick: () => handleModeChange(gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all' ? gameMode : 'easy') },
+                  {
+                    id: 'daily',
+                    icon: '📅',
+                    label: `Daily #${activeDailyNumber}`,
+                    isActive: gameMode === 'daily',
+                    onClick: () => handleModeChange('daily'),
+                  },
+                  {
+                    id: 'hardcore',
+                    icon: '🧠',
+                    label: `Hardcore #${activeDailyNumber}`,
+                    isActive: gameMode === 'ballKnowledgeDaily',
+                    onClick: () => handleModeChange('ballKnowledgeDaily'),
+                  },
+                  {
+                    id: 'freeplay',
+                    icon: '🎮',
+                    label: 'Free Play',
+                    isActive: gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all',
+                    onClick: () =>
+                      handleModeChange(
+                        gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all' ? gameMode : 'easy'
+                      ),
+                  },
                 ].map((pill) => (
                   <button
                     key={pill.id}
@@ -4342,9 +4402,8 @@ const NBAGuessGame = () => {
                 </div>
               )}
             </div>
+            {(gameMode === 'easy' || gameMode === 'classic' || gameMode === 'all') && (
             <div className="game-header__meta" style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
-              {gameMode === 'daily' && `Daily ${activeDailyNumber}`}
-              {gameMode === 'ballKnowledgeDaily' && `Hardcore ${activeDailyNumber}`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -4352,6 +4411,7 @@ const NBAGuessGame = () => {
               {gameMode === 'all' && 
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
+            )}
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <div className="game-header__past-row" style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
