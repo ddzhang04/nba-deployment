@@ -127,6 +127,39 @@ const readBallKnowledgeDailyFromLocalStorage = (storageKey) => {
   }
 };
 
+const MANTLE_IN_PROGRESS_DRAFT_VERSION = 1;
+
+/** Parsed in-progress Daily / Hardcore daily draft from localStorage (null if invalid). */
+const parseMantleInProgressDraft = (raw) => {
+  try {
+    const o = JSON.parse(raw);
+    if (!o || typeof o !== 'object') return null;
+    if (Number(o.v) !== MANTLE_IN_PROGRESS_DRAFT_VERSION) return null;
+    if (o.mode !== 'daily' && o.mode !== 'ballKnowledgeDaily') return null;
+    const idx = Number(o.activeDailyIndex);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    const dn = Number(o.dailyNumber);
+    if (!Number.isFinite(dn) || dn < 1 || dn !== idx + 1) return null;
+    if (!Array.isArray(o.guessHistory)) return null;
+    const gc = Number(o.guessCount);
+    if (!Number.isFinite(gc) || gc < 0) return null;
+    return {
+      mode: o.mode,
+      activeDailyIndex: idx,
+      dailyNumber: dn,
+      guessHistory: o.guessHistory,
+      guessCount: gc,
+      targetPlayer: typeof o.targetPlayer === 'string' ? o.targetPlayer : '',
+      targetMaxSimilar: typeof o.targetMaxSimilar === 'number' && Number.isFinite(o.targetMaxSimilar) ? o.targetMaxSimilar : null,
+      prefetchedTargetTop5: Array.isArray(o.prefetchedTargetTop5) ? o.prefetchedTargetTop5 : [],
+      prefetchedTargetTop5For:
+        typeof o.prefetchedTargetTop5For === 'string' ? o.prefetchedTargetTop5For : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
@@ -166,8 +199,12 @@ const NBAGuessGame = () => {
   // to avoid any stale local data from older versions.
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
+  const IN_PROGRESS_DRAFT_KEY = key('nba-mantle-daily-hardcore-in-progress');
 
   const bestPrevRef = useRef(null);
+  /** Skip one `activeDailyIndex` sync reset (used when restoring a saved in-progress draft that changes the selected day). */
+  const skipNextDailySyncResetRef = useRef(null);
+  const fetchDailyCeilingRef = useRef(() => {});
   const guessSectionRef = useRef(null);
   const guessInputRef = useRef(null);
   const guessHistoryEndRef = useRef(null);
@@ -216,13 +253,6 @@ const NBAGuessGame = () => {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [guessHistorySort, setGuessHistorySort] = useState('score'); // 'score' | 'chronological'
   const [postGameRightPanelView, setPostGameRightPanelView] = useState('guesses'); // 'guesses' | 'top5'
-  const [signInNudgeProminentUsed, setSignInNudgeProminentUsed] = useState(() => {
-    try {
-      return localStorage.getItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used')) === '1';
-    } catch {
-      return false;
-    }
-  });
   const [restoringTop5, setRestoringTop5] = useState(false);
   const [identityInitialized, setIdentityInitialized] = useState(false);
   const [anonId, setAnonId] = useState('');
@@ -647,6 +677,7 @@ const NBAGuessGame = () => {
         } catch {}
         try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
         try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+        try { localStorage.removeItem(IN_PROGRESS_DRAFT_KEY); } catch {}
         setDailyCompletions({});
         setBallKnowledgeDailyCompletions({});
         setSelectedDailyDetail(null);
@@ -655,11 +686,6 @@ const NBAGuessGame = () => {
         setAccountAvatarUrl('');
         setAccountIsVerified(false);
         setAuthNotice('');
-        try {
-          setSignInNudgeProminentUsed(localStorage.getItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used')) === '1');
-        } catch {
-          setSignInNudgeProminentUsed(false);
-        }
         setCloudHydrateTick(0);
       }
     });
@@ -873,14 +899,6 @@ const NBAGuessGame = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession?.user?.id, identityInitialized, anonId]);
-
-  useEffect(() => {
-    if (!authSession?.user) return;
-    try {
-      localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
-    } catch {}
-    setSignInNudgeProminentUsed(true);
-  }, [authSession?.user?.id]);
 
   const handleSignInWithEmail = async () => {
     if (!supabase) return;
@@ -1127,6 +1145,7 @@ const NBAGuessGame = () => {
     setAuthSession(null);
     try { localStorage.removeItem(DAILY_COMPLETIONS_KEY); } catch {}
     try { localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY); } catch {}
+    try { localStorage.removeItem(IN_PROGRESS_DRAFT_KEY); } catch {}
     setDailyCompletions({});
     setBallKnowledgeDailyCompletions({});
     setSelectedDailyDetail(null);
@@ -1218,14 +1237,29 @@ const NBAGuessGame = () => {
     { uiNotify = false, forceGuest = false } = {}
   ) => {
     try {
-      let user_id = authSession?.user?.id || null;
-      // Auth state can lag right after sign-in on some devices/browsers.
-      // Pull from Supabase session as fallback so signed-in saves keep user_id.
+      let user_id = authSession?.user?.id ? String(authSession.user.id).trim() : null;
+      // Auth state often lags the UI (e.g. reveal clicked while session is still hydrating).
+      // Without user_id, we write a device-anon row and leaderboards ignore it (uid IS NULL).
       if (!user_id && supabase) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          user_id = data?.session?.user?.id || null;
-        } catch {}
+        const waits = [0, 120, 280, 450];
+        for (const ms of waits) {
+          if (ms) await new Promise((r) => setTimeout(r, ms));
+          try {
+            const { data: sess } = await supabase.auth.getSession();
+            const sid = sess?.session?.user?.id;
+            if (sid) {
+              user_id = String(sid).trim();
+              break;
+            }
+          } catch {}
+          try {
+            const { data: u, error: userErr } = await supabase.auth.getUser();
+            if (!userErr && u?.user?.id) {
+              user_id = String(u.user.id).trim();
+              break;
+            }
+          } catch {}
+        }
       }
       const deviceAnonId = getOrCreateAnalyticsId();
       const dn = Number(dailyNumber);
@@ -1952,6 +1986,15 @@ const NBAGuessGame = () => {
     return next;
   };
   const [ballKnowledgeDailyCompletions, setBallKnowledgeDailyCompletions] = useState(() => ({}));
+  /** Latest maps for guest→account backfill (async must not read stale render closures). */
+  const dailyCompletionsRef = useRef({});
+  const ballKnowledgeDailyCompletionsRef = useRef({});
+  useEffect(() => {
+    dailyCompletionsRef.current = dailyCompletions || {};
+  }, [dailyCompletions]);
+  useEffect(() => {
+    ballKnowledgeDailyCompletionsRef.current = ballKnowledgeDailyCompletions || {};
+  }, [ballKnowledgeDailyCompletions]);
   /** Bumped after a successful signed-in cloud hydrate so puzzle UI re-reads the canonical completion. */
   const [cloudHydrateTick, setCloudHydrateTick] = useState(0);
   const [selectedBallKnowledgeDetail, setSelectedBallKnowledgeDetail] = useState(null);
@@ -1960,6 +2003,60 @@ const NBAGuessGame = () => {
   const ballKnowledgeDailyAlreadyPlayed = gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyCompletions[String(activeDailyNumber)] != null;
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
+
+  const clearInProgressDraftStorage = useCallback(() => {
+    try {
+      localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
+    } catch {}
+  }, [IN_PROGRESS_DRAFT_KEY]);
+
+  // Persist partial Daily / Hardcore runs so refresh + sign-in keep guesses (until win/reveal).
+  useEffect(() => {
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    if (gameWon || showAnswer) return;
+    if (gameMode === 'daily' && dailyAlreadyPlayed) return;
+    if (gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyAlreadyPlayed) return;
+    if (guessHistory.length === 0) {
+      try {
+        const cur = parseMantleInProgressDraft(localStorage.getItem(IN_PROGRESS_DRAFT_KEY));
+        if (cur && cur.mode === gameMode && cur.dailyNumber === activeDailyNumber) clearInProgressDraftStorage();
+      } catch {}
+      return;
+    }
+    const draft = {
+      v: MANTLE_IN_PROGRESS_DRAFT_VERSION,
+      mode: gameMode,
+      activeDailyIndex,
+      dailyNumber: activeDailyNumber,
+      guessHistory,
+      guessCount,
+      targetPlayer,
+      targetMaxSimilar,
+      prefetchedTargetTop5,
+      prefetchedTargetTop5For,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem(IN_PROGRESS_DRAFT_KEY, JSON.stringify(draft));
+    } catch {}
+    // Intentionally omit prefetched top5 deps: they change often; we snapshot them whenever guessHistory updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefetchedTargetTop5(For) read from latest render
+  }, [
+    gameMode,
+    activeDailyIndex,
+    activeDailyNumber,
+    guessHistory,
+    guessCount,
+    gameWon,
+    showAnswer,
+    dailyAlreadyPlayed,
+    ballKnowledgeDailyAlreadyPlayed,
+    targetPlayer,
+    targetMaxSimilar,
+    clearInProgressDraftStorage,
+    IN_PROGRESS_DRAFT_KEY,
+  ]);
+
   useEffect(() => {
     if (!isPostGameView) {
       setPostGameRightPanelView('guesses');
@@ -2018,13 +2115,61 @@ const NBAGuessGame = () => {
     if (!supabase) return;
     if (!identityInitialized) return;
     if (!anonId) return;
-    if (!anonLinksLinkedForDevice) return;
 
     const userId = authSession.user.id;
     const marker = `${userId}:${anonId}`;
     if (accountBackfillMarkerRef.current === marker) return;
     if (accountBackfillInFlightRef.current) return;
     accountBackfillInFlightRef.current = true;
+
+    const mergeLocalSnapshotsForBackfill = () => {
+      const pickBetter = (a, b) => {
+        if (!a || typeof a !== 'object') return b;
+        if (!b || typeof b !== 'object') return a;
+        const ah = Array.isArray(a.guessHistory) ? a.guessHistory.length : 0;
+        const bh = Array.isArray(b.guessHistory) ? b.guessHistory.length : 0;
+        if (bh !== ah) return bh > ah ? b : a;
+        const ag = Number(a.guesses);
+        const bg = Number(b.guesses);
+        if (Number.isFinite(bg) && Number.isFinite(ag) && bg !== ag) return bg > ag ? b : a;
+        const at = String(a.completedAt || '');
+        const bt = String(b.completedAt || '');
+        if (bt !== at) return bt > at ? b : a;
+        return { ...b, ...a };
+      };
+      const mergeMaps = (stateMap, lsRaw) => {
+        let ls = {};
+        try {
+          const p = JSON.parse(lsRaw || '{}');
+          ls = p && typeof p === 'object' ? p : {};
+        } catch {
+          ls = {};
+        }
+        const keys = new Set([...Object.keys(stateMap || {}), ...Object.keys(ls)]);
+        const out = {};
+        for (const k of keys) {
+          const sk = stateMap?.[k];
+          const lk = ls?.[k];
+          if (sk && lk) out[k] = pickBetter(sk, lk);
+          else out[k] = sk || lk;
+        }
+        return out;
+      };
+      try {
+        return {
+          dailyLocal: mergeMaps(dailyCompletionsRef.current, localStorage.getItem(DAILY_COMPLETIONS_KEY)),
+          hardcoreLocal: mergeMaps(
+            ballKnowledgeDailyCompletionsRef.current,
+            localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY)
+          ),
+        };
+      } catch {
+        return {
+          dailyLocal: { ...(dailyCompletionsRef.current || {}) },
+          hardcoreLocal: { ...(ballKnowledgeDailyCompletionsRef.current || {}) },
+        };
+      }
+    };
 
     const buildExistingKeySet = (rows) => {
       const set = new Set();
@@ -2079,8 +2224,7 @@ const NBAGuessGame = () => {
         }
         const existingKeys = loaded.keys;
 
-        const dailyLocal = getDailyCompletionsFromStorage();
-        const hardcoreLocal = getBallKnowledgeDailyFromStorage();
+        const { dailyLocal, hardcoreLocal } = mergeLocalSnapshotsForBackfill();
 
         const jobs = [];
         for (const [numStr, entry] of Object.entries(dailyLocal || {})) {
@@ -2119,9 +2263,9 @@ const NBAGuessGame = () => {
         }
 
         if (jobs.length) await Promise.allSettled(jobs);
+        accountBackfillMarkerRef.current = marker;
       } finally {
         accountBackfillInFlightRef.current = false;
-        accountBackfillMarkerRef.current = marker;
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2257,12 +2401,78 @@ const NBAGuessGame = () => {
   // Sync daily targets when you pick a past day (this was the main "past mantles" bug).
   useEffect(() => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    if (skipNextDailySyncResetRef.current === activeDailyIndex) {
+      skipNextDailySyncResetRef.current = null;
+      void fetchDailyCeiling();
+      return;
+    }
     // Keep daily/hardcore answers server-side (prevents casual console peeking).
     setTargetPlayer('');
     resetPuzzleState();
     fetchDailyCeiling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameMode, activeDailyIndex]);
+
+  // Restore in-progress Daily / Hardcore (partial run) after refresh or sign-in.
+  useEffect(() => {
+    if (!identityInitialized) return;
+    if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+
+    const played = gameMode === 'daily' ? dailyAlreadyPlayed : ballKnowledgeDailyAlreadyPlayed;
+    if (played) {
+      clearInProgressDraftStorage();
+      return;
+    }
+
+    const playedMap = gameMode === 'daily' ? dailyCompletions : ballKnowledgeDailyCompletions;
+    let raw = null;
+    try {
+      raw = localStorage.getItem(IN_PROGRESS_DRAFT_KEY);
+    } catch {}
+    const d = parseMantleInProgressDraft(raw);
+    if (!d || d.mode !== gameMode) return;
+    if (playedMap && playedMap[String(d.dailyNumber)] != null) {
+      clearInProgressDraftStorage();
+      return;
+    }
+
+    if (d.activeDailyIndex !== activeDailyIndex) {
+      skipNextDailySyncResetRef.current = d.activeDailyIndex;
+      setSelectedDailyIndexOverride(d.activeDailyIndex === todayDailyIndex ? null : d.activeDailyIndex);
+      return;
+    }
+
+    if (d.dailyNumber !== activeDailyNumber) {
+      clearInProgressDraftStorage();
+      return;
+    }
+
+    if (d.guessHistory.length === 0) return;
+
+    setGuessHistory(d.guessHistory);
+    setGuessCount(d.guessCount);
+    if (d.targetPlayer) setTargetPlayer(d.targetPlayer);
+    else setTargetPlayer('');
+    if (typeof d.targetMaxSimilar === 'number') setTargetMaxSimilar(d.targetMaxSimilar);
+    else setTargetMaxSimilar(null);
+    if (d.prefetchedTargetTop5?.length) setPrefetchedTargetTop5(d.prefetchedTargetTop5);
+    else setPrefetchedTargetTop5([]);
+    setPrefetchedTargetTop5For(d.prefetchedTargetTop5For || null);
+
+    void fetchDailyCeilingRef.current?.();
+  }, [
+    identityInitialized,
+    gameMode,
+    activeDailyNumber,
+    activeDailyIndex,
+    dailyAlreadyPlayed,
+    ballKnowledgeDailyAlreadyPlayed,
+    todayDailyIndex,
+    authSession?.user?.id,
+    dailyCompletions,
+    ballKnowledgeDailyCompletions,
+    clearInProgressDraftStorage,
+  ]);
 
   // If the selected daily is already completed, restore its end-state (including Top 5).
   useEffect(() => {
@@ -2552,11 +2762,13 @@ const NBAGuessGame = () => {
   const startNewGame = () => {
     let chosenPlayer;
     if (gameMode === 'daily') {
+      clearInProgressDraftStorage();
       // Daily answer is server-side.
       setTargetPlayer('');
       setTargetMaxSimilar(null);
       fetchDailyCeiling();
     } else if (gameMode === 'ballKnowledgeDaily') {
+      clearInProgressDraftStorage();
       // Hardcore answer is server-side.
       setTargetPlayer('');
       setTargetMaxSimilar(null);
@@ -2612,8 +2824,13 @@ const NBAGuessGame = () => {
   };
 
   const handleModeChange = (newMode) => {
+    if (gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') {
+      if (!(newMode === 'daily' || newMode === 'ballKnowledgeDaily') || newMode !== gameMode) {
+        clearInProgressDraftStorage();
+      }
+    }
     setGameMode(newMode);
-    
+
     // Filter players based on new mode
     const filtered = filterPlayersForMode(allPlayers, playersData, newMode);
     setFilteredPlayers(filtered);
@@ -2795,16 +3012,6 @@ const NBAGuessGame = () => {
     return entry?.imageUrl ?? null;
   };
 
-  const getPlayerInitials = (name) => {
-    const safe = String(name || '').trim();
-    if (!safe) return 'NB';
-    const parts = safe.split(/\s+/).filter(Boolean);
-    const first = parts[0]?.[0] ?? '';
-    const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1]) ?? '';
-    const initials = `${first}${last}`.toUpperCase();
-    return initials || 'NB';
-  };
-
   const renderPlayerAvatar = (name, { size = 40, radius = 8 } = {}) => {
     const img = getPlayerImage(name);
     if (img) {
@@ -2819,24 +3026,50 @@ const NBAGuessGame = () => {
       );
     }
 
+    const label = String(name || '').trim() ? `No photo: ${String(name).trim()}` : 'Player silhouette';
+    const s = Math.max(12, Math.round(size * 0.52));
     return (
       <div
-        aria-hidden="true"
+        role="img"
+        aria-label={label}
         style={{
           width: size,
           height: size,
           borderRadius: radius,
-          background: 'rgba(59, 130, 246, 0.18)',
-          border: '1px solid rgba(59, 130, 246, 0.35)',
+          background: 'rgba(59, 130, 246, 0.14)',
+          border: '1px solid rgba(59, 130, 246, 0.32)',
           display: 'grid',
           placeItems: 'center',
-          color: '#e0f2fe',
-          fontWeight: 700,
-          fontSize: Math.max(11, Math.round(size * 0.28)),
-          textTransform: 'uppercase'
+          flexShrink: 0,
+          overflow: 'hidden',
+          color: 'rgba(148, 163, 184, 0.85)',
         }}
       >
-        {getPlayerInitials(name)}
+        <svg
+          width={s}
+          height={s}
+          viewBox="0 0 48 48"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          {/* Outline-only bust when no headshot (empty silhouette) */}
+          <circle
+            cx="24"
+            cy="17"
+            r="10.25"
+            stroke="currentColor"
+            strokeWidth="2"
+            opacity="0.72"
+          />
+          <path
+            d="M9.5 45.5c1.2-8.8 7.8-15.2 14.5-15.2s13.3 6.4 14.5 15.2"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            opacity="0.72"
+          />
+        </svg>
       </div>
     );
   };
@@ -2898,6 +3131,8 @@ const NBAGuessGame = () => {
       }
     }
   };
+
+  fetchDailyCeilingRef.current = fetchDailyCeiling;
 
   const makeGuess = async () => {
     if (!guess.trim()) return;
@@ -2971,6 +3206,10 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setDailyCompletions(next);
+                try {
+                  localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
+                } catch {}
+                clearInProgressDraftStorage();
                 submitCompletionToCloud(
                   { mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore },
                   { uiNotify: true }
@@ -2990,6 +3229,10 @@ const NBAGuessGame = () => {
                 const answerToStore = resolvedAnswer || targetPlayer;
                 const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, newCount, fullHistory, true, answerToStore, top5ToStore);
                 setBallKnowledgeDailyCompletions(next);
+                try {
+                  localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
+                } catch {}
+                clearInProgressDraftStorage();
                 submitCompletionToCloud(
                   { mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: newCount, won: true, guessHistory: fullHistory, top5: top5ToStore },
                   { uiNotify: true }
@@ -3084,6 +3327,10 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveDailyCompletionToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setDailyCompletions(next);
+        try {
+          localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next));
+        } catch {}
+        clearInProgressDraftStorage();
         submitCompletionToCloud(
           { mode: 'daily', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] },
           { uiNotify: true }
@@ -3102,6 +3349,10 @@ const NBAGuessGame = () => {
         const answerToStore = isDailyLike ? (revealedAnswer || targetPlayer) : targetPlayer;
         const next = saveBallKnowledgeDailyToStorage(activeDailyNumber, dateStr, guessCount, history, false, answerToStore, top5Now || []);
         setBallKnowledgeDailyCompletions(next);
+        try {
+          localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next));
+        } catch {}
+        clearInProgressDraftStorage();
         submitCompletionToCloud(
           { mode: 'hardcore', dailyNumber: activeDailyNumber, date: dateStr, answer: answerToStore, guesses: guessCount, won: false, guessHistory: history, top5: top5Now || [] },
           { uiNotify: true }
@@ -5646,7 +5897,16 @@ const NBAGuessGame = () => {
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px', justifyContent: 'center' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '10px',
+                        flexWrap: 'wrap',
+                        marginTop: '12px',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                    >
                       {end.canShare && (
                         <button
                           type="button"
@@ -5666,65 +5926,32 @@ const NBAGuessGame = () => {
                             color: 'white',
                             fontWeight: '800',
                             cursor: 'pointer',
-                            fontSize: '0.9rem'
+                            fontSize: '0.9rem',
                           }}
                         >
                           📤 Share
                         </button>
                       )}
+                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !authLoading && !authSession?.user && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAccountModal(true)}
+                          className="nm-sign-in-sync-btn"
+                          style={{
+                            padding: '10px 16px',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255, 255, 255, 0.42)',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                            color: '#f8fafc',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                          }}
+                        >
+                          Sign in to sync
+                        </button>
+                      )}
                     </div>
-
-                    {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') &&
-                      !authLoading &&
-                      !authSession?.user &&
-                      (!signInNudgeProminentUsed ? (
-                        <div className="nm-sign-in-nudge nm-sign-in-nudge--prominent">
-                          <div className="nm-sign-in-nudge__title">Save your progress?</div>
-                          <p className="nm-sign-in-nudge__text">
-                            Sign in to sync Daily and Hardcore games across devices. If you already have saves on your
-                            account, those stay as they are — we only upload guest games that aren&apos;t already in the
-                            cloud.
-                          </p>
-                          <div className="nm-sign-in-nudge__actions">
-                            <button
-                              type="button"
-                              className="nm-sign-in-nudge__btn nm-sign-in-nudge__btn--primary"
-                              onClick={() => {
-                                try {
-                                  localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
-                                } catch {}
-                                setSignInNudgeProminentUsed(true);
-                                setShowAccountModal(true);
-                              }}
-                            >
-                              Sign in
-                            </button>
-                            <button
-                              type="button"
-                              className="nm-sign-in-nudge__btn nm-sign-in-nudge__btn--ghost"
-                              onClick={() => {
-                                try {
-                                  localStorage.setItem(mantleStorageKey('nba-mantle-sign-in-nudge-prominent-used'), '1');
-                                } catch {}
-                                setSignInNudgeProminentUsed(true);
-                              }}
-                            >
-                              Not now
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="nm-sign-in-nudge nm-sign-in-nudge--subtle">
-                          <span className="nm-sign-in-nudge__hint">Playing on this device only.</span>{' '}
-                          <button
-                            type="button"
-                            className="nm-sign-in-nudge__link"
-                            onClick={() => setShowAccountModal(true)}
-                          >
-                            Sign in to sync
-                          </button>
-                        </div>
-                      ))}
                   </div>
                 );
               })()}
