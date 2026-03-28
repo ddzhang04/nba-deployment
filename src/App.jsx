@@ -19,6 +19,27 @@ const parseStoredCompletionMap = (raw) => {
   }
 };
 
+/** True when this load was triggered by a full browser refresh (not OAuth return / in-app navigation). */
+const isPageReload = () => {
+  try {
+    const nav = performance.getEntriesByType?.('navigation')?.[0];
+    if (nav && nav.type === 'reload') return true;
+  } catch {}
+  try {
+    if (performance.navigation?.type === 1) return true; // TYPE_RELOAD
+  } catch {}
+  return false;
+};
+
+/** Gmail / @googlemail.com must use Google OAuth — not email+password or recovery-by-email flows. */
+const GMAIL_USE_GOOGLE_ONLY_MSG =
+  'Gmail addresses cannot use email and password on this site. Use “Continue with Google” below.';
+
+const isLikelyGmailAddress = (emailRaw) => {
+  const email = String(emailRaw || '').trim().toLowerCase();
+  return email.endsWith('@gmail.com') || email.endsWith('@googlemail.com');
+};
+
 /** Canonical mode key for mantle_runs (daily | hardcore). */
 const normalizeMantleRunMode = (rawMode) => {
   const m = String(rawMode || '').trim();
@@ -737,11 +758,6 @@ const NBAGuessGame = () => {
     return String(md?.picture || md?.avatar_url || '').trim();
   };
 
-  const isLikelyGmailAddress = (emailRaw) => {
-    const email = String(emailRaw || '').trim().toLowerCase();
-    return email.endsWith('@gmail.com') || email.endsWith('@googlemail.com');
-  };
-
   // After login, link this device's anon_id to the user, then load their profile.
   // Important: do NOT overwrite an existing display_name every login.
   useEffect(() => {
@@ -910,6 +926,11 @@ const NBAGuessGame = () => {
 
   const handleSignInWithEmail = async () => {
     if (!supabase) return;
+    if (isLikelyGmailAddress(authEmail)) {
+      setAuthNotice('');
+      setAuthError(GMAIL_USE_GOOGLE_ONLY_MSG);
+      return;
+    }
     setEmailAuthAction('signin');
     setAuthError('');
     setAuthNotice('');
@@ -952,6 +973,11 @@ const NBAGuessGame = () => {
 
   const handleSignUpWithEmail = async () => {
     if (!supabase) return;
+    if (isLikelyGmailAddress(authEmail)) {
+      setAuthNotice('');
+      setAuthError(GMAIL_USE_GOOGLE_ONLY_MSG);
+      return;
+    }
     setEmailAuthAction('signup');
     setAuthError('');
     setAuthNotice('');
@@ -1012,14 +1038,14 @@ const NBAGuessGame = () => {
     if (!supabase) return;
     const email = authEmail.trim();
     if (!email) return;
+    if (isLikelyGmailAddress(email)) {
+      setAuthNotice('');
+      setAuthError(GMAIL_USE_GOOGLE_ONLY_MSG);
+      return;
+    }
     setEmailAuthAction('resend');
     setAuthError('');
     setAuthNotice('');
-    if (isLikelyGmailAddress(email)) {
-      setAuthNotice(
-        'Using Gmail with Google OAuth does not use verification emails. If this account is Google-based, click "Continue with Google".'
-      );
-    }
     try {
       const configuredEmailRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
       const payload = {
@@ -1076,6 +1102,11 @@ const NBAGuessGame = () => {
     const email = authEmail.trim();
     if (!email) {
       setAuthError('Enter the email you used to sign up.');
+      return;
+    }
+    if (isLikelyGmailAddress(email)) {
+      setAuthNotice('');
+      setAuthError(GMAIL_USE_GOOGLE_ONLY_MSG);
       return;
     }
     setEmailAuthAction('reset');
@@ -2329,30 +2360,29 @@ const NBAGuessGame = () => {
       setDailyCompletions({});
       setBallKnowledgeDailyCompletions({});
     } else {
-      try {
-        setDailyCompletions(parseStoredCompletionMap(localStorage.getItem(DAILY_COMPLETIONS_KEY)));
-        setBallKnowledgeDailyCompletions(parseStoredCompletionMap(localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY)));
-      } catch {
-        setDailyCompletions({});
-        setBallKnowledgeDailyCompletions({});
-      }
+      // Guest progress is intentionally not restored from disk on load (session-only). Signed-in
+      // hydration merges localStorage + cloud; OAuth return is navigate (not reload) so pending
+      // guest rows in localStorage are still available for that merge.
+      setDailyCompletions({});
+      setBallKnowledgeDailyCompletions({});
     }
   }, []);
 
-  // Guests: keep completion maps aligned with localStorage after identity + auth are known.
-  // Wait for auth to finish loading so OAuth return is not mistaken for a signed-out session (which
-  // would clear state before the session restores).
+  // Guests: no persisted completions in the UI. Full refresh clears local completion storage so a
+  // guest reload starts clean; OAuth / first visit keeps localStorage until sign-in hydrate runs.
   useEffect(() => {
     if (!identityInitialized) return;
     if (authLoading) return;
     if (authSession?.user?.id) return;
-    try {
-      setDailyCompletions(parseStoredCompletionMap(localStorage.getItem(DAILY_COMPLETIONS_KEY)));
-      setBallKnowledgeDailyCompletions(parseStoredCompletionMap(localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY)));
-    } catch {
-      setDailyCompletions({});
-      setBallKnowledgeDailyCompletions({});
+    if (isPageReload()) {
+      try {
+        localStorage.removeItem(DAILY_COMPLETIONS_KEY);
+        localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY);
+        localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
+      } catch {}
     }
+    setDailyCompletions({});
+    setBallKnowledgeDailyCompletions({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityInitialized, authLoading, authSession?.user?.id]);
 
@@ -5698,6 +5728,17 @@ const NBAGuessGame = () => {
                     Save your daily progress in the cloud so you can pick up on another browser or device.
                   </p>
 
+                  {isLikelyGmailAddress(authEmail) ? (
+                    <div
+                      className="nm-account-modal__gmail-block-overlay"
+                      role="alert"
+                      aria-live="assertive"
+                    >
+                      <strong>Gmail — use Google sign-in</strong>
+                      <span>{GMAIL_USE_GOOGLE_ONLY_MSG}</span>
+                    </div>
+                  ) : null}
+
                   <div className="nm-account-modal__field">
                     <label className="nm-account-modal__label" htmlFor="nm-auth-email">
                       Email
@@ -5706,7 +5747,11 @@ const NBAGuessGame = () => {
                       id="nm-auth-email"
                       className="nm-account-modal__input"
                       value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
+                      onChange={(e) => {
+                        setAuthEmail(e.target.value);
+                        setAuthError('');
+                        setAuthNotice('');
+                      }}
                       onKeyDown={handleAuthFieldKeyDown}
                       placeholder="you@example.com"
                       type="email"
@@ -5734,7 +5779,7 @@ const NBAGuessGame = () => {
                     <button
                       type="button"
                       onClick={handleSignInWithEmail}
-                      disabled={emailAuthAction !== null}
+                      disabled={emailAuthAction !== null || isLikelyGmailAddress(authEmail)}
                       style={{
                         padding: '12px 18px',
                         borderRadius: '12px',
@@ -5750,7 +5795,7 @@ const NBAGuessGame = () => {
                     <button
                       type="button"
                       onClick={handleSignUpWithEmail}
-                      disabled={emailAuthAction !== null}
+                      disabled={emailAuthAction !== null || isLikelyGmailAddress(authEmail)}
                       style={{
                         padding: '12px 18px',
                         borderRadius: '12px',
@@ -5784,11 +5829,6 @@ const NBAGuessGame = () => {
                   >
                     {emailAuthAction === 'google' ? 'Opening Google…' : 'Continue with Google'}
                   </button>
-                  {isLikelyGmailAddress(authEmail) ? (
-                    <div style={{ color: '#93c5fd', fontSize: '0.8rem', marginTop: '6px' }}>
-                      Gmail tip: if you originally used Google sign-in, use this button (email verification is not sent for OAuth sign-ins).
-                    </div>
-                  ) : null}
 
                   <div className="nm-account-modal__divider" />
 
@@ -5816,7 +5856,7 @@ const NBAGuessGame = () => {
                       <button
                         type="button"
                         onClick={handleResetPassword}
-                        disabled={emailAuthAction !== null || !authEmail.trim()}
+                        disabled={emailAuthAction !== null || !authEmail.trim() || isLikelyGmailAddress(authEmail)}
                         style={{
                           marginTop: '10px',
                           padding: '10px 16px',
@@ -5838,7 +5878,7 @@ const NBAGuessGame = () => {
                       type="button"
                       className="nm-account-modal__link-btn"
                       onClick={handleResendSignupConfirmation}
-                      disabled={emailAuthAction !== null || !authEmail.trim()}
+                      disabled={emailAuthAction !== null || !authEmail.trim() || isLikelyGmailAddress(authEmail)}
                     >
                       {emailAuthAction === 'resend' ? 'Sending…' : 'Resend signup confirmation'}
                     </button>
@@ -5846,7 +5886,7 @@ const NBAGuessGame = () => {
                     <span>if you did not get the first email.</span>
                   </p>
 
-                  {authError ? (
+                  {authError && !isLikelyGmailAddress(authEmail) ? (
                     <div className="nm-account-modal__notice nm-account-modal__notice--error">{authError}</div>
                   ) : authNotice ? (
                     <div className="nm-account-modal__notice nm-account-modal__notice--success">{authNotice}</div>

@@ -1115,6 +1115,37 @@ button, input, textarea, select {
   border-color: rgba(248, 113, 113, 0.45);
 }
 
+/* Gmail must use OAuth — prominent in-modal alert (not a separate window). */
+.nm-account-modal__gmail-block-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 16px;
+  margin: 4px 0 10px;
+  border-radius: 12px;
+  border: 2px solid rgba(220, 38, 38, 0.85);
+  background: linear-gradient(145deg, rgba(127, 29, 29, 0.92), rgba(69, 10, 10, 0.95));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 12px 28px rgba(127, 29, 29, 0.45);
+  color: #fef2f2;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.nm-account-modal__gmail-block-overlay strong {
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fecaca;
+}
+
+.nm-account-modal__gmail-block-overlay span {
+  font-weight: 600;
+  opacity: 0.98;
+}
+
 .nm-account-modal__notice--success {
   color: #bbf7d0;
   background: rgba(20, 83, 45, 0.3);
