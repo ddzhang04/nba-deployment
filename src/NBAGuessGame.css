@@ -158,10 +158,6 @@ button, input, textarea, select {
   gap: 8px;
 }
 
-.header-tools-btn__short {
-  display: none;
-}
-
 @media (min-width: 769px) {
   /* Wrappers flatten into one flex row; More stays a normal sibling at the end */
   .header-buttons__account-wrap,
@@ -171,14 +167,6 @@ button, input, textarea, select {
 }
 
 @media (max-width: 768px) {
-  .header-tools-btn__long {
-    display: none;
-  }
-
-  .header-tools-btn__short {
-    display: inline;
-  }
-
   .header-buttons {
     flex-direction: column;
     flex-wrap: nowrap;
