@@ -2174,6 +2174,10 @@ const NBAGuessGame = () => {
     const buildExistingKeySet = (rows) => {
       const set = new Set();
       for (const r of rows || []) {
+        // Linked guest rows (device anon_id, user_id null) appear in get_my_mantle_runs but do not
+        // count on leaderboards until a canonical row exists. Treat only canonical rows as "already
+        // uploaded" so we still upsert user:{id} after sign-in.
+        if (!isCanonicalMantleUserRow(r)) continue;
         const nm = normalizeMantleRunMode(r?.mode);
         const dn = Number(r?.daily_number);
         if (Number.isFinite(dn) && dn >= 1) set.add(`${nm}:${dn}`);
