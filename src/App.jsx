@@ -4,6 +4,7 @@ import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers'
 import { DAILY_PLAYERS, getISODateForDailyIndexFromEpoch, getDailyPuzzleDayIndex } from './data/dailyPlayers';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from './data/ballKnowledgeDailyPlayers';
 import { supabase } from './lib/supabaseClient';
+import { guessCountFromMantleCompletionEntry, pickBetterMantleCompletionEntry } from './lib/mantleMerge';
 
 /** Bump to wipe versioned localStorage keys (daily progress, caches, etc.). */
 const STORAGE_RESET_VERSION = 'v18';
@@ -193,37 +194,6 @@ const parseMantleInProgressDraft = (raw) => {
   }
 };
 
-/** Guess count from a stored daily/hardcore completion entry (local or merged from cloud). */
-const guessCountFromMantleCompletionEntry = (ent) => {
-  if (!ent || typeof ent !== 'object') return 0;
-  const gh = Array.isArray(ent.guessHistory) ? ent.guessHistory.length : 0;
-  const g = Number(ent.guesses);
-  return Math.max(gh, Number.isFinite(g) ? g : 0);
-};
-
-/**
- * When local and cloud both have a row for the same daily, pick the better snapshot.
- * Wins beat losses/reveals; among same outcome, prefer more guesses; then newer completedAt.
- */
-const pickBetterMantleCompletionEntry = (local, cloud) => {
-  if (!local || typeof local !== 'object') return cloud;
-  if (!cloud || typeof cloud !== 'object') return local;
-  const lw = local.won !== false;
-  const cw = cloud.won !== false;
-  if (lw && cw) {
-    const at = String(local.completedAt || '');
-    const bt = String(cloud.completedAt || '');
-    return bt > at ? cloud : local;
-  }
-  if (lw !== cw) return lw ? local : cloud;
-  const lh = guessCountFromMantleCompletionEntry(local);
-  const ch = guessCountFromMantleCompletionEntry(cloud);
-  if (ch !== lh) return ch > lh ? cloud : local;
-  const at = String(local.completedAt || '');
-  const bt = String(cloud.completedAt || '');
-  return bt > at ? cloud : local;
-};
-
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
@@ -388,6 +358,8 @@ const NBAGuessGame = () => {
   /** Only close account modal on backdrop click if pointer down started on the backdrop (avoids closing when text selection ends outside the modal). */
   const accountModalBackdropPointerDownRef = useRef(false);
   const leaderboardBackdropPointerDownRef = useRef(false);
+  /** Synced every render after Daily/Hardcore fields exist — call before OAuth/email sign-in so LS has latest guesses. */
+  const flushInProgressDraftNowRef = useRef(() => {});
 
   const showAccountActivityToast = useCallback((message, variant = 'success') => {
     setAccountActivityToast({ message, variant });
@@ -990,6 +962,11 @@ const NBAGuessGame = () => {
     setAuthError('');
     setAuthNotice('');
     try {
+      try {
+        flushInProgressDraftNowRef.current();
+      } catch {
+        // ignore
+      }
       const timeoutMs = 12000;
       const res = await Promise.race([
         supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword }),
@@ -1128,6 +1105,11 @@ const NBAGuessGame = () => {
     setAuthError('');
     setAuthNotice('');
     try {
+      try {
+        flushInProgressDraftNowRef.current();
+      } catch {
+        // ignore
+      }
       try {
         sessionStorage.setItem(OAUTH_RETURN_EXPECTED_KEY, '1');
       } catch {
@@ -2116,6 +2098,43 @@ const NBAGuessGame = () => {
   const hasExtraPanels = Object.keys(dailyCompletions).length > 0 || Object.keys(ballKnowledgeDailyCompletions).length > 0;
   const isPostGameView = gameWon || showAnswer || dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed;
 
+  useEffect(() => {
+    flushInProgressDraftNowRef.current = () => {
+      if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+      if (gameWon || showAnswer) return;
+      if (!guessHistory.length) return;
+      const draft = {
+        v: MANTLE_IN_PROGRESS_DRAFT_VERSION,
+        mode: gameMode,
+        activeDailyIndex,
+        dailyNumber: activeDailyNumber,
+        guessHistory,
+        guessCount,
+        targetPlayer,
+        targetMaxSimilar,
+        prefetchedTargetTop5,
+        prefetchedTargetTop5For,
+        savedAt: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem(IN_PROGRESS_DRAFT_KEY, JSON.stringify(draft));
+      } catch {}
+    };
+  }, [
+    gameMode,
+    activeDailyIndex,
+    activeDailyNumber,
+    guessHistory,
+    guessCount,
+    gameWon,
+    showAnswer,
+    targetPlayer,
+    targetMaxSimilar,
+    prefetchedTargetTop5,
+    prefetchedTargetTop5For,
+    IN_PROGRESS_DRAFT_KEY,
+  ]);
+
   const clearInProgressDraftStorage = useCallback(() => {
     try {
       localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
@@ -2495,30 +2514,32 @@ const NBAGuessGame = () => {
     }
   }, []);
 
-  // Guests: no persisted completions in the UI. Full refresh clears local completion storage so a
-  // guest reload starts clean; OAuth / first visit keeps localStorage until sign-in hydrate runs.
+  // Guests: no persisted completions in the UI. Full refresh clears completion maps so a guest
+  // reload starts without past wins — but we never drop IN_PROGRESS_DRAFT_KEY here: OAuth / PKCE
+  // return is a full reload and session hydrates after this effect; clearing the draft raced sign-in
+  // and dropped mid-game runs (React Strict Mode also consumed the OAuth preserve flag too early).
   useEffect(() => {
     if (!identityInitialized) return;
     if (authLoading) return;
     if (authSession?.user?.id) return;
     if (isPageReload()) {
-      let preserveInProgressDraft = false;
-      try {
-        preserveInProgressDraft = sessionStorage.getItem(OAUTH_RETURN_EXPECTED_KEY) === '1';
-        if (preserveInProgressDraft) sessionStorage.removeItem(OAUTH_RETURN_EXPECTED_KEY);
-      } catch {
-        // ignore
-      }
       try {
         localStorage.removeItem(DAILY_COMPLETIONS_KEY);
         localStorage.removeItem(BALL_KNOWLEDGE_DAILY_KEY);
-        if (!preserveInProgressDraft) localStorage.removeItem(IN_PROGRESS_DRAFT_KEY);
       } catch {}
     }
     setDailyCompletions({});
     setBallKnowledgeDailyCompletions({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityInitialized, authLoading, authSession?.user?.id]);
+
+  // Clear OAuth "about to return" marker only after session is present (avoid consuming it before hydrate).
+  useEffect(() => {
+    if (!authSession?.user?.id) return;
+    try {
+      sessionStorage.removeItem(OAUTH_RETURN_EXPECTED_KEY);
+    } catch {}
+  }, [authSession?.user?.id]);
 
   const resetPuzzleState = () => {
     setGuess('');
@@ -2604,6 +2625,22 @@ const NBAGuessGame = () => {
       void fetchDailyCeiling();
       return;
     }
+    // If localStorage already has an in-progress draft for this exact puzzle, do not wipe React state.
+    // Otherwise OAuth/sign-in + re-mount can re-run this effect and clear guesses before the draft restore effect runs.
+    try {
+      const raw = localStorage.getItem(IN_PROGRESS_DRAFT_KEY);
+      const d = parseMantleInProgressDraft(raw);
+      if (
+        d &&
+        d.mode === gameMode &&
+        Number(d.dailyNumber) === activeDailyNumber &&
+        Array.isArray(d.guessHistory) &&
+        d.guessHistory.length > 0
+      ) {
+        void fetchDailyCeiling();
+        return;
+      }
+    } catch {}
     // Keep daily/hardcore answers server-side (prevents casual console peeking).
     setTargetPlayer('');
     resetPuzzleState();
@@ -2615,6 +2652,9 @@ const NBAGuessGame = () => {
   useEffect(() => {
     if (!identityInitialized) return;
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+
+    // Live run in memory — never clear draft or reconcile against cloud from this effect.
+    if (guessHistory.length > 0 && !gameWon && !showAnswer) return;
 
     const playedMap = gameMode === 'daily' ? dailyCompletions : ballKnowledgeDailyCompletions;
     let raw = null;
@@ -2634,13 +2674,12 @@ const NBAGuessGame = () => {
     let played =
       (gameMode === 'daily' ? dailyAlreadyPlayed : ballKnowledgeDailyAlreadyPlayed) &&
       !(todayIsRevealOnly && draftMidGame && d?.dailyNumber === activeDailyNumber);
-    // Mid-game sign-in: cloud may have a shorter stale row than this tab's draft — do not treat as finished.
+    // Mid-game sign-in: cloud row may be stale (short history, or bogus win) vs this tab's draft.
     if (
       played &&
       draftMidGame &&
       d?.dailyNumber === activeDailyNumber &&
       todayEntry &&
-      todayEntry.won === false &&
       d.guessHistory.length > guessCountFromMantleCompletionEntry(todayEntry)
     ) {
       played = false;
@@ -2656,8 +2695,15 @@ const NBAGuessGame = () => {
       const ent = playedMap[String(d.dailyNumber)];
       const entryIsWin = typeof ent === 'object' && ent != null && ent.won !== false;
       if (entryIsWin) {
-        clearInProgressDraftStorage();
-        return;
+        const draftBeatsCloudWin =
+          draftMidGame &&
+          d &&
+          d.dailyNumber === activeDailyNumber &&
+          d.guessHistory.length > guessCountFromMantleCompletionEntry(ent);
+        if (!draftBeatsCloudWin) {
+          clearInProgressDraftStorage();
+          return;
+        }
       }
       const entryIsRevealOnly = typeof ent === 'object' && ent != null && ent.won === false;
       const draftAheadOfCloud =
@@ -2708,6 +2754,9 @@ const NBAGuessGame = () => {
     dailyCompletions,
     ballKnowledgeDailyCompletions,
     clearInProgressDraftStorage,
+    guessHistory.length,
+    gameWon,
+    showAnswer,
   ]);
 
   // If the selected daily is already completed, restore its end-state (including Top 5).
@@ -4294,10 +4343,8 @@ const NBAGuessGame = () => {
               )}
             </div>
             <div className="game-header__meta" style={{ marginTop: '6px', fontSize: '12px', color: '#94a3b8' }}>
-              {gameMode === 'daily' &&
-                `Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''}`}
-              {gameMode === 'ballKnowledgeDaily' &&
-                `Hardcore Daily #${activeDailyNumber}${isPastDailySelected ? ' (Past)' : ''}`}
+              {gameMode === 'daily' && `Daily ${activeDailyNumber}`}
+              {gameMode === 'ballKnowledgeDaily' && `Hardcore ${activeDailyNumber}`}
               {gameMode === 'easy' &&
                 `All Stars 1986 or Later (${filteredPlayers.length} players)`}
               {gameMode === 'classic' && 
@@ -4305,12 +4352,6 @@ const NBAGuessGame = () => {
               {gameMode === 'all' && 
                 `All Players: Complete database (${filteredPlayers.length} players)`}
             </div>
-
-            {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
-              <div className="game-header__rollover" style={{ marginTop: '4px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
-                Rollover date (ET): {todayYmdNY || '—'}
-              </div>
-            )}
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
               <div className="game-header__past-row" style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
