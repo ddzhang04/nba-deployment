@@ -1289,6 +1289,10 @@ button, input, textarea, select {
 
 /* Post-game: switch Top 5 vs guesses (wide: under list; narrow: inside answer card) */
 .nm-postgame-view-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
   width: 100%;
   margin-top: 10px;
   padding: 12px 14px;
@@ -1296,10 +1300,18 @@ button, input, textarea, select {
   border: 1px solid rgba(124, 58, 237, 0.55);
   background-color: rgba(124, 58, 237, 0.22);
   color: #ede9fe;
-  font-weight: 900;
+  font-weight: 800;
   cursor: pointer;
   font-size: 0.95rem;
   font-family: inherit;
+}
+
+/* iOS Safari can show a stray glyph when heavy weight + emoji share one text run */
+.nm-postgame-view-toggle__icon {
+  flex: 0 0 auto;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji', sans-serif;
+  font-weight: 400;
+  line-height: 1;
 }
 
 .nm-postgame-view-toggle--in-answer-card {

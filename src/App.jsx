@@ -6368,7 +6368,12 @@ const NBAGuessGame = () => {
                         onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
                         className="nm-postgame-view-toggle nm-postgame-view-toggle--in-answer-card"
                       >
-                        {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
+                        <span className="nm-postgame-view-toggle__icon" aria-hidden="true">
+                          {postGameRightPanelView === 'guesses' ? '📈' : '📝'}
+                        </span>
+                        <span>
+                          {postGameRightPanelView === 'guesses' ? 'Show Top 5 Most Similar' : 'Show Guesses'}
+                        </span>
                       </button>
                     )}
                   </div>
@@ -6866,7 +6871,12 @@ const NBAGuessGame = () => {
                     onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
                     className="nm-postgame-view-toggle nm-postgame-view-toggle--under-guesses"
                   >
-                    {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
+                    <span className="nm-postgame-view-toggle__icon" aria-hidden="true">
+                      {postGameRightPanelView === 'guesses' ? '📈' : '📝'}
+                    </span>
+                    <span>
+                      {postGameRightPanelView === 'guesses' ? 'Show Top 5 Most Similar' : 'Show Guesses'}
+                    </span>
                   </button>
                 )}
                 
