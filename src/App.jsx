@@ -3945,7 +3945,7 @@ const NBAGuessGame = () => {
           </div>
 
           <div className="header-buttons" style={{ marginTop: '2px', marginBottom: '2px' }}>
-            <div className="header-buttons__primary">
+            <div className="header-buttons__account-wrap">
             <button
               type="button"
               className={`nm-header-account-btn${authSession?.user ? ' nm-header-account-btn--signed-in' : ''}`}
@@ -3955,7 +3955,9 @@ const NBAGuessGame = () => {
               <span className="nm-header-account-btn__icon">{authSession?.user ? '✓' : '🔐'}</span>
               <span className="nm-header-account-btn__label">{authSession?.user ? 'Account' : 'Sign in'}</span>
             </button>
+            </div>
 
+            <div className="header-buttons__tools">
             <button
               onClick={() => setShowHowToPlay(true)}
               className="how-to-play-btn"
@@ -4074,7 +4076,6 @@ const NBAGuessGame = () => {
                 🧹 Reset local data
               </button>
             )}
-            </div>
 
             <button
               type="button"
@@ -4096,6 +4097,7 @@ const NBAGuessGame = () => {
               <span>🎮</span>
               <span className="header-buttons__more-label">More / About</span>
             </button>
+            </div>
           </div>
 
           {/* Game Mode Selection */}
@@ -5974,17 +5976,33 @@ const NBAGuessGame = () => {
                 <div className="nm-ceiling-hint" role="status" aria-live="polite">
                   {targetMaxSimilar != null ? (
                     gameMode === 'daily' || gameMode === 'ballKnowledgeDaily' ? (
-                      <span className="nm-ceiling-hint__line">
-                        Closest possible guess for this puzzle:{' '}
-                        <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                        <span className="nm-ceiling-hint__fine"> — best score any guess can reach</span>
-                      </span>
+                      <>
+                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--desktop">
+                          Best score possible for this puzzle:{' '}
+                          <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                          <span className="nm-ceiling-hint__fine"> — max any guess can get</span>
+                        </span>
+                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--mobile">
+                          <span className="nm-ceiling-hint__mobile-inner">
+                            Ceiling <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                            <span className="nm-ceiling-hint__fine"> · max for today</span>
+                          </span>
+                        </span>
+                      </>
                     ) : (
-                      <span className="nm-ceiling-hint__line">
-                        Closest possible guess this round:{' '}
-                        <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                        <span className="nm-ceiling-hint__fine"> — best score any guess can reach</span>
-                      </span>
+                      <>
+                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--desktop">
+                          Best score possible this round:{' '}
+                          <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                          <span className="nm-ceiling-hint__fine"> — max any guess can get</span>
+                        </span>
+                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--mobile">
+                          <span className="nm-ceiling-hint__mobile-inner">
+                            Ceiling <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                            <span className="nm-ceiling-hint__fine"> · max this round</span>
+                          </span>
+                        </span>
+                      </>
                     )
                   ) : (
                     <span className="nm-ceiling-hint--loading">Finding similarity range…</span>

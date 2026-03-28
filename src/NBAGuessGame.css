@@ -139,18 +139,7 @@ button, input, textarea, select {
   letter-spacing: 0.02em;
 }
 
-@media (max-width: 480px) {
-  .nm-header-account-btn {
-    /* Inline with other header tools; row scrolls on very narrow screens. */
-    width: auto;
-    justify-content: center;
-    white-space: nowrap;
-    padding: 10px 14px;
-    font-size: 0.95rem;
-  }
-}
-
-/* Header tools: primary cluster + More/About pinned right on narrow screens */
+/* Header tools: account row on narrow screens; nav buttons in one scrollable row */
 .header-buttons {
   display: flex;
   flex-direction: row;
@@ -161,7 +150,7 @@ button, input, textarea, select {
   width: 100%;
 }
 
-.header-buttons__primary {
+.header-buttons__tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -170,41 +159,60 @@ button, input, textarea, select {
 }
 
 @media (min-width: 769px) {
-  /* One centered toolbar on desktop/wide tablet — wrapper is invisible */
-  .header-buttons__primary {
+  /* One centered toolbar — wrappers flatten into one flex row */
+  .header-buttons__account-wrap,
+  .header-buttons__tools {
     display: contents;
   }
 }
 
 @media (max-width: 768px) {
   .header-buttons {
+    flex-direction: column;
     flex-wrap: nowrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 6px;
+    align-items: stretch;
+    gap: 8px;
   }
 
-  .header-buttons__primary {
+  .header-buttons__account-wrap {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .header-buttons__account-wrap .nm-header-account-btn {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+  }
+
+  .header-buttons__tools {
     display: flex;
+    flex-direction: row;
     flex-wrap: nowrap;
-    flex: 1 1 0;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    width: 100%;
     min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
-    gap: 4px;
-    justify-content: flex-start;
-    align-items: center;
-    padding: 2px 0;
+    padding: 2px 2px 6px;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
 
-  .header-buttons__more {
+  .header-buttons__tools > button {
     flex: 0 0 auto;
   }
+}
 
-  .header-buttons .nm-header-account-btn {
-    width: auto !important;
+@media (max-width: 480px) {
+  .nm-header-account-btn {
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 0.95rem;
   }
 }
 
@@ -857,9 +865,15 @@ button, input, textarea, select {
   }
 
   @media (max-width: 768px) {
-    .header-buttons button {
+    .header-buttons__tools button {
       min-height: 40px;
-      padding: 8px 12px !important;
+      min-width: 0;
+      padding: 8px 10px !important;
+    }
+
+    .header-buttons__account-wrap .nm-header-account-btn {
+      min-height: 44px;
+      min-width: 0;
     }
   }
 
@@ -1250,7 +1264,7 @@ button, input, textarea, select {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* Similarity ceiling — plain text under “Guess a player”, no box; one calm gold tone */
+/* Similarity ceiling — bright yellow; single compact line on narrow viewports */
 .nm-ceiling-hint {
   margin: 0 auto 12px;
   max-width: 42rem;
@@ -1261,40 +1275,64 @@ button, input, textarea, select {
 }
 
 .nm-ceiling-hint__line {
-  color: #d9c9a0;
   font-size: clamp(0.78rem, 2.5vw, 0.86rem);
   font-weight: 400;
   line-height: 1.45;
   letter-spacing: 0.01em;
+  color: #fde047;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.nm-ceiling-hint__line--mobile {
+  display: none;
+}
+
+.nm-ceiling-hint__mobile-inner {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .nm-ceiling-hint__value {
-  font-weight: 400;
-  color: inherit;
+  font-weight: 700;
+  color: #fff566;
 }
 
 .nm-ceiling-hint__fine {
   font-weight: 400;
-  color: inherit;
+  color: #fef9c3;
 }
 
-@media (max-width: 480px) {
-  .nm-ceiling-hint__line {
-    display: block;
-    line-height: 1.5;
+@media (max-width: 768px) {
+  .nm-ceiling-hint {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
 
-  .nm-ceiling-hint__fine {
-    display: block;
-    margin-top: 2px;
+  .nm-ceiling-hint::-webkit-scrollbar {
+    height: 0;
+  }
+
+  .nm-ceiling-hint__line--desktop {
+    display: none !important;
+  }
+
+  .nm-ceiling-hint__line--mobile {
+    display: block !important;
+  }
+
+  .nm-ceiling-hint__line {
+    font-size: clamp(0.7rem, 3.1vw, 0.82rem);
+    line-height: 1.35;
   }
 }
 
 .nm-ceiling-hint--loading {
-  color: #d9c9a0;
+  color: #fde047;
   font-weight: 400;
   font-size: clamp(0.78rem, 2.5vw, 0.86rem);
-  opacity: 0.75;
+  opacity: 0.85;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 /* -------------------------------------------------------------------------- */
