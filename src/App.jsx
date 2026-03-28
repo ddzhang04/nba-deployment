@@ -10,6 +10,15 @@ const STORAGE_RESET_VERSION = 'v18';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 const APP_VERSION = 'v1.0';
 
+const parseStoredCompletionMap = (raw) => {
+  try {
+    const p = JSON.parse(raw || '{}');
+    return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+  } catch {
+    return {};
+  }
+};
+
 /** Canonical mode key for mantle_runs (daily | hardcore). */
 const normalizeMantleRunMode = (rawMode) => {
   const m = String(rawMode || '').trim();
@@ -195,8 +204,7 @@ const NBAGuessGame = () => {
   const [confirmAction, setConfirmAction] = useState(null); // 'reveal' | 'newGame' | null
 
   const key = mantleStorageKey;
-  // Completion keys (legacy). We no longer persist completions, but we still clear these on sign-out/reset
-  // to avoid any stale local data from older versions.
+  // Completion keys — synced with React state and merged with cloud when signed in.
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
   const IN_PROGRESS_DRAFT_KEY = key('nba-mantle-daily-hardcore-in-progress');
@@ -1511,14 +1519,18 @@ const NBAGuessGame = () => {
       };
 
       setDailyCompletions((prev) => {
-        const merged = merge(prev, dailyFromCloud || {});
+        const fromDisk = parseStoredCompletionMap(localStorage.getItem(DAILY_COMPLETIONS_KEY));
+        const localBase = { ...fromDisk, ...prev };
+        const merged = merge(localBase, dailyFromCloud || {});
         try {
           localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(merged));
         } catch {}
         return merged;
       });
       setBallKnowledgeDailyCompletions((prev) => {
-        const merged = merge(prev, hardcoreFromCloud || {});
+        const fromDisk = parseStoredCompletionMap(localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY));
+        const localBase = { ...fromDisk, ...prev };
+        const merged = merge(localBase, hardcoreFromCloud || {});
         try {
           localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(merged));
         } catch {}
@@ -2275,12 +2287,15 @@ const NBAGuessGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authSession, identityInitialized, anonId, anonLinksLinkedForDevice]);
   useEffect(() => {
-    // Ensure a true "start fresh" on new reset versions (and avoid Fast Refresh keeping old state).
+    // On storage version migration, wipe legacy keys then start empty. Otherwise rehydrate from
+    // localStorage so OAuth redirects / full reload keep guest progress until cloud merge runs.
+    let migrated = false;
     try {
       const markerKey = 'nba-mantle-storage-reset-marker';
       const prevMarker = localStorage.getItem(markerKey);
 
       if (prevMarker !== STORAGE_RESET_VERSION) {
+        migrated = true;
         const oldKeys = [
           'nba-mantle-ui-show-daily-history',
           'nba-mantle-ui-show-hardcore-history',
@@ -2310,21 +2325,36 @@ const NBAGuessGame = () => {
       }
     } catch {}
 
-    // Now load post-reset values
-    setDailyCompletions({});
-    setBallKnowledgeDailyCompletions({});
+    if (migrated) {
+      setDailyCompletions({});
+      setBallKnowledgeDailyCompletions({});
+    } else {
+      try {
+        setDailyCompletions(parseStoredCompletionMap(localStorage.getItem(DAILY_COMPLETIONS_KEY)));
+        setBallKnowledgeDailyCompletions(parseStoredCompletionMap(localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY)));
+      } catch {
+        setDailyCompletions({});
+        setBallKnowledgeDailyCompletions({});
+      }
+    }
   }, []);
 
-  // Guests: re-read local progress after identity init so we never stay on empty state if the first
-  // paint ran before localStorage was ready (Safari private / strict modes).
+  // Guests: keep completion maps aligned with localStorage after identity + auth are known.
+  // Wait for auth to finish loading so OAuth return is not mistaken for a signed-out session (which
+  // would clear state before the session restores).
   useEffect(() => {
     if (!identityInitialized) return;
+    if (authLoading) return;
     if (authSession?.user?.id) return;
-    // Guest mode: session-only. We do not persist completions across refresh.
-    setDailyCompletions({});
-    setBallKnowledgeDailyCompletions({});
+    try {
+      setDailyCompletions(parseStoredCompletionMap(localStorage.getItem(DAILY_COMPLETIONS_KEY)));
+      setBallKnowledgeDailyCompletions(parseStoredCompletionMap(localStorage.getItem(BALL_KNOWLEDGE_DAILY_KEY)));
+    } catch {
+      setDailyCompletions({});
+      setBallKnowledgeDailyCompletions({});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identityInitialized, authSession?.user?.id]);
+  }, [identityInitialized, authLoading, authSession?.user?.id]);
 
   const resetPuzzleState = () => {
     setGuess('');
