@@ -1278,7 +1278,7 @@ const NBAGuessGame = () => {
         );
         return;
       }
-      showAccountActivityToast('Signed out. Guest mode on this device — sign in anytime to sync again.', 'success');
+        showAccountActivityToast('Signed out. Guest mode on this device — sign in anytime to save progress again.', 'success');
     })();
   };
 
@@ -5269,7 +5269,7 @@ const NBAGuessGame = () => {
                 >
                   <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>☁️ Cloud, streaks, leaderboards</div>
                   <div style={{ display: 'grid', gap: '6px', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: 1.45 }}>
-                    <div>Sign in to sync Daily + Hardcore progress across devices.</div>
+                    <div>Sign in to save Daily + Hardcore progress to the cloud (works across devices).</div>
                     <div>Live streaks only count if you solve on that puzzle&apos;s scheduled ET day.</div>
                     <div>Use <strong>Stats</strong> for your personal numbers and <strong>Leaderboards</strong> for global rankings.</div>
                   </div>
@@ -6345,7 +6345,7 @@ const NBAGuessGame = () => {
                         <button
                           type="button"
                           onClick={() => setShowAccountModal(true)}
-                          className="nm-sign-in-sync-btn"
+                          className="nm-sign-in-save-btn"
                           style={{
                             padding: '10px 16px',
                             borderRadius: '8px',
@@ -6357,10 +6357,20 @@ const NBAGuessGame = () => {
                             fontSize: '0.9rem',
                           }}
                         >
-                          Sign in to sync
+                          Sign in to save
                         </button>
                       )}
                     </div>
+
+                    {isPostGameView && (
+                      <button
+                        type="button"
+                        onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
+                        className="nm-postgame-view-toggle nm-postgame-view-toggle--in-answer-card"
+                      >
+                        {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
+                      </button>
+                    )}
                   </div>
                 );
               })()}
@@ -6854,18 +6864,7 @@ const NBAGuessGame = () => {
                   <button
                     type="button"
                     onClick={() => setPostGameRightPanelView((prev) => (prev === 'guesses' ? 'top5' : 'guesses'))}
-                    style={{
-                      width: '100%',
-                      marginTop: '10px',
-                      padding: '12px 14px',
-                      borderRadius: '10px',
-                      border: '1px solid rgba(124, 58, 237, 0.55)',
-                      backgroundColor: 'rgba(124, 58, 237, 0.22)',
-                      color: '#ede9fe',
-                      fontWeight: 900,
-                      cursor: 'pointer',
-                      fontSize: '0.95rem',
-                    }}
+                    className="nm-postgame-view-toggle nm-postgame-view-toggle--under-guesses"
                   >
                     {postGameRightPanelView === 'guesses' ? '📈 Show Top 5 Most Similar' : '📝 Show Guesses'}
                   </button>

@@ -1267,24 +1267,53 @@ button, input, textarea, select {
   }
 }
 
-/* End screen: guest “Sign in to sync” next to Share */
-.nm-sign-in-sync-btn {
+/* End screen: guest “Sign in to save” next to Share */
+.nm-sign-in-save-btn {
   font-family: inherit;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.nm-sign-in-sync-btn:hover {
+.nm-sign-in-save-btn:hover {
   background-color: rgba(255, 255, 255, 0.16) !important;
   border-color: rgba(255, 255, 255, 0.55) !important;
 }
 
-.nm-sign-in-sync-btn:focus-visible {
+.nm-sign-in-save-btn:focus-visible {
   outline: 2px solid rgba(147, 197, 253, 0.9);
   outline-offset: 2px;
 }
 
-.nm-sign-in-sync-btn:active {
+.nm-sign-in-save-btn:active {
   background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Post-game: switch Top 5 vs guesses (wide: under list; narrow: inside answer card) */
+.nm-postgame-view-toggle {
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(124, 58, 237, 0.55);
+  background-color: rgba(124, 58, 237, 0.22);
+  color: #ede9fe;
+  font-weight: 900;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.nm-postgame-view-toggle--in-answer-card {
+  display: none;
+}
+
+@media (max-width: 1099px) {
+  .nm-postgame-view-toggle--in-answer-card {
+    display: block;
+  }
+
+  .guess-history-aside .nm-postgame-view-toggle--under-guesses {
+    display: none;
+  }
 }
 
 /* Similarity ceiling — bright yellow */
