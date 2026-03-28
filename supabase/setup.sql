@@ -462,8 +462,8 @@ AS $$
     a.w AS wins,
     a.tg AS total_guesses,
     a.tga AS total_guesses_all,
-    coalesce(ms.max_ls, 0::bigint) AS max_live_streak,
-    coalesce(cs.cur_ls, 0::bigint) AS current_live_streak
+    CASE WHEN a.w = 0 THEN 0::bigint ELSE coalesce(ms.max_ls, 0::bigint) END AS max_live_streak,
+    CASE WHEN a.w = 0 THEN 0::bigint ELSE coalesce(cs.cur_ls, 0::bigint) END AS current_live_streak
   FROM agg a
   LEFT JOIN public.profiles p ON p.user_id = a.uid
   LEFT JOIN max_streak ms ON ms.uid = a.uid

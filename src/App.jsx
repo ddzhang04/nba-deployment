@@ -526,9 +526,14 @@ const NBAGuessGame = () => {
         if (e.currentStreak > prev.currentStreak) prev.currentStreak = e.currentStreak;
       }
       const mergedEntries = Array.from(byUser.values()).map((e) => {
-        const avgGuesses = e.wins > 0 ? e.totalGuessesWins / e.wins : null;
+        const wins = Number(e.wins) || 0;
+        const avgGuesses = wins > 0 ? e.totalGuessesWins / wins : null;
+        // Streaks are win-only in SQL; clamp so a reveal-only day (0 wins) never shows a phantom streak.
+        const streakSafe = wins <= 0 ? { currentStreak: 0, maxStreak: 0 } : {};
         return {
           ...e,
+          wins,
+          ...streakSafe,
           avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
         };
       });
@@ -578,13 +583,17 @@ const NBAGuessGame = () => {
 
       const streaks = pinViewerIfMissing(
         mergedEntries
+          .filter((e) => (Number(e.maxStreak) || 0) > 0 || (Number(e.currentStreak) || 0) > 0)
           .sort((a, b) => {
             if (a.maxStreak !== b.maxStreak) return b.maxStreak - a.maxStreak;
             if (a.currentStreak !== b.currentStreak) return b.currentStreak - a.currentStreak;
             return b.wins - a.wins;
           })
           .slice(0, limit),
-        () => true
+        () => {
+          const v = getViewerSnapshot();
+          return !!(v && ((Number(v.maxStreak) || 0) > 0 || (Number(v.currentStreak) || 0) > 0));
+        }
       );
 
       const guesses = pinViewerIfMissing(
@@ -5568,7 +5577,7 @@ const NBAGuessGame = () => {
                       id: 'streaks',
                       title: 'Streaks',
                       subtitle:
-                        'Best = longest ever run of consecutive winning puzzle days. Active = your current run through the latest daily.',
+                        "Wins only (reveals don't count). Best = longest run of consecutive winning puzzle numbers. Active = your current winning run through the latest daily you actually won.",
                       rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
                       metric: (e) => `Best ${e?.maxStreak ?? 0}`,
                       extra: (e) => `Active ${e?.currentStreak ?? 0}`,
@@ -5589,7 +5598,11 @@ const NBAGuessGame = () => {
                       metric: (e) => `${e?.totalGuessesAll ?? 0} guesses`,
                       extra: (e) => `${e?.wins ?? 0} wins`,
                     },
-                  ].map((section) => (
+                  ].map((section) => {
+                    const lbSessionUid = authSession?.user?.id
+                      ? String(authSession.user.id).trim().toLowerCase()
+                      : '';
+                    return (
                     <div key={section.id} className="nm-lb-card">
                       <div className="nm-lb-card__head">
                         <div className="nm-lb-card__title">{section.title}</div>
@@ -5600,11 +5613,13 @@ const NBAGuessGame = () => {
                           {section.rows.map((entry, idx) => {
                             const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
                             const rankLabel = medal || `#${idx + 1}`;
+                            const rowUid = String(entry?.userId || '').trim().toLowerCase();
+                            const isYou = !!lbSessionUid && !!rowUid && rowUid === lbSessionUid;
                             return (
                               <div
                                 key={`${section.id}-${entry?.userId || entry?.user || idx}`}
                                 className={`nm-lb-row${idx < 3 ? ` nm-lb-row--podium nm-lb-row--podium-${idx + 1}` : ''}${
-                                  entry?.viewerPinned ? ' nm-lb-row--you' : ''
+                                  isYou ? ' nm-lb-row--you' : ''
                                 }`}
                               >
                                 <div
@@ -5617,6 +5632,11 @@ const NBAGuessGame = () => {
                                   <div className="nm-lb-row__name">
                                     {entry?.verified ? '✓ ' : ''}
                                     {entry?.user || 'Player'}
+                                    {isYou ? (
+                                      <span className="nm-lb-row__you-badge" aria-label="Your account">
+                                        You
+                                      </span>
+                                    ) : null}
                                   </div>
                                   <div className="nm-lb-row__meta">{section.extra(entry)}</div>
                                 </div>
@@ -5629,11 +5649,13 @@ const NBAGuessGame = () => {
                         <div className="nm-lb-empty">No entries yet.</div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <p className="nm-lb-foot">
-                Puzzle days 1–{leaderboardData?.todayDailyNumber ?? '—'} · Streaks use consecutive winning puzzle numbers (not calendar dates).
+                Puzzle days 1–{leaderboardData?.todayDailyNumber ?? '—'} · &quot;Days played&quot; counts a win or a
+                reveal; streaks count wins only (consecutive puzzle numbers, not calendar dates).
               </p>
             </div>
           </div>

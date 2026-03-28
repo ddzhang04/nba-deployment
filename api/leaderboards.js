@@ -106,17 +106,20 @@ export default async function handler(req, res) {
       const totalGuesses = Number(r?.total_guesses) || 0;
       const totalGuessesAll = Number(r?.total_guesses_all) || totalGuesses;
       const avgGuesses = wins > 0 ? totalGuesses / wins : null;
+      const winsN = wins;
+      const streakClamp = winsN <= 0 ? { currentStreak: 0, maxStreak: 0 } : {};
       return {
         anon_id,
         user: prof?.display_name || `Player ${hashAnonId(anon_id).slice(0, 4)}`,
         avatarUrl: prof?.avatar_url || '',
         verified: prof?.is_verified === true || VERIFIED_ANON_IDS.has(anon_id),
         completions,
-        wins,
+        wins: winsN,
         totalGuessesAll,
         avgGuesses: avgGuesses == null ? null : Number(avgGuesses.toFixed(2)),
         currentStreak: Number(r?.current_live_streak) || 0,
         maxStreak: Number(r?.max_live_streak) || 0,
+        ...streakClamp,
       };
     });
 
