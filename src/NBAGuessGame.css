@@ -139,7 +139,7 @@ button, input, textarea, select {
   letter-spacing: 0.02em;
 }
 
-/* Header tools: account row on narrow screens; nav buttons in one scrollable row */
+/* Header tools: account row; compact wrapped tools; More/About separate on narrow screens */
 .header-buttons {
   display: flex;
   flex-direction: row;
@@ -158,8 +158,12 @@ button, input, textarea, select {
   gap: 8px;
 }
 
+.header-tools-btn__short {
+  display: none;
+}
+
 @media (min-width: 769px) {
-  /* One centered toolbar — wrappers flatten into one flex row */
+  /* Wrappers flatten into one flex row; More stays a normal sibling at the end */
   .header-buttons__account-wrap,
   .header-buttons__tools {
     display: contents;
@@ -167,11 +171,19 @@ button, input, textarea, select {
 }
 
 @media (max-width: 768px) {
+  .header-tools-btn__long {
+    display: none;
+  }
+
+  .header-tools-btn__short {
+    display: inline;
+  }
+
   .header-buttons {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: 8px;
+    gap: 6px;
   }
 
   .header-buttons__account-wrap {
@@ -188,23 +200,51 @@ button, input, textarea, select {
   .header-buttons__tools {
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 4px;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 6px;
     width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 2px 2px 6px;
+    overflow: visible;
+    padding: 0;
     box-sizing: border-box;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
   }
 
   .header-buttons__tools > button {
-    flex: 0 0 auto;
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 0;
+    max-width: calc(33.333% - 4px);
+    box-sizing: border-box;
+    justify-content: center;
+    font-size: 11px !important;
+    padding: 8px 4px !important;
+    line-height: 1.15;
+  }
+
+  .header-buttons__tools > button:only-child {
+    flex: 0 1 auto;
+    max-width: min(280px, 100%);
+  }
+
+  /* More / About: own row, link-style — keeps tools row to three compact actions */
+  .header-buttons > .header-buttons__more {
+    align-self: center;
+    margin-top: 0;
+    padding: 8px 14px !important;
+    font-size: 12px !important;
+    font-weight: 600;
+    min-height: 36px !important;
+    border: none !important;
+    border-radius: 999px !important;
+    background: rgba(30, 41, 59, 0.65) !important;
+    color: #93c5fd !important;
+    text-decoration: none;
+    box-shadow: none;
+  }
+
+  .header-buttons > .header-buttons__more:hover {
+    background: rgba(51, 65, 85, 0.85) !important;
+    color: #bfdbfe !important;
   }
 }
 
@@ -1264,7 +1304,7 @@ button, input, textarea, select {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* Similarity ceiling — bright yellow; single compact line on narrow viewports */
+/* Similarity ceiling — bright yellow */
 .nm-ceiling-hint {
   margin: 0 auto 12px;
   max-width: 42rem;
@@ -1283,47 +1323,18 @@ button, input, textarea, select {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
-.nm-ceiling-hint__line--mobile {
-  display: none;
-}
-
-.nm-ceiling-hint__mobile-inner {
-  display: inline-block;
-  white-space: nowrap;
-}
-
 .nm-ceiling-hint__value {
   font-weight: 700;
   color: #fff566;
 }
 
-.nm-ceiling-hint__fine {
-  font-weight: 400;
-  color: #fef9c3;
-}
-
 @media (max-width: 768px) {
-  .nm-ceiling-hint {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .nm-ceiling-hint::-webkit-scrollbar {
-    height: 0;
-  }
-
-  .nm-ceiling-hint__line--desktop {
-    display: none !important;
-  }
-
-  .nm-ceiling-hint__line--mobile {
-    display: block !important;
-  }
-
   .nm-ceiling-hint__line {
-    font-size: clamp(0.7rem, 3.1vw, 0.82rem);
-    line-height: 1.35;
+    font-size: clamp(0.72rem, 3vw, 0.84rem);
+    line-height: 1.4;
+    max-width: 22rem;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 

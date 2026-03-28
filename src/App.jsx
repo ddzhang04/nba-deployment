@@ -3975,7 +3975,8 @@ const NBAGuessGame = () => {
               }}
             >
               <span>❓</span>
-              <span>How to Play</span>
+              <span className="header-tools-btn__long">How to Play</span>
+              <span className="header-tools-btn__short">Help</span>
             </button>
 
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
@@ -4017,7 +4018,8 @@ const NBAGuessGame = () => {
                 title="Toggle history panels"
               >
                 <span>🧾</span>
-                <span>{showSecondaryPanel ? 'Hide history panels' : 'Show history panels'}</span>
+                <span className="header-tools-btn__long">{showSecondaryPanel ? 'Hide history panels' : 'Show history panels'}</span>
+                <span className="header-tools-btn__short">{showSecondaryPanel ? 'Hide' : 'History'}</span>
               </button>
             )}
             {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && (
@@ -4040,7 +4042,8 @@ const NBAGuessGame = () => {
                 }}
               >
                 <span>🏆</span>
-                <span>Leaderboards</span>
+                <span className="header-tools-btn__long">Leaderboards</span>
+                <span className="header-tools-btn__short">Boards</span>
               </button>
             )}
 
@@ -4076,6 +4079,7 @@ const NBAGuessGame = () => {
                 🧹 Reset local data
               </button>
             )}
+            </div>
 
             <button
               type="button"
@@ -4097,7 +4101,6 @@ const NBAGuessGame = () => {
               <span>🎮</span>
               <span className="header-buttons__more-label">More / About</span>
             </button>
-            </div>
           </div>
 
           {/* Game Mode Selection */}
@@ -5975,35 +5978,10 @@ const NBAGuessGame = () => {
               {!gameWon && !showAnswer && !dailyAlreadyPlayed && !ballKnowledgeDailyAlreadyPlayed && (
                 <div className="nm-ceiling-hint" role="status" aria-live="polite">
                   {targetMaxSimilar != null ? (
-                    gameMode === 'daily' || gameMode === 'ballKnowledgeDaily' ? (
-                      <>
-                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--desktop">
-                          Best score possible for this puzzle:{' '}
-                          <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                          <span className="nm-ceiling-hint__fine"> — max any guess can get</span>
-                        </span>
-                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--mobile">
-                          <span className="nm-ceiling-hint__mobile-inner">
-                            Ceiling <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                            <span className="nm-ceiling-hint__fine"> · max for today</span>
-                          </span>
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--desktop">
-                          Best score possible this round:{' '}
-                          <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                          <span className="nm-ceiling-hint__fine"> — max any guess can get</span>
-                        </span>
-                        <span className="nm-ceiling-hint__line nm-ceiling-hint__line--mobile">
-                          <span className="nm-ceiling-hint__mobile-inner">
-                            Ceiling <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
-                            <span className="nm-ceiling-hint__fine"> · max this round</span>
-                          </span>
-                        </span>
-                      </>
-                    )
+                    <span className="nm-ceiling-hint__line">
+                      The closest any guess gets to the mystery player is{' '}
+                      <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>.
+                    </span>
                   ) : (
                     <span className="nm-ceiling-hint--loading">Finding similarity range…</span>
                   )}
