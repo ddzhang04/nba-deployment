@@ -5974,16 +5974,16 @@ const NBAGuessGame = () => {
                 <div className="nm-ceiling-hint" role="status" aria-live="polite">
                   {targetMaxSimilar != null ? (
                     gameMode === 'daily' || gameMode === 'ballKnowledgeDaily' ? (
-                      <span>
+                      <span className="nm-ceiling-hint__line">
                         Closest possible guess for this puzzle:{' '}
-                        <strong className="nm-ceiling-hint__value">{targetMaxSimilar}/100</strong>
-                        <span className="nm-ceiling-hint__fine"> (best single guess score)</span>
+                        <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                        <span className="nm-ceiling-hint__fine"> — best score any guess can reach</span>
                       </span>
                     ) : (
-                      <span>
+                      <span className="nm-ceiling-hint__line">
                         Closest possible guess this round:{' '}
-                        <strong className="nm-ceiling-hint__value">{targetMaxSimilar}/100</strong>
-                        <span className="nm-ceiling-hint__fine"> (best single guess score)</span>
+                        <span className="nm-ceiling-hint__value">{targetMaxSimilar}/100</span>
+                        <span className="nm-ceiling-hint__fine"> — best score any guess can reach</span>
                       </span>
                     )
                   ) : (
