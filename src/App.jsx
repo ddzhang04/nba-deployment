@@ -351,6 +351,8 @@ const NBAGuessGame = () => {
   const [profileSaveUi, setProfileSaveUi] = useState('idle');
   const [accountActivityToast, setAccountActivityToast] = useState(null); // { variant, message } | null
   const accountActivityToastTimerRef = useRef(null);
+  /** Only close account modal on backdrop click if pointer down started on the backdrop (avoids closing when text selection ends outside the modal). */
+  const accountModalBackdropPointerDownRef = useRef(false);
 
   const showAccountActivityToast = useCallback((message, variant = 'success') => {
     setAccountActivityToast({ message, variant });
@@ -746,6 +748,24 @@ const NBAGuessGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // OAuth: if the user leaves for Google then hits Back (bfcache) or returns to the tab, reset the
+  // "Opening Google…" button — the signInWithOAuth promise may never settle in that path.
+  useEffect(() => {
+    const clearGoogleAuthAction = () => {
+      setEmailAuthAction((a) => (a === 'google' ? null : a));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') clearGoogleAuthAction();
+    };
+    const onPageShow = () => clearGoogleAuthAction();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, []);
+
   const getDefaultDisplayNameForUser = (user) => {
     const md = user?.user_metadata || {};
     return (
@@ -1093,6 +1113,7 @@ const NBAGuessGame = () => {
     } catch (e) {
       console.error('Google sign-in error:', e);
       setAuthError(e?.message || 'Google sign-in failed');
+    } finally {
       setEmailAuthAction(null);
     }
   };
@@ -2541,6 +2562,14 @@ const NBAGuessGame = () => {
   // If the selected daily is already completed, restore its end-state (including Top 5).
   useEffect(() => {
     if (gameMode !== 'daily' && gameMode !== 'ballKnowledgeDaily') return;
+    // Mid-game sign-in: don't replace live guesses with completion/hydrate (race with cloud merge).
+    const inProgress =
+      guessHistory.length > 0 &&
+      !gameWon &&
+      !showAnswer &&
+      !(gameMode === 'daily' ? dailyAlreadyPlayed : ballKnowledgeDailyAlreadyPlayed);
+    if (inProgress) return;
+
     const completion = getActiveCompletionEntry();
     if (!completion) return;
 
@@ -2631,6 +2660,9 @@ const NBAGuessGame = () => {
     ballKnowledgeDailyCompletions,
     authSession?.user?.id,
     cloudHydrateTick,
+    guessHistory.length,
+    gameWon,
+    showAnswer,
   ]);
 
   // After a win (or when viewing a completed daily), show global average guesses for this daily (if available).
@@ -5477,7 +5509,15 @@ const NBAGuessGame = () => {
             role="dialog"
             aria-modal="true"
             aria-label="Account"
-            onClick={() => {
+            onPointerDown={(e) => {
+              accountModalBackdropPointerDownRef.current = e.target === e.currentTarget;
+            }}
+            onClick={(e) => {
+              if (e.target !== e.currentTarget || !accountModalBackdropPointerDownRef.current) {
+                accountModalBackdropPointerDownRef.current = false;
+                return;
+              }
+              accountModalBackdropPointerDownRef.current = false;
               setShowForgotPassword(false);
               setShowAccountModal(false);
             }}

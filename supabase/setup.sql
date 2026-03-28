@@ -65,12 +65,35 @@ RETURNS TABLE (avg numeric, wins bigint)
 LANGUAGE sql
 STABLE
 AS $$
+  WITH base AS (
+    SELECT
+      mr.guesses,
+      mr.won,
+      coalesce(
+        mr.user_id::text,
+        CASE
+          WHEN mr.anon_id LIKE 'user:%' THEN nullif(split_part(mr.anon_id, 'user:', 2), '')
+          ELSE mr.anon_id
+        END
+      ) AS dedupe_key
+    FROM public.mantle_runs mr
+    WHERE mr.mode = p_mode
+      AND mr.daily_number = p_daily_number
+  ),
+  dedup AS (
+    SELECT DISTINCT ON (dedupe_key)
+      guesses,
+      won
+    FROM base
+    ORDER BY
+      dedupe_key,
+      won DESC,
+      guesses ASC NULLS LAST
+  )
   SELECT
-    AVG((mr.guesses)::numeric) FILTER (WHERE mr.won = true) AS avg,
-    COUNT(*) FILTER (WHERE mr.won = true)::bigint AS wins
-  FROM public.mantle_runs mr
-  WHERE mr.mode = p_mode
-    AND mr.daily_number = p_daily_number
+    AVG((dedup.guesses)::numeric) FILTER (WHERE dedup.won = true) AS avg,
+    COUNT(*) FILTER (WHERE dedup.won = true)::bigint AS wins
+  FROM dedup
   ;
 $$;
 
@@ -205,15 +228,41 @@ RETURNS TABLE (daily_number int, avg numeric, wins bigint)
 LANGUAGE sql
 STABLE
 AS $$
+  WITH base AS (
+    SELECT
+      mr.daily_number::int AS dn,
+      mr.guesses,
+      mr.won,
+      coalesce(
+        mr.user_id::text,
+        CASE
+          WHEN mr.anon_id LIKE 'user:%' THEN nullif(split_part(mr.anon_id, 'user:', 2), '')
+          ELSE mr.anon_id
+        END
+      ) AS dedupe_key
+    FROM public.mantle_runs mr
+    WHERE mr.mode = p_mode
+      AND mr.won = true
+  ),
+  dedup AS (
+    SELECT DISTINCT ON (dn, dedupe_key)
+      dn,
+      guesses,
+      won
+    FROM base
+    ORDER BY
+      dn,
+      dedupe_key,
+      guesses ASC NULLS LAST
+  )
   SELECT
-    mr.daily_number::int,
-    AVG(mr.guesses::numeric),
+    dedup.dn,
+    AVG(dedup.guesses::numeric),
     COUNT(*)::bigint
-  FROM public.mantle_runs mr
-  WHERE mr.mode = p_mode
-    AND mr.won = true
-  GROUP BY mr.daily_number
-  ORDER BY mr.daily_number;
+  FROM dedup
+  WHERE dedup.won = true
+  GROUP BY dedup.dn
+  ORDER BY dedup.dn;
 $$;
 
 -- Anyone can read global averages (same data the leaderboard uses).
