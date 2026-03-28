@@ -30,6 +30,12 @@ CREATE INDEX IF NOT EXISTS mantle_runs_user_id_idx ON public.mantle_runs (user_i
 CREATE INDEX IF NOT EXISTS mantle_runs_anon_id_idx ON public.mantle_runs (anon_id);
 CREATE INDEX IF NOT EXISTS mantle_runs_mode_daily_idx ON public.mantle_runs (mode, daily_number);
 
+-- Some DBs added a unique (user_id, mode, daily_number). The app intentionally may have two rows
+-- for the same auth user on the same puzzle: e.g. canonical `user:{uuid}` anon_id and a device
+-- anon row (emulateGuest) while both carry attribution — only (anon_id, mode, daily_number) is canonical.
+ALTER TABLE public.mantle_runs DROP CONSTRAINT IF EXISTS mantle_runs_user_mode_daily_uidx;
+DROP INDEX IF EXISTS public.mantle_runs_user_mode_daily_uidx;
+
 -- ---------------------------------------------------------------------------
 -- 1b) mantle_run_attempts — append-only history (every completion = new row)
 -- This prevents overwrites when you play the same daily on multiple accounts/devices.

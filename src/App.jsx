@@ -1397,10 +1397,23 @@ const NBAGuessGame = () => {
 
       // One row per (anon_id, mode, daily_number) — DB enforces uniqueness (e.g. mantle_runs_unique).
       // Upsert so replays / retries update instead of violating the constraint.
-      try {
-        const ins = await supabase.from('mantle_runs').upsert(payload, {
+      const upsertMantleRun = async (body) =>
+        supabase.from('mantle_runs').upsert(body, {
           onConflict: 'anon_id,mode,daily_number',
         });
+
+      try {
+        let ins = await upsertMantleRun(payload);
+        // Legacy DBs: unique (user_id, mode, daily_number) conflicts with emulateGuest (device anon + user_id).
+        const errStr = `${ins?.error?.message || ''} ${ins?.error?.details || ''} ${ins?.error?.hint || ''}`;
+        const dupUserModeDaily =
+          emulateGuest &&
+          user_id &&
+          ins?.error &&
+          /mantle_runs_user_mode_daily|user_mode_daily/i.test(errStr);
+        if (dupUserModeDaily) {
+          ins = await upsertMantleRun({ ...payload, user_id: null });
+        }
         if (ins?.error) throw ins.error;
       } catch (e) {
         // Fallback for older DBs that don't have detail columns yet.
@@ -1416,9 +1429,21 @@ const NBAGuessGame = () => {
             won,
           };
           try {
-            const retry = await supabase.from('mantle_runs').upsert(retryPayload, {
+            let retry = await supabase.from('mantle_runs').upsert(retryPayload, {
               onConflict: 'anon_id,mode,daily_number',
             });
+            const retryErrStr = `${retry?.error?.message || ''} ${retry?.error?.details || ''}`;
+            if (
+              retry?.error &&
+              emulateGuest &&
+              user_id &&
+              /mantle_runs_user_mode_daily|user_mode_daily/i.test(retryErrStr)
+            ) {
+              retry = await supabase.from('mantle_runs').upsert(
+                { ...retryPayload, user_id: null },
+                { onConflict: 'anon_id,mode,daily_number' }
+              );
+            }
             if (!retry?.error) {
               setMantleRunsDetailsSupported(false);
             } else {
