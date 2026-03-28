@@ -353,6 +353,7 @@ const NBAGuessGame = () => {
   const accountActivityToastTimerRef = useRef(null);
   /** Only close account modal on backdrop click if pointer down started on the backdrop (avoids closing when text selection ends outside the modal). */
   const accountModalBackdropPointerDownRef = useRef(false);
+  const leaderboardBackdropPointerDownRef = useRef(false);
 
   const showAccountActivityToast = useCallback((message, variant = 'success') => {
     setAccountActivityToast({ message, variant });
@@ -1099,10 +1100,12 @@ const NBAGuessGame = () => {
       const configuredRedirectTo = import.meta.env.VITE_SUPABASE_OAUTH_REDIRECT_TO || '';
       const payload = {
         provider: 'google',
+        options: {
+          // Always show Google’s account picker instead of silently reusing the last session.
+          queryParams: { prompt: 'select_account' },
+          ...(configuredRedirectTo ? { redirectTo: getRedirectToWithSid(configuredRedirectTo) } : {}),
+        },
       };
-      if (configuredRedirectTo) {
-        payload.options = { redirectTo: getRedirectToWithSid(configuredRedirectTo) };
-      }
 
       const timeoutMs = 12000;
       const res = await Promise.race([
@@ -5199,51 +5202,36 @@ const NBAGuessGame = () => {
         {/* Leaderboards Modal */}
         {showLeaderboards && (
           <div
-            onClick={() => setShowLeaderboards(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(15,23,42,0.88)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 52,
-              padding: '16px',
+            role="dialog"
+            aria-modal="true"
+            aria-label="Leaderboards"
+            className="nm-lb-overlay"
+            onPointerDown={(e) => {
+              leaderboardBackdropPointerDownRef.current = e.target === e.currentTarget;
+            }}
+            onClick={(e) => {
+              if (e.target !== e.currentTarget || !leaderboardBackdropPointerDownRef.current) {
+                leaderboardBackdropPointerDownRef.current = false;
+                return;
+              }
+              leaderboardBackdropPointerDownRef.current = false;
+              setShowLeaderboards(false);
             }}
           >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '700px',
-                maxHeight: '90vh',
-                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-                borderRadius: '16px',
-                padding: '18px',
-                border: '1px solid #334155',
-                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
-                overflowY: 'auto',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h2 style={{ fontSize: '1.35rem', margin: 0, color: '#e5e7eb' }}>Leaderboards</h2>
+            <div className="nm-lb-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="nm-lb-modal__header">
+                <h2 className="nm-lb-modal__title">Leaderboards</h2>
                 <button
+                  type="button"
+                  className="nm-lb-modal__close"
                   onClick={() => setShowLeaderboards(false)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    color: '#9ca3af',
-                    cursor: 'pointer',
-                    fontSize: '18px',
-                    padding: '4px 8px',
-                    borderRadius: '999px',
-                  }}
+                  aria-label="Close leaderboards"
                 >
                   ×
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+              <div className="nm-lb-toolbar">
                 {[
                   { id: 'daily', label: 'Daily' },
                   { id: 'hardcore', label: 'Hardcore' },
@@ -5252,129 +5240,109 @@ const NBAGuessGame = () => {
                   return (
                     <button
                       key={opt.id}
+                      type="button"
+                      className={`nm-lb-toolbar__tab${active ? ' nm-lb-toolbar__tab--active' : ''}`}
                       onClick={() => setLeaderboardMode(opt.id)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '10px',
-                        border: active ? '1px solid #7c3aed' : '1px solid #4b5563',
-                        backgroundColor: active ? 'rgba(124, 58, 237, 0.2)' : '#111827',
-                        color: active ? '#ede9fe' : '#9ca3af',
-                        fontSize: '12px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
                     >
                       {opt.label}
                     </button>
                   );
                 })}
                 <button
+                  type="button"
+                  className="nm-lb-toolbar__refresh"
                   onClick={() => void loadLeaderboards(leaderboardMode, { force: true })}
-                  style={{
-                    marginLeft: 'auto',
-                    padding: '8px 12px',
-                    borderRadius: '10px',
-                    border: '1px solid #4b5563',
-                    backgroundColor: '#111827',
-                    color: '#cbd5e1',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
                 >
                   Refresh
                 </button>
               </div>
 
               {leaderboardLoading && !leaderboardData ? (
-                <div style={{ color: '#cbd5e1', fontSize: '0.95rem', padding: '6px 2px' }}>Loading leaderboards…</div>
+                <div className="nm-lb-loading">Loading leaderboards…</div>
               ) : leaderboardError ? (
-                <div style={{ color: '#fca5a5', fontSize: '0.95rem', padding: '6px 2px' }}>{leaderboardError}</div>
+                <div className="nm-lb-error">{leaderboardError}</div>
               ) : (
-                <div style={{ display: 'grid', gap: '10px' }}>
+                <div className="nm-lb-sections">
                   {[
                     {
                       id: 'wins',
-                      title: 'Most Wins',
-                      subtitle: 'Top by wins',
+                      title: 'Most wins',
+                      subtitle: 'Ranked by total wins, then lower avg guesses, then best streak.',
                       rows: Array.isArray(leaderboardData?.wins) ? leaderboardData.wins : [],
                       metric: (e) => `${e?.wins ?? 0} wins`,
-                      extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg` : '—'),
+                      extra: (e) => (Number.isFinite(Number(e?.avgGuesses)) ? `${Number(e.avgGuesses).toFixed(2)} avg guesses` : '—'),
                     },
                     {
                       id: 'streaks',
-                      title: 'Longest Streak',
-                      subtitle: 'Best + current',
+                      title: 'Streaks',
+                      subtitle:
+                        'Best = longest ever run of consecutive winning puzzle days. Active = your current run through the latest daily.',
                       rows: Array.isArray(leaderboardData?.streaks) ? leaderboardData.streaks : [],
-                      metric: (e) => `${e?.maxStreak ?? 0} best`,
-                      extra: (e) => `${e?.currentStreak ?? 0} current`,
+                      metric: (e) => `Best ${e?.maxStreak ?? 0}`,
+                      extra: (e) => `Active ${e?.currentStreak ?? 0}`,
                     },
                     {
                       id: 'completed',
-                      title: 'Most Completed',
-                      subtitle: 'Top by completed days',
+                      title: 'Most days played',
+                      subtitle: 'Any finish (win or reveal) counts as a completed day.',
                       rows: Array.isArray(leaderboardData?.completed) ? leaderboardData.completed : [],
-                      metric: (e) => `${e?.completions ?? 0} completed`,
+                      metric: (e) => `${e?.completions ?? 0} days`,
                       extra: (e) => `${e?.wins ?? 0} wins`,
                     },
                     {
                       id: 'guesses',
-                      title: 'Most Guesses',
-                      subtitle: 'Top by volume',
+                      title: 'Most guesses',
+                      subtitle: 'Total guesses across all your daily attempts in this window.',
                       rows: Array.isArray(leaderboardData?.guesses) ? leaderboardData.guesses : [],
                       metric: (e) => `${e?.totalGuessesAll ?? 0} guesses`,
                       extra: (e) => `${e?.wins ?? 0} wins`,
                     },
                   ].map((section) => (
-                    <div
-                      key={section.id}
-                      style={{
-                        borderRadius: '12px',
-                        border: '1px solid #334155',
-                        backgroundColor: 'rgba(15, 23, 42, 0.45)',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(51, 65, 85, 0.7)' }}>
-                        <div style={{ color: '#e5e7eb', fontWeight: 800, fontSize: '0.95rem' }}>{section.title}</div>
-                        <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '2px' }}>{section.subtitle}</div>
+                    <div key={section.id} className="nm-lb-card">
+                      <div className="nm-lb-card__head">
+                        <div className="nm-lb-card__title">{section.title}</div>
+                        <div className="nm-lb-card__sub">{section.subtitle}</div>
                       </div>
                       {section.rows.length ? (
-                        <div style={{ maxHeight: 'min(360px, 55vh)', overflowY: 'auto' }}>
-                          {/* Backend returns up to ~21 rows (top 20 + optional pinned you); do not cap at 10 or rank 11+ is invisible. */}
-                          {section.rows.map((entry, idx) => (
-                            <div
-                              key={`${section.id}-${entry?.userId || entry?.user || idx}`}
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: '40px minmax(0,1fr) auto',
-                                alignItems: 'center',
-                                gap: '8px',
-                                padding: '10px 12px',
-                                borderTop: idx === 0 ? 'none' : '1px solid rgba(51, 65, 85, 0.55)',
-                              }}
-                            >
-                              <div style={{ color: '#93c5fd', fontWeight: 800 }}>#{idx + 1}</div>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ color: '#e5e7eb', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {entry?.verified ? '✓ ' : ''}{entry?.user || 'Player'}
+                        <div className="nm-lb-rows">
+                          {section.rows.map((entry, idx) => {
+                            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+                            const rankLabel = medal || `#${idx + 1}`;
+                            return (
+                              <div
+                                key={`${section.id}-${entry?.userId || entry?.user || idx}`}
+                                className={`nm-lb-row${idx < 3 ? ` nm-lb-row--podium nm-lb-row--podium-${idx + 1}` : ''}${
+                                  entry?.viewerPinned ? ' nm-lb-row--you' : ''
+                                }`}
+                              >
+                                <div
+                                  className="nm-lb-row__rank"
+                                  aria-label={medal ? `Rank ${idx + 1}` : `Rank ${idx + 1}`}
+                                >
+                                  {rankLabel}
                                 </div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.78rem' }}>{section.extra(entry)}</div>
+                                <div className="nm-lb-row__main">
+                                  <div className="nm-lb-row__name">
+                                    {entry?.verified ? '✓ ' : ''}
+                                    {entry?.user || 'Player'}
+                                  </div>
+                                  <div className="nm-lb-row__meta">{section.extra(entry)}</div>
+                                </div>
+                                <div className="nm-lb-row__stat">{section.metric(entry)}</div>
                               </div>
-                              <div style={{ color: '#f8fafc', fontWeight: 800, fontSize: '0.9rem' }}>{section.metric(entry)}</div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
-                        <div style={{ padding: '12px', color: '#94a3b8', fontSize: '0.9rem' }}>No entries yet.</div>
+                        <div className="nm-lb-empty">No entries yet.</div>
                       )}
                     </div>
                   ))}
                 </div>
               )}
-              <div style={{ marginTop: '10px', color: '#64748b', fontSize: '0.78rem' }}>
-                Dailies 1–{leaderboardData?.todayDailyNumber ?? '—'} (all days counted)
-              </div>
+              <p className="nm-lb-foot">
+                Puzzle days 1–{leaderboardData?.todayDailyNumber ?? '—'} · Streaks use consecutive winning puzzle numbers (not calendar dates).
+              </p>
             </div>
           </div>
         )}
