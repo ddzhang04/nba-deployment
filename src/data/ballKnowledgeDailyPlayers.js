@@ -310,7 +310,7 @@ const BASE_HARDCORE_DAILY_PLAYERS = [
   "Hakim Warrick",
   "Kyle Anderson",
   "Tomáš Satoranský",
-  "Bonyell Marshall",
+  "Donyell Marshall",
   "Dante Exum",
   "Grant Williams",
   "Eddie Jones",
