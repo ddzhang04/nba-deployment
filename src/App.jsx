@@ -11,10 +11,30 @@ const STORAGE_RESET_VERSION = 'v18';
 const mantleStorageKey = (k) => `${k}-${STORAGE_RESET_VERSION}`;
 const APP_VERSION = 'v1.0';
 
+const normalizeKnownPlayerAnswer = (value) => {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) return '';
+  if (/^bonyell\s+marshall$/i.test(raw)) return 'Donyell Marshall';
+  if (/^donyell\s+marshell$/i.test(raw)) return 'Donyell Marshall';
+  return raw;
+};
+
 const parseStoredCompletionMap = (raw) => {
   try {
     const p = JSON.parse(raw || '{}');
-    return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+    if (!(p && typeof p === 'object' && !Array.isArray(p))) return {};
+    const out = {};
+    for (const [num, val] of Object.entries(p)) {
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        out[num] = {
+          ...val,
+          answer: normalizeKnownPlayerAnswer(val?.answer),
+        };
+      } else {
+        out[num] = val;
+      }
+    }
+    return out;
   } catch {
     return {};
   }
@@ -132,7 +152,7 @@ const parseCompletionMapFromStorageRaw = (raw) => {
           guesses: val?.guesses ?? null,
           guessHistory: arr,
           won: val?.won !== false,
-          answer: val?.answer ?? '',
+          answer: normalizeKnownPlayerAnswer(val?.answer),
           top5,
         };
       }
@@ -2881,7 +2901,7 @@ const NBAGuessGame = () => {
     const top5 = Array.isArray(completion?.top5) ? completion.top5 : [];
     const answerMissing = !completion?.answer;
     const top5Missing = top5.length === 0;
-    if (!answerMissing) setTargetPlayer(completion.answer);
+    if (!answerMissing) setTargetPlayer(normalizeKnownPlayerAnswer(completion.answer));
     if (!top5Missing) setTop5Players(top5);
     if (!answerMissing && !top5Missing) return;
 
@@ -2920,7 +2940,7 @@ const NBAGuessGame = () => {
             if (typeof cur === 'object' && cur != null) {
               next[String(activeDailyNumberAtStart)] = {
                 ...cur,
-                answer: cur.answer || fetchedAnswer || '',
+                answer: normalizeKnownPlayerAnswer(cur.answer || fetchedAnswer || ''),
                 top5: (Array.isArray(cur.top5) && cur.top5.length) ? cur.top5 : fetchedTop5,
               };
               try { localStorage.setItem(DAILY_COMPLETIONS_KEY, JSON.stringify(next)); } catch {}
@@ -2934,7 +2954,7 @@ const NBAGuessGame = () => {
             if (typeof cur === 'object' && cur != null) {
               next[String(activeDailyNumberAtStart)] = {
                 ...cur,
-                answer: cur.answer || fetchedAnswer || '',
+                answer: normalizeKnownPlayerAnswer(cur.answer || fetchedAnswer || ''),
                 top5: (Array.isArray(cur.top5) && cur.top5.length) ? cur.top5 : fetchedTop5,
               };
               try { localStorage.setItem(BALL_KNOWLEDGE_DAILY_KEY, JSON.stringify(next)); } catch {}
