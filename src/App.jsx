@@ -1991,19 +1991,22 @@ const NBAGuessGame = () => {
       return completedDate === liveDate;
     };
 
-    const hasLiveWonToday = (() => {
+    const todayEntry = (() => {
       const num = todayIdx + 1;
-      const e = completions?.[String(num)];
-      return isLiveWin(num, e);
+      return completions?.[String(num)];
     })();
+    const hasLiveWonToday = isLiveWin(todayIdx + 1, todayEntry);
+    const hasLiveRevealToday = typeof todayEntry === 'object' && todayEntry != null && todayEntry?.won === false;
 
-    const streakStartIdx = hasLiveWonToday ? todayIdx : todayIdx - 1;
     let currentStreak = 0;
-    for (let idx = streakStartIdx; idx >= 0; idx--) {
-      const num = idx + 1;
-      const e = completions?.[String(num)];
-      if (!isLiveWin(num, e)) break;
-      currentStreak++;
+    if (!hasLiveRevealToday) {
+      const streakStartIdx = hasLiveWonToday ? todayIdx : todayIdx - 1;
+      for (let idx = streakStartIdx; idx >= 0; idx--) {
+        const num = idx + 1;
+        const e = completions?.[String(num)];
+        if (!isLiveWin(num, e)) break;
+        currentStreak++;
+      }
     }
 
     let maxStreak = 0;

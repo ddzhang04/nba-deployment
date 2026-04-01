@@ -416,21 +416,33 @@ AS $$
     FROM win_streaks ws
     GROUP BY ws.uid
   ),
+  today_status AS (
+    SELECT
+      d.uid,
+      bool_or(d.dn = p_last_daily) AS played_today,
+      bool_or(d.dn = p_last_daily AND d.won = true) AS won_today
+    FROM dedup d
+    GROUP BY d.uid
+  ),
   ss AS (
     SELECT
-      x.uid,
+      ts.uid,
       CASE
-        WHEN EXISTS (SELECT 1 FROM win_days w WHERE w.uid = x.uid AND w.dn = p_last_daily)
+        WHEN ts.played_today AND NOT ts.won_today
+          THEN NULL::integer
+        WHEN ts.won_today
           THEN p_last_daily
         ELSE p_last_daily - 1
       END AS start_dn
-    FROM (SELECT DISTINCT win_days.uid FROM win_days) x
+    FROM today_status ts
   ),
   rec AS (
     SELECT
       ss.uid,
       ss.start_dn AS n,
       CASE
+        WHEN ss.start_dn IS NULL
+          THEN 0::bigint
         WHEN EXISTS (SELECT 1 FROM win_days w WHERE w.uid = ss.uid AND w.dn = ss.start_dn)
           THEN 1::bigint
         ELSE 0::bigint
@@ -444,6 +456,7 @@ AS $$
     FROM rec r
     INNER JOIN win_days w ON w.uid = r.uid AND w.dn = r.n - 1
     WHERE r.len >= 1
+      AND r.n IS NOT NULL
       AND r.n > p_first_daily
   ),
   cur_streak AS (

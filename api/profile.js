@@ -76,6 +76,7 @@ export default async function handler(req, res) {
     // winByDailyNum only counts "live wins" when solve happened on the scheduled date.
     const winByDailyNum = new Map();
     const guessesByDailyNum = new Map();
+    let todayWasPlayedWithoutLiveWin = false;
 
     for (const r of rows) {
       const num = r?.daily_number;
@@ -86,11 +87,18 @@ export default async function handler(req, res) {
       const expectedDate = getISODateForDailyIndex(dailyNum - 1);
       const completionDate = typeof r?.created_at === 'string' ? r.created_at.slice(0, 10) : r?.date;
       const completionDateOk = typeof completionDate === 'string' && completionDate === expectedDate;
+      if (dailyNum === todayDailyNumber && !completionDateOk) {
+        todayWasPlayedWithoutLiveWin = true;
+      }
       if (!completionDateOk) continue;
 
       winByDailyNum.set(dailyNum, true);
       const g = typeof r?.guesses === 'number' ? r.guesses : Number(r?.guesses);
       if (Number.isFinite(g)) guessesByDailyNum.set(dailyNum, g);
+    }
+
+    if (!winByDailyNum.has(todayDailyNumber)) {
+      todayWasPlayedWithoutLiveWin = todayWasPlayedWithoutLiveWin || rows.some((r) => Number(r?.daily_number) === todayDailyNumber);
     }
 
     let wins = 0;
@@ -107,13 +115,18 @@ export default async function handler(req, res) {
 
     const avgGuesses = wins > 0 ? totalGuesses / wins : null;
 
-    // Current streak (ending today or yesterday)
+    // Current streak:
+    // - live win today => continue
+    // - played/revealed today without a live win => reset to 0
+    // - not played today => preserve streak through yesterday
     const todayHasWin = winByDailyNum.has(todayDailyNumber);
-    let streakStart = todayHasWin ? todayDailyNumber : todayDailyNumber - 1;
     let currentStreak = 0;
-    for (let num = streakStart; num >= startDailyNumber; num--) {
-      if (!winByDailyNum.has(num)) break;
-      currentStreak++;
+    if (!todayWasPlayedWithoutLiveWin) {
+      const streakStart = todayHasWin ? todayDailyNumber : todayDailyNumber - 1;
+      for (let num = streakStart; num >= startDailyNumber; num--) {
+        if (!winByDailyNum.has(num)) break;
+        currentStreak++;
+      }
     }
 
     // Max streak within lookback window
