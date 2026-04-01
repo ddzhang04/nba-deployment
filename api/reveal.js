@@ -2,7 +2,6 @@ const ONRENDER_API_BASE = 'https://nba-mantle-6-5.onrender.com/api';
 
 import { DAILY_PLAYERS } from '../src/data/dailyPlayers.js';
 import { BALL_KNOWLEDGE_DAILY_PLAYERS } from '../src/data/ballKnowledgeDailyPlayers.js';
-import { canonicalizePlayerName } from './_canonicalize.js';
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -75,8 +74,8 @@ export default async function handler(req, res) {
   try {
     // Ask upstream for top_5 by doing a self-guess.
     const upstreamStartedAt = Date.now();
-    const safeAnswer = await canonicalizePlayerName(answer);
-    const upstream = await postUpstreamGuessWithRetry({ guess: safeAnswer, target: safeAnswer });
+    // Daily targets come from our curated lists, so avoid an extra canonicalization lookup here.
+    const upstream = await postUpstreamGuessWithRetry({ guess: answer, target: answer });
     if (!upstream.ok) {
       console.error('[api/reveal] upstream error', {
         mode,

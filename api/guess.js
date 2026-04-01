@@ -77,7 +77,8 @@ export default async function handler(req, res) {
 
   try {
     const safeGuess = await canonicalizePlayerName(guess);
-    const safeTarget = await canonicalizePlayerName(target);
+    // Daily targets come from curated lists, so skip the extra players lookup there.
+    const safeTarget = targetDirect ? await canonicalizePlayerName(target) : target;
     const upstream = await postUpstreamGuessWithRetry({ guess: safeGuess, target: safeTarget });
     if (!upstream.ok) {
       return json(res, 502, {

@@ -3499,7 +3499,7 @@ const NBAGuessGame = () => {
     if (typeof cachedCeiling === 'number') return;
 
     try {
-      await warmBackend({ background: true });
+      void warmBackend({ background: true });
       const r = await fetchJsonWithRetry(
         `${SECURE_API_BASE}/ceiling`,
         {
@@ -3534,7 +3534,7 @@ const NBAGuessGame = () => {
 
     try {
       const isDailyLike = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
-      await warmBackend();
+      void warmBackend({ background: true });
       const result = await fetchJsonWithRetry(
         isDailyLike ? `${SECURE_API_BASE}/guess` : `${API_BASE}/guess`,
         {
@@ -3664,7 +3664,7 @@ const NBAGuessGame = () => {
     let top5Now = [];
     let revealedAnswer = '';
     try {
-      await warmBackend({ background: true });
+      void warmBackend({ background: true });
       if (!isDailyLike && prefetchedTargetTop5For === targetPlayer && Array.isArray(prefetchedTargetTop5) && prefetchedTargetTop5.length > 0) {
         top5Now = prefetchedTargetTop5;
       } else if (isDailyLike) {
