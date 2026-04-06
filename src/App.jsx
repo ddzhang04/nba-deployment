@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './NBAGuessGame.css'; // Import the CSS file
 import { isAllStarPlayerName, normalizePlayerName } from './data/allStarPlayers';
 import { DAILY_PLAYERS, getISODateForDailyIndexFromEpoch, getDailyPuzzleDayIndex } from './data/dailyPlayers';
@@ -4548,19 +4549,19 @@ const NBAGuessGame = () => {
               )}
             </div>
 
-            {showPastDailyPicker && (
+            {showPastDailyPicker && typeof document !== 'undefined' && createPortal((
               <div
                 onClick={() => setShowPastDailyPicker(false)}
                 style={{
                   position: 'fixed',
                   inset: 0,
-                  backgroundColor: 'rgba(2, 6, 23, 0.92)',
+                  backgroundColor: 'rgba(2, 6, 23, 0.78)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   zIndex: 2000,
-                  padding: '16px',
-                  isolation: 'isolate',
+                  padding: 'clamp(12px, 4vh, 28px)',
+                  isolation: 'isolate'
                 }}
               >
                 <div
@@ -4570,13 +4571,15 @@ const NBAGuessGame = () => {
                     zIndex: 2001,
                     width: '100%',
                     maxWidth: '540px',
-                    maxHeight: '85vh',
-                    background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-                    borderRadius: '16px',
+                    maxHeight: 'min(78vh, 760px)',
+                    background: 'linear-gradient(145deg, #0b1220, #172554)',
+                    borderRadius: '18px',
                     padding: '18px',
-                    boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
-                    border: '1px solid #334155',
-                    overflowY: 'auto',
+                    boxShadow: '0 34px 70px -20px rgba(2, 6, 23, 0.95), 0 0 0 1px rgba(147, 197, 253, 0.18)',
+                    border: '1px solid rgba(100, 116, 139, 0.95)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -4671,7 +4674,7 @@ const NBAGuessGame = () => {
                             Older
                           </button>
                         </div>
-                        <div style={{ display: 'grid', gap: '8px' }}>
+                        <div style={{ display: 'grid', gap: '8px', maxHeight: 'min(54vh, 520px)', overflowY: 'auto', paddingRight: '4px' }}>
                           {visibleIndices.map((idx) => {
                             const num = idx + 1;
                             const iso = getISODateForDailyIndex(idx);
@@ -4723,7 +4726,7 @@ const NBAGuessGame = () => {
                   })()}
                 </div>
               </div>
-            )}
+            ), document.body)}
 
             {showSecondaryPanel && Object.keys(dailyCompletions).length > 0 && (
               <div style={{
