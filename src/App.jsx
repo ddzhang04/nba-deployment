@@ -1927,6 +1927,14 @@ const NBAGuessGame = () => {
   const [showPastDailyPicker, setShowPastDailyPicker] = useState(false);
   const [pastDailyPickerOffset, setPastDailyPickerOffset] = useState(0);
   const todayDailyIndex = getDailyPuzzleDayIndex(new Date(nowTs), DAILY_PUZZLE_INDEX_OFFSET);
+  useEffect(() => {
+    if (!showPastDailyPicker) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showPastDailyPicker]);
   const getYmdInTimeZone = (date, timeZone) => {
     try {
       const parts = new Intl.DateTimeFormat('en-US', {
@@ -4546,17 +4554,20 @@ const NBAGuessGame = () => {
                 style={{
                   position: 'fixed',
                   inset: 0,
-                  backgroundColor: 'rgba(15,23,42,0.85)',
+                  backgroundColor: 'rgba(2, 6, 23, 0.92)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  zIndex: 60,
+                  zIndex: 2000,
                   padding: '16px',
+                  isolation: 'isolate',
                 }}
               >
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
+                    position: 'relative',
+                    zIndex: 2001,
                     width: '100%',
                     maxWidth: '540px',
                     maxHeight: '85vh',
