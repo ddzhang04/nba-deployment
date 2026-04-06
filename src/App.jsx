@@ -1922,8 +1922,10 @@ const NBAGuessGame = () => {
 
   // Allow playing a past daily by selecting a specific day index.
   // This affects Daily + Hardcore Daily (same calendar).
+  const PAST_DAILY_PAGE_SIZE = 30;
   const [selectedDailyIndexOverride, setSelectedDailyIndexOverride] = useState(null); // number | null
   const [showPastDailyPicker, setShowPastDailyPicker] = useState(false);
+  const [pastDailyPickerOffset, setPastDailyPickerOffset] = useState(0);
   const todayDailyIndex = getDailyPuzzleDayIndex(new Date(nowTs), DAILY_PUZZLE_INDEX_OFFSET);
   const getYmdInTimeZone = (date, timeZone) => {
     try {
@@ -4474,16 +4476,19 @@ const NBAGuessGame = () => {
               <div className="game-header__past-row" style={{ marginTop: '8px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  onClick={() => setShowPastDailyPicker(true)}
+                  onClick={() => {
+                    setPastDailyPickerOffset(0);
+                    setShowPastDailyPicker(true);
+                  }}
                   style={{
-                    padding: '8px 12px',
+                    padding: '9px 13px',
                     borderRadius: '999px',
-                    border: '1px solid #334155',
-                    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-                    color: '#cbd5e1',
+                    border: '1px solid rgba(148, 163, 184, 0.52)',
+                    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                    color: '#e2e8f0',
                     cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    fontWeight: 800,
                   }}
                 >
                   {gameMode === 'ballKnowledgeDaily' ? '🗓️ Pick a past Hardcore Daily' : '🗓️ Pick a past day'}
@@ -4493,14 +4498,14 @@ const NBAGuessGame = () => {
                     type="button"
                     onClick={() => setSelectedDailyIndexOverride(null)}
                     style={{
-                      padding: '8px 12px',
+                      padding: '9px 13px',
                       borderRadius: '999px',
-                      border: '1px solid #334155',
-                      backgroundColor: 'rgba(148, 163, 184, 0.08)',
-                      color: '#94a3b8',
+                      border: '1px solid rgba(148, 163, 184, 0.45)',
+                      backgroundColor: 'rgba(30, 41, 59, 0.72)',
+                      color: '#cbd5e1',
                       cursor: 'pointer',
-                      fontSize: '12px',
-                      fontWeight: 700,
+                      fontSize: '12.5px',
+                      fontWeight: 800,
                     }}
                   >
                     {gameMode === 'ballKnowledgeDaily' ? "↩ Back to today's Hardcore Daily" : '↩ Back to today'}
@@ -4553,7 +4558,7 @@ const NBAGuessGame = () => {
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     width: '100%',
-                    maxWidth: '460px',
+                    maxWidth: '540px',
                     maxHeight: '85vh',
                     background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                     borderRadius: '16px',
@@ -4565,10 +4570,10 @@ const NBAGuessGame = () => {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <div>
-                      <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '1.05rem' }}>
+                      <div style={{ color: '#f8fafc', fontWeight: 800, fontSize: '1.05rem' }}>
                         Play a past {gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'daily'}
                       </div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.85rem', marginTop: '2px' }}>
+                      <div style={{ color: '#cbd5e1', fontSize: '0.9rem', marginTop: '2px' }}>
                         Select a day to play. Today is #{todayDailyIndex + 1}.
                       </div>
                     </div>
@@ -4593,7 +4598,7 @@ const NBAGuessGame = () => {
                         borderRadius: '12px',
                         border: selectedDailyIndexOverride == null ? '1px solid rgba(59, 130, 246, 0.55)' : '1px solid #334155',
                         backgroundColor: selectedDailyIndexOverride == null ? 'rgba(59, 130, 246, 0.14)' : 'rgba(15, 23, 42, 0.4)',
-                        color: '#e5e7eb',
+                        color: '#f8fafc',
                         cursor: 'pointer',
                         fontWeight: 700,
                         fontSize: '0.9rem',
@@ -4601,59 +4606,110 @@ const NBAGuessGame = () => {
                     >
                       Today
                     </button>
-                    <div style={{ color: '#94a3b8', fontSize: '0.85rem', alignSelf: 'center' }}>
-                      Tip: you can view past days here. Completed days can’t be replayed.
+                    <div style={{ color: '#cbd5e1', fontSize: '0.85rem', alignSelf: 'center' }}>
+                      Tip: browse older days with Older/Newer below.
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                    {Array.from({ length: Math.min(30, todayDailyIndex + 1) }).map((_, i) => {
-                      const idx = todayDailyIndex - i;
-                      const num = idx + 1;
-                      const iso = getISODateForDailyIndex(idx);
-                      let displayDate = iso;
-                      try {
-                        const d = new Date(iso + 'T12:00:00');
-                        if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                      } catch {}
-                      const dailyEntry = dailyCompletions[String(num)];
-                      const hardcoreEntry = ballKnowledgeDailyCompletions[String(num)];
-                      const isSelected = selectedDailyIndexOverride === idx || (selectedDailyIndexOverride == null && idx === todayDailyIndex);
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDailyIndexOverride(idx);
-                            setShowPastDailyPicker(false);
-                          }}
-                          style={{
-                            textAlign: 'left',
-                            padding: '12px 12px',
-                            borderRadius: '12px',
-                            border: isSelected ? '1px solid rgba(59, 130, 246, 0.6)' : '1px solid #334155',
-                            backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.14)' : 'rgba(15, 23, 42, 0.35)',
-                            color: '#e5e7eb',
-                            cursor: 'pointer',
-                            font: 'inherit',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
-                            <div style={{ fontWeight: 700 }}>Daily #{num}</div>
-                            <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{displayDate}</div>
+                  {(() => {
+                    const boundedOffset = Math.max(0, Math.min(pastDailyPickerOffset, todayDailyIndex));
+                    const visibleStartIndex = todayDailyIndex - boundedOffset;
+                    const visibleCount = Math.max(0, Math.min(PAST_DAILY_PAGE_SIZE, visibleStartIndex + 1));
+                    const oldestVisibleIndex = visibleStartIndex - (visibleCount - 1);
+                    const canGoNewer = boundedOffset > 0;
+                    const canGoOlder = oldestVisibleIndex > 0;
+                    const visibleIndices = Array.from({ length: visibleCount }, (_, i) => visibleStartIndex - i);
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <button
+                            type="button"
+                            onClick={() => setPastDailyPickerOffset((prev) => Math.max(0, prev - PAST_DAILY_PAGE_SIZE))}
+                            disabled={!canGoNewer}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(100, 116, 139, 0.65)',
+                              backgroundColor: canGoNewer ? 'rgba(30, 41, 59, 0.75)' : 'rgba(51, 65, 85, 0.4)',
+                              color: canGoNewer ? '#e2e8f0' : '#94a3b8',
+                              cursor: canGoNewer ? 'pointer' : 'not-allowed',
+                              fontWeight: 700,
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            Newer
+                          </button>
+                          <div style={{ color: '#cbd5e1', fontSize: '0.82rem', fontWeight: 700 }}>
+                            Showing {visibleCount ? `#${oldestVisibleIndex + 1} - #${visibleStartIndex + 1}` : 'none'}
                           </div>
-                          <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <span style={{ color: '#c4b5fd', fontSize: '0.85rem', fontWeight: 700 }}>
-                              Daily: {dailyEntry ? (dailyEntry?.won !== false ? `✓ ${dailyEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
-                            </span>
-                            <span style={{ color: '#fcd34d', fontSize: '0.85rem', fontWeight: 700 }}>
-                              Hardcore: {hardcoreEntry ? (hardcoreEntry?.won !== false ? `✓ ${hardcoreEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          <button
+                            type="button"
+                            onClick={() => setPastDailyPickerOffset((prev) => Math.min(todayDailyIndex, prev + PAST_DAILY_PAGE_SIZE))}
+                            disabled={!canGoOlder}
+                            style={{
+                              padding: '8px 10px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(100, 116, 139, 0.65)',
+                              backgroundColor: canGoOlder ? 'rgba(30, 41, 59, 0.75)' : 'rgba(51, 65, 85, 0.4)',
+                              color: canGoOlder ? '#e2e8f0' : '#94a3b8',
+                              cursor: canGoOlder ? 'pointer' : 'not-allowed',
+                              fontWeight: 700,
+                              fontSize: '0.82rem',
+                            }}
+                          >
+                            Older
+                          </button>
+                        </div>
+                        <div style={{ display: 'grid', gap: '8px' }}>
+                          {visibleIndices.map((idx) => {
+                            const num = idx + 1;
+                            const iso = getISODateForDailyIndex(idx);
+                            let displayDate = iso;
+                            try {
+                              const d = new Date(iso + 'T12:00:00');
+                              if (!isNaN(d.getTime())) displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            } catch {}
+                            const dailyEntry = dailyCompletions[String(num)];
+                            const hardcoreEntry = ballKnowledgeDailyCompletions[String(num)];
+                            const isSelected = selectedDailyIndexOverride === idx || (selectedDailyIndexOverride == null && idx === todayDailyIndex);
+                            return (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDailyIndexOverride(idx);
+                                  setShowPastDailyPicker(false);
+                                }}
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '12px 12px',
+                                  borderRadius: '12px',
+                                  border: isSelected ? '1px solid rgba(59, 130, 246, 0.75)' : '1px solid rgba(71, 85, 105, 0.9)',
+                                  backgroundColor: isSelected ? 'rgba(30, 64, 175, 0.24)' : 'rgba(15, 23, 42, 0.68)',
+                                  color: '#f8fafc',
+                                  cursor: 'pointer',
+                                  font: 'inherit',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center' }}>
+                                  <div style={{ fontWeight: 800 }}>{`Daily #${num}`}</div>
+                                  <div style={{ color: '#cbd5e1', fontSize: '0.86rem', fontWeight: 600 }}>{displayDate}</div>
+                                </div>
+                                <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                  <span style={{ color: '#ddd6fe', fontSize: '0.85rem', fontWeight: 700 }}>
+                                    Daily: {dailyEntry ? (dailyEntry?.won !== false ? `✓ ${dailyEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
+                                  </span>
+                                  <span style={{ color: '#fde68a', fontSize: '0.85rem', fontWeight: 700 }}>
+                                    Hardcore: {hardcoreEntry ? (hardcoreEntry?.won !== false ? `✓ ${hardcoreEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
