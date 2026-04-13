@@ -281,7 +281,7 @@ const buildSparklinePoints = (scores, width = 220, height = 64, padding = 6) => 
     .join(' ');
 };
 
-const computePostGameInsights = ({ history, guesses, globalAverage }) => {
+const computePostGameInsights = ({ history, guesses, globalAverage, percentileVsAverage = null }) => {
   const rows = Array.isArray(history) ? history : [];
   const scores = rows
     .map((g) => Number(g?.score))
@@ -301,10 +301,10 @@ const computePostGameInsights = ({ history, guesses, globalAverage }) => {
   }
   const avg = Number(globalAverage);
   const g = Number(guesses);
-  let percentileVsAverage = null;
-  if (Number.isFinite(avg) && avg > 0 && Number.isFinite(g) && g > 0) {
+  let percentile = Number.isFinite(Number(percentileVsAverage)) ? Number(percentileVsAverage) : null;
+  if (percentile == null && Number.isFinite(avg) && avg > 0 && Number.isFinite(g) && g > 0) {
     const ratio = g / avg;
-    percentileVsAverage = Math.max(1, Math.min(99, Math.round(50 + (1 - ratio) * 35)));
+    percentile = Math.max(1, Math.min(99, Math.round(50 + (1 - ratio) * 35)));
   }
   return {
     scores,
@@ -314,7 +314,7 @@ const computePostGameInsights = ({ history, guesses, globalAverage }) => {
     trendDelta: end - start,
     bestLeap,
     bestLeapAt,
-    percentileVsAverage,
+    percentileVsAverage: percentile,
   };
 };
 
@@ -400,6 +400,7 @@ const NBAGuessGame = () => {
   });
   const [postWinGlobalDailyAverage, setPostWinGlobalDailyAverage] = useState(null); // { avg, wins } | null
   const [postWinGlobalDailyAverageLoading, setPostWinGlobalDailyAverageLoading] = useState(false);
+  const [postWinGuessPercentile, setPostWinGuessPercentile] = useState(null);
   const postWinGlobalAvgReqIdRef = useRef(0);
   const postWinGlobalAvgInFlightRef = useRef(false);
   const globalDailyAvgInFlightRef = useRef(new Map()); // cacheKey -> Promise<value|null>
@@ -1982,6 +1983,38 @@ const NBAGuessGame = () => {
     }
   };
 
+  const fetchDailyGuessPercentile = async ({ mode, dailyNumber, guesses }) => {
+    const m = mode === 'hardcore' ? 'hardcore' : 'daily';
+    const n = Number(dailyNumber);
+    const g = Number(guesses);
+    if (!Number.isFinite(n) || n < 1 || !Number.isFinite(g) || g <= 0) return null;
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from('mantle_runs')
+        .select('guesses')
+        .eq('mode', m)
+        .eq('daily_number', n)
+        .eq('won', true)
+        .not('guesses', 'is', null)
+        .limit(5000);
+      if (error) return null;
+      const values = (Array.isArray(data) ? data : [])
+        .map((r) => Number(r?.guesses))
+        .filter((v) => Number.isFinite(v) && v > 0)
+        .sort((a, b) => a - b);
+      if (!values.length) return null;
+      let countAtOrBelow = 0;
+      for (const v of values) {
+        if (v <= g) countAtOrBelow++;
+      }
+      const pct = Math.round((countAtOrBelow / values.length) * 100);
+      return Math.max(1, Math.min(99, pct));
+    } catch {
+      return null;
+    }
+  };
+
   // Cache player name list locally so the UI feels instant on repeat visits.
   // We still refresh from the API in the background.
   const PLAYERS_CACHE_KEY = key('nba-mantle-players-cache');
@@ -2048,6 +2081,11 @@ const NBAGuessGame = () => {
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
   const getBallKnowledgeDailyPlayer = (index) =>
     BALL_KNOWLEDGE_DAILY_PLAYERS[index % BALL_KNOWLEDGE_DAILY_PLAYERS.length] ?? BALL_KNOWLEDGE_DAILY_PLAYERS[0];
+  const getResolvedAnswerForModeIndex = (mode, index) => {
+    if (mode === 'ballKnowledgeDaily' || mode === 'hardcore') return getBallKnowledgeDailyPlayer(index);
+    if (mode === 'daily') return getDailyPlayerForIndex(index);
+    return '';
+  };
 
   // Allow playing a past daily by selecting a specific day index.
   // This affects Daily + Hardcore Daily (same calendar).
@@ -2812,6 +2850,7 @@ const NBAGuessGame = () => {
     const completionWon = typeof completion === 'object' && completion != null ? completion?.won !== false : false;
     const completionGuesses = typeof completion === 'object' && completion != null ? completion?.guesses ?? null : null;
     const completionAnswer = typeof completion === 'object' && completion != null ? completion?.answer ?? '' : '';
+    const dailyFallbackAnswer = getResolvedAnswerForModeIndex(gameMode, activeDailyIndex);
 
     const isDailyMode = gameMode === 'daily' || gameMode === 'ballKnowledgeDaily';
     if (!isDailyMode) {
@@ -2826,9 +2865,9 @@ const NBAGuessGame = () => {
 
     if (dailyAlreadyPlayed || ballKnowledgeDailyAlreadyPlayed) {
       if (completionWon) {
-        return { state: 'won', answer: completionAnswer || targetPlayer, guesses: completionGuesses, canShare: true, canReveal: false, completionKey: String(activeDailyNumber) };
+        return { state: 'won', answer: completionAnswer || targetPlayer || dailyFallbackAnswer, guesses: completionGuesses, canShare: true, canReveal: false, completionKey: String(activeDailyNumber) };
       }
-      return { state: 'revealed', answer: completionAnswer || targetPlayer, guesses: null, canShare: false, canReveal: false, completionKey: String(activeDailyNumber) };
+      return { state: 'revealed', answer: completionAnswer || targetPlayer || dailyFallbackAnswer, guesses: null, canShare: false, canReveal: false, completionKey: String(activeDailyNumber) };
     }
 
     if (gameWon) {
@@ -3130,6 +3169,14 @@ const NBAGuessGame = () => {
     let cancelled = false;
     let intervalId = null;
     const modeKey = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
+    const completionNow =
+      gameMode === 'daily'
+        ? dailyCompletions[String(activeDailyNumber)]
+        : ballKnowledgeDailyCompletions[String(activeDailyNumber)];
+    const finishedGuesses =
+      typeof completionNow?.guesses === 'number'
+        ? completionNow.guesses
+        : (typeof guessCount === 'number' && guessCount > 0 ? guessCount : null);
 
     const fetchAndApply = async ({ forceRefresh, withLoading }) => {
       if (cancelled) return;
@@ -3141,19 +3188,28 @@ const NBAGuessGame = () => {
       if (withLoading) setPostWinGlobalDailyAverageLoading(true);
 
       try {
-        const result = await fetchGlobalDailyAverage({
-          mode: modeKey,
-          dailyNumber: activeDailyNumber,
-          forceRefresh,
-        });
+        const [result, pct] = await Promise.all([
+          fetchGlobalDailyAverage({
+            mode: modeKey,
+            dailyNumber: activeDailyNumber,
+            forceRefresh,
+          }),
+          fetchDailyGuessPercentile({
+            mode: modeKey,
+            dailyNumber: activeDailyNumber,
+            guesses: finishedGuesses,
+          }),
+        ]);
         if (cancelled) return;
         // Ignore late/stale results when active daily changes.
         if (reqId !== postWinGlobalAvgReqIdRef.current) return;
         setPostWinGlobalDailyAverage(result);
+        setPostWinGuessPercentile(pct);
       } catch {
         if (cancelled) return;
         if (reqId !== postWinGlobalAvgReqIdRef.current) return;
         setPostWinGlobalDailyAverage(null);
+        setPostWinGuessPercentile(null);
       } finally {
         postWinGlobalAvgInFlightRef.current = false;
         if (!cancelled && withLoading) setPostWinGlobalDailyAverageLoading(false);
@@ -3183,7 +3239,7 @@ const NBAGuessGame = () => {
       if (intervalId) clearInterval(intervalId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameWon, showAnswer, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, gameMode, activeDailyNumber]);
+  }, [gameWon, showAnswer, dailyAlreadyPlayed, ballKnowledgeDailyAlreadyPlayed, gameMode, activeDailyNumber, dailyCompletions, ballKnowledgeDailyCompletions, guessCount]);
 
   // Prefetch global average for the active daily so end-screen can render instantly.
   useEffect(() => {
@@ -3864,6 +3920,10 @@ const NBAGuessGame = () => {
       console.error('Error fetching top 5:', err);
     }
 
+    if (isDailyLike && !revealedAnswer) {
+      revealedAnswer = getResolvedAnswerForModeIndex(gameMode, activeDailyIndex);
+      if (revealedAnswer) setTargetPlayer(revealedAnswer);
+    }
     setTop5Players(top5Now);
     
     setShowAnswer(true);
@@ -3950,7 +4010,6 @@ const NBAGuessGame = () => {
   const handleShare = async (override) => {
     const mode = override?.mode ?? gameMode;
     const dailyNumber = override?.dailyNumber ?? activeDailyNumber;
-    const answer = override?.answer ?? targetPlayer;
     const guesses = override?.guesses ?? guessCount;
     if (!answer) return;
 
@@ -4025,14 +4084,14 @@ const NBAGuessGame = () => {
 
     ctx.font = '600 30px Inter, Arial, sans-serif';
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillText(`Answer: ${String(answer || '').slice(0, 36)}`, 80, 224);
+    ctx.fillText('Answer: Hidden', 80, 224);
 
     const topRow = Array.isArray(top5) && top5.length > 0 ? top5[0] : null;
     const topName = topRow?.[0] ? String(topRow[0]) : '—';
     const topScore = Number.isFinite(Number(topRow?.[1])) ? Number(topRow[1]) : null;
     ctx.font = '500 26px Inter, Arial, sans-serif';
     ctx.fillStyle = '#fde68a';
-    ctx.fillText(`Top similarity: ${topName}${topScore == null ? '' : ` (${topScore}/100)`}`, 80, 270);
+    ctx.fillText(`Top similarity: Hidden${topScore == null ? '' : ` (${topScore}/100)`}`, 80, 270);
 
     ctx.strokeStyle = '#60a5fa';
     ctx.lineWidth = 5;
@@ -6013,6 +6072,11 @@ const NBAGuessGame = () => {
                     ))}
                   </div>
                 ) : null}
+                {friendCodes.length === 0 ? (
+                  <div style={{ marginTop: '8px', color: '#94a3b8', fontSize: '0.78rem' }}>
+                    Add at least one friend code to unlock your private friends ranking.
+                  </div>
+                ) : null}
               </div>
 
               {leaderboardLoading && !leaderboardData ? (
@@ -6024,6 +6088,7 @@ const NBAGuessGame = () => {
                   {(() => {
                     const rows = Array.isArray(leaderboardData?.entries) ? leaderboardData.entries : [];
                     const codeSet = new Set(friendCodes);
+                    const myCode = toFriendCode(authSession?.user?.id || anonId);
                     const friends = rows
                       .filter((r) => codeSet.has(toFriendCode(r?.userId)))
                       .sort((a, b) => {
@@ -6033,12 +6098,28 @@ const NBAGuessGame = () => {
                         return aa - bb;
                       })
                       .slice(0, 10);
-                    if (friends.length === 0) return null;
+                    const myFriendRank =
+                      myCode && friends.length > 0
+                        ? friends.findIndex((r) => toFriendCode(r?.userId) === myCode) + 1
+                        : 0;
+                    if (friends.length === 0) {
+                      return (
+                        <section className="nm-lb-section">
+                          <div className="nm-lb-section__header">
+                            <h3 className="nm-lb-section__title">Friends</h3>
+                            <p className="nm-lb-section__subtitle">No friend matches yet. Ask friends for their code, then add it above.</p>
+                          </div>
+                        </section>
+                      );
+                    }
                     return (
                       <section className="nm-lb-section">
                         <div className="nm-lb-section__header">
                           <h3 className="nm-lb-section__title">Friends</h3>
-                          <p className="nm-lb-section__subtitle">Private ranking from your saved friend codes.</p>
+                          <p className="nm-lb-section__subtitle">
+                            Private ranking from your saved friend codes.
+                            {myFriendRank > 0 ? ` Your rank: #${myFriendRank}.` : ''}
+                          </p>
                         </div>
                         <ol className="nm-lb-list">
                           {friends.map((entry, idx) => (
@@ -6752,7 +6833,15 @@ const NBAGuessGame = () => {
                   history: historyForInsights,
                   guesses: end.guesses ?? guessCount,
                   globalAverage: postWinGlobalDailyAverage?.avg,
+                  percentileVsAverage: postWinGuessPercentile,
                 });
+                const difficultyBadge = (() => {
+                  const avg = Number(postWinGlobalDailyAverage?.avg);
+                  if (!Number.isFinite(avg)) return null;
+                  if (avg <= 5) return 'Easy';
+                  if (avg <= 8) return 'Medium';
+                  return 'Hard';
+                })();
                 const modeStats = computeDailyStats(
                   gameMode === 'ballKnowledgeDaily' ? ballKnowledgeDailyCompletions : dailyCompletions,
                   todayDailyIndex
@@ -6833,6 +6922,15 @@ const NBAGuessGame = () => {
                             {' · '}Best leap <strong>+{insights.bestLeap}</strong>{insights.bestLeapAt ? ` (G${insights.bestLeapAt})` : ''}
                             {' · '}Vs avg <strong>{insights.percentileVsAverage == null ? '—' : `${insights.percentileVsAverage}th pct`}</strong>
                           </div>
+                        </div>
+                      ) : null}
+
+                      {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') ? (
+                        <div style={{ marginTop: '8px', color: '#cbd5e1', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>Daily recap:</span>
+                          <span><strong>{end.guesses ?? guessCount}</strong> guesses</span>
+                          {insights ? <span>best leap <strong>+{insights.bestLeap}</strong></span> : null}
+                          {difficultyBadge ? <span>difficulty <strong>{difficultyBadge}</strong></span> : null}
                         </div>
                       ) : null}
                     </div>
