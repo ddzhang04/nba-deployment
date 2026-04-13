@@ -241,10 +241,10 @@ const getPastDailyStatusLabel = (entry) => {
 };
 
 const STREAK_REWARD_TIERS = [
-  { streak: 30, id: 'legend', frame: 'Legend Neon', flair: 'GOAT Aura', color: '#f43f5e', emoji: '👑' },
-  { streak: 14, id: 'allstar', frame: 'All-Star Glow', flair: 'Clutch Flame', color: '#a855f7', emoji: '🌟' },
-  { streak: 7, id: 'starter', frame: 'Starter Frame', flair: 'Hot Hand', color: '#3b82f6', emoji: '🔥' },
-  { streak: 3, id: 'rookie', frame: 'Rookie Frame', flair: 'Rising', color: '#10b981', emoji: '✨' },
+  { streak: 30, id: 'legend', frame: '30-day streak badge', flair: 'GOAT Aura', color: '#f43f5e', emoji: '👑' },
+  { streak: 14, id: 'allstar', frame: '14-day streak badge', flair: 'Clutch Flame', color: '#a855f7', emoji: '🌟' },
+  { streak: 7, id: 'starter', frame: '7-day streak badge', flair: 'Hot Hand', color: '#3b82f6', emoji: '🔥' },
+  { streak: 3, id: 'rookie', frame: '3-day streak badge', flair: 'Rising', color: '#10b981', emoji: '✨' },
 ];
 
 const getStreakRewardTier = (streak) => {
@@ -4229,7 +4229,7 @@ const NBAGuessGame = () => {
       all_nba_overlap: 'All-NBA Overlap',
       all_defense_overlap: 'All-Defense Overlap',
       all_rookie_overlap: 'All-Rookie Overlap',
-      award_overlap: 'Award Overlap',
+      award_overlap: 'Accolades Overlap',
       // Legacy keys kept for backwards compatibility
       shared_streak_bonus: 'Consecutive Seasons Bonus',
       team_tenure: 'Tenure Bonus',
@@ -4237,9 +4237,9 @@ const NBAGuessGame = () => {
       shared_all_star: 'All-Star',
       shared_all_team: 'All-Team',
       all_team_overlap: 'All-Team Overlap',
-      shared_awards: 'Awards'
+      shared_awards: 'Accolades'
     };
-    return labels[key] || key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    return labels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
@@ -5610,6 +5610,26 @@ const NBAGuessGame = () => {
                     background: 'rgba(15, 23, 42, 0.35)',
                   }}
                 >
+                  <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px' }}>🎁 Rewards & Social</div>
+                  <div style={{ display: 'grid', gap: '6px', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: 1.45 }}>
+                    <div><strong>Streak rewards:</strong> earn badge unlocks at 3 / 7 / 14 / 30-day streaks.</div>
+                    <div><strong>Post-game insights:</strong> quick summary of trend, best jump, and performance vs daily average.</div>
+                    <div><strong>Share cards:</strong> use Share or Export Card to post your result with puzzle # and progress chart.</div>
+                    <div><strong>Friend codes:</strong> add codes in Leaderboards to track a private friends ranking.</div>
+                  </div>
+                  <div style={{ marginTop: '6px', color: '#94a3b8', fontSize: '0.82rem' }}>
+                    These features are optional extras; core gameplay is unchanged.
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid #334155',
+                    background: 'rgba(15, 23, 42, 0.35)',
+                  }}
+                >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px' }}>
                     <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem' }}>🧩 Breakdown clues</div>
                     <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Closer match → higher score</div>
@@ -6698,7 +6718,6 @@ const NBAGuessGame = () => {
               padding: '16px',
               border: '1px solid #334155',
               textAlign: 'center',
-              minHeight: isPostGameView ? 'min(430px, 45vh)' : undefined,
               display: 'flex',
               flexDirection: 'column',
             }} ref={guessSectionRef}>
@@ -6767,7 +6786,7 @@ const NBAGuessGame = () => {
                         </div>
                         {rewardTier ? (
                           <div style={{ color: rewardTier.color, fontSize: '0.78rem', fontWeight: 800 }}>
-                            {rewardTier.emoji} {rewardTier.frame} unlocked ({rewardTier.streak}+ streak)
+                            {rewardTier.emoji} Streak reward unlocked: {rewardTier.frame}
                           </div>
                         ) : null}
                       </div>
@@ -6806,23 +6825,13 @@ const NBAGuessGame = () => {
                             backgroundColor: 'rgba(15, 23, 42, 0.45)',
                             border: '1px solid rgba(148, 163, 184, 0.35)',
                             borderRadius: '10px',
-                            padding: '10px',
+                            padding: '8px 10px',
                           }}
                         >
-                          <div style={{ color: '#bfdbfe', fontSize: '0.84rem', fontWeight: 800, marginBottom: '6px' }}>Post-game insights</div>
-                          <svg viewBox="0 0 220 64" width="100%" height="48" preserveAspectRatio="none" style={{ display: 'block' }}>
-                            <polyline fill="none" stroke="#22d3ee" strokeWidth="3" points={insights.sparklinePoints || ''} />
-                          </svg>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginTop: '6px' }}>
-                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
-                              Trend: <strong>{insights.trendDelta >= 0 ? '+' : ''}{insights.trendDelta}</strong>
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
-                              Best leap: <strong>+{insights.bestLeap}</strong>{insights.bestLeapAt ? ` (G${insights.bestLeapAt})` : ''}
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
-                              Vs avg: <strong>{insights.percentileVsAverage == null ? '—' : `${insights.percentileVsAverage}th pct`}</strong>
-                            </div>
+                          <div style={{ color: '#bfdbfe', fontSize: '0.8rem', fontWeight: 800 }}>
+                            Insights: Trend <strong>{insights.trendDelta >= 0 ? '+' : ''}{insights.trendDelta}</strong>
+                            {' · '}Best leap <strong>+{insights.bestLeap}</strong>{insights.bestLeapAt ? ` (G${insights.bestLeapAt})` : ''}
+                            {' · '}Vs avg <strong>{insights.percentileVsAverage == null ? '—' : `${insights.percentileVsAverage}th pct`}</strong>
                           </div>
                         </div>
                       ) : null}
@@ -7369,17 +7378,25 @@ const NBAGuessGame = () => {
                         {item.breakdown && Object.keys(item.breakdown).length > 0 && (
                           <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                             {(() => {
-                              const entries = Object.entries(item.breakdown).filter(
+                              const rawEntries = Object.entries(item.breakdown).filter(
                                 ([key, value]) =>
                                   key !== 'total' &&
                                   key !== 'shared_seasons_detail' &&
                                   typeof value === 'number' &&
                                   value > 0
                               );
-                              if (!entries.length) return null;
+                              if (!rawEntries.length) return null;
+                              const seen = new Set();
+                              const entries = rawEntries.filter(([key]) => {
+                                const label = formatBreakdownKey(key);
+                                if (seen.has(label)) return false;
+                                seen.add(label);
+                                return true;
+                              });
                               const maxVal = Math.max(...entries.map(([, v]) => v));
                               return entries.map(([key, value]) => {
                                 const isMax = value === maxVal;
+                                const displayVal = Number.isInteger(value) ? String(value) : value.toFixed(1);
                                 return (
                                   <div
                                     key={key}
@@ -7400,7 +7417,7 @@ const NBAGuessGame = () => {
                                       {formatBreakdownKey(key)}
                                     </span>
                                     <span style={{ color: '#10b981', fontWeight: 'bold', marginLeft: 'auto', flex: '0 0 auto' }}>
-                                      +{value}
+                                      +{displayVal}
                                     </span>
                                   </div>
                                 );
