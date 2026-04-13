@@ -148,7 +148,7 @@ const parseCompletionMapFromStorageRaw = (raw) => {
         const arr = Array.isArray(val?.guessHistory) ? val.guessHistory : [];
         const top5 = Array.isArray(val?.top5) ? val.top5 : [];
         out[num] = {
-          date: canonicalDate || (val?.date ?? ''),
+          date: (typeof val?.date === 'string' && val.date.trim()) || canonicalDate || '',
           completedAt: val?.completedAt ?? '',
           guesses: val?.guesses ?? null,
           guessHistory: arr,
@@ -226,6 +226,18 @@ const isMantleCompletionInProgress = (entry) => {
   if (ans !== '') return false;
   const gh = Array.isArray(entry.guessHistory) ? entry.guessHistory.length : 0;
   return gh > 0;
+};
+
+const getPastDailyStatusLabel = (entry) => {
+  if (!entry || typeof entry !== 'object') return 'not played';
+  if (isMantleCompletionInProgress(entry)) {
+    const guesses = guessCountFromMantleCompletionEntry(entry);
+    return Number.isFinite(guesses) && guesses > 0
+      ? `in progress (${guesses} guess${guesses === 1 ? '' : 'es'})`
+      : 'in progress';
+  }
+  if (entry?.won !== false) return `✓ ${entry?.guesses ?? '?'} guesses`;
+  return '— revealed';
 };
 
 const NBAGuessGame = () => {
@@ -492,7 +504,7 @@ const NBAGuessGame = () => {
     try {
       if (!supabase) throw new Error('Supabase is not configured');
       const limit = 20;
-      const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), -1) + 1;
+      const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), 0) + 1;
       // Include every daily from #1 through today so past dailies (e.g. #1 after many days)
       // still count toward totals. Cap the window at `today` to avoid future-dated junk.
       const firstDailyNumber = 1;
@@ -1912,9 +1924,8 @@ const NBAGuessGame = () => {
 
   // Daily # uses the shared calendar timezone (America/New_York),
   // so rollover happens at midnight in Boston/ET.
-  // Offset so today's daily numbering matches the expected live rollout.
-  // If you see "Daily #2" before midnight for your timezone, this is the knob.
-  const DAILY_PUZZLE_INDEX_OFFSET = -1;
+  // Keep this at 0 so daily numbers align to the canonical NY calendar day.
+  const DAILY_PUZZLE_INDEX_OFFSET = 0;
   const getDailyPuzzleIndex = () => getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET);
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
@@ -4711,10 +4722,10 @@ const NBAGuessGame = () => {
                                 </div>
                                 <div style={{ marginTop: '6px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                                   <span style={{ color: '#ddd6fe', fontSize: '0.85rem', fontWeight: 700 }}>
-                                    Daily: {dailyEntry ? (dailyEntry?.won !== false ? `✓ ${dailyEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
+                                    Daily: {getPastDailyStatusLabel(dailyEntry)}
                                   </span>
                                   <span style={{ color: '#fde68a', fontSize: '0.85rem', fontWeight: 700 }}>
-                                    Hardcore: {hardcoreEntry ? (hardcoreEntry?.won !== false ? `✓ ${hardcoreEntry?.guesses ?? '?'} guesses` : '— revealed') : 'not played'}
+                                    Hardcore: {getPastDailyStatusLabel(hardcoreEntry)}
                                   </span>
                                 </div>
                               </button>

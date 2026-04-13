@@ -22,8 +22,8 @@ async function getTodayDailyNumber() {
     const mod = await import('../src/data/dailyPlayers.js');
     const fn = mod?.getDailyPuzzleDayIndex;
     if (typeof fn !== 'function') return 1;
-    // Keep in sync with the app's offset (DAILY_PUZZLE_INDEX_OFFSET = -1 in App.jsx)
-    return fn(new Date(), -1) + 1;
+    // Keep in sync with the app's offset (DAILY_PUZZLE_INDEX_OFFSET = 0 in App.jsx)
+    return fn(new Date(), 0) + 1;
   } catch {
     return 1;
   }
