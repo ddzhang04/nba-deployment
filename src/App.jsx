@@ -4084,14 +4084,13 @@ const NBAGuessGame = () => {
 
     ctx.font = '600 30px Inter, Arial, sans-serif';
     ctx.fillStyle = '#e2e8f0';
-    ctx.fillText('Answer: Hidden', 80, 224);
+    ctx.fillText('Spoiler-free result card', 80, 224);
 
     const topRow = Array.isArray(top5) && top5.length > 0 ? top5[0] : null;
-    const topName = topRow?.[0] ? String(topRow[0]) : '—';
     const topScore = Number.isFinite(Number(topRow?.[1])) ? Number(topRow[1]) : null;
     ctx.font = '500 26px Inter, Arial, sans-serif';
     ctx.fillStyle = '#fde68a';
-    ctx.fillText(`Top similarity: Hidden${topScore == null ? '' : ` (${topScore}/100)`}`, 80, 270);
+    ctx.fillText(`Top similarity hidden${topScore == null ? '' : ' (score hidden)'}`, 80, 270);
 
     ctx.strokeStyle = '#60a5fa';
     ctx.lineWidth = 5;
@@ -4128,7 +4127,7 @@ const NBAGuessGame = () => {
     try {
       const blob = await createShareCardBlob(override);
       if (!blob) throw new Error('Share image generation failed');
-      const file = new File([blob], `nba-mantle-${override?.dailyNumber ?? activeDailyNumber}.png`, { type: 'image/png' });
+      const file = new File([blob], `nba-mantle-spoiler-free-${override?.dailyNumber ?? activeDailyNumber}.png`, { type: 'image/png' });
       if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'NBA Mantle result' });
         return;
