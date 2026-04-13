@@ -22,7 +22,7 @@ function parseMode(modeRaw) {
 }
 
 /** Keep in sync with `DAILY_PUZZLE_INDEX_OFFSET` in `src/App.jsx`. */
-const DAILY_PUZZLE_INDEX_OFFSET = 0;
+const DAILY_PUZZLE_INDEX_OFFSET = -1;
 
 function hashAnonId(str) {
   const s = String(str || '');

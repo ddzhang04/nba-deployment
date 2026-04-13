@@ -240,6 +240,84 @@ const getPastDailyStatusLabel = (entry) => {
   return '— revealed';
 };
 
+const STREAK_REWARD_TIERS = [
+  { streak: 30, id: 'legend', frame: 'Legend Neon', flair: 'GOAT Aura', color: '#f43f5e', emoji: '👑' },
+  { streak: 14, id: 'allstar', frame: 'All-Star Glow', flair: 'Clutch Flame', color: '#a855f7', emoji: '🌟' },
+  { streak: 7, id: 'starter', frame: 'Starter Frame', flair: 'Hot Hand', color: '#3b82f6', emoji: '🔥' },
+  { streak: 3, id: 'rookie', frame: 'Rookie Frame', flair: 'Rising', color: '#10b981', emoji: '✨' },
+];
+
+const getStreakRewardTier = (streak) => {
+  const s = Number(streak) || 0;
+  return STREAK_REWARD_TIERS.find((tier) => s >= tier.streak) || null;
+};
+
+const getUnlockedStreakRewardTiers = (streak) => {
+  const s = Number(streak) || 0;
+  return STREAK_REWARD_TIERS.filter((tier) => s >= tier.streak).reverse();
+};
+
+const toFriendCode = (userId) => {
+  const raw = String(userId || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!raw) return '';
+  return `NBM-${raw.slice(0, 10)}`;
+};
+
+const buildSparklinePoints = (scores, width = 220, height = 64, padding = 6) => {
+  const values = Array.isArray(scores) ? scores.filter((n) => Number.isFinite(Number(n))).map(Number) : [];
+  if (values.length === 0) return '';
+  if (values.length === 1) {
+    const y = height - padding - ((values[0] / 100) * (height - padding * 2));
+    return `${padding},${y.toFixed(2)} ${(width - padding).toFixed(2)},${y.toFixed(2)}`;
+  }
+  const innerW = width - padding * 2;
+  const innerH = height - padding * 2;
+  return values
+    .map((v, i) => {
+      const x = padding + (i / Math.max(1, values.length - 1)) * innerW;
+      const y = height - padding - ((Math.max(0, Math.min(100, v)) / 100) * innerH);
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
+
+const computePostGameInsights = ({ history, guesses, globalAverage }) => {
+  const rows = Array.isArray(history) ? history : [];
+  const scores = rows
+    .map((g) => Number(g?.score))
+    .filter((s) => Number.isFinite(s))
+    .map((s) => Math.max(0, Math.min(100, s)));
+  if (scores.length === 0) return null;
+  const start = scores[0];
+  const end = scores[scores.length - 1];
+  let bestLeap = 0;
+  let bestLeapAt = null;
+  for (let i = 1; i < scores.length; i++) {
+    const leap = scores[i] - scores[i - 1];
+    if (leap > bestLeap) {
+      bestLeap = leap;
+      bestLeapAt = i + 1;
+    }
+  }
+  const avg = Number(globalAverage);
+  const g = Number(guesses);
+  let percentileVsAverage = null;
+  if (Number.isFinite(avg) && avg > 0 && Number.isFinite(g) && g > 0) {
+    const ratio = g / avg;
+    percentileVsAverage = Math.max(1, Math.min(99, Math.round(50 + (1 - ratio) * 35)));
+  }
+  return {
+    scores,
+    sparklinePoints: buildSparklinePoints(scores),
+    startScore: start,
+    endScore: end,
+    trendDelta: end - start,
+    bestLeap,
+    bestLeapAt,
+    percentileVsAverage,
+  };
+};
+
 const NBAGuessGame = () => {
   const [targetPlayer, setTargetPlayer] = useState('');
   const [guess, setGuess] = useState('');
@@ -265,6 +343,8 @@ const NBAGuessGame = () => {
   const [leaderboardData, setLeaderboardData] = useState(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError] = useState('');
+  const [friendCodes, setFriendCodes] = useState([]);
+  const [friendCodeInput, setFriendCodeInput] = useState('');
   const [showMoreGames, setShowMoreGames] = useState(false);
   const [showCopyToast, setShowCopyToast] = useState(false);
   const [playerImagesMap, setPlayerImagesMap] = useState({}); // normalized key -> { id, imageUrl }
@@ -279,6 +359,7 @@ const NBAGuessGame = () => {
   const DAILY_COMPLETIONS_KEY = key('nba-mantle-daily-completions');
   const BALL_KNOWLEDGE_DAILY_KEY = key('nba-mantle-ball-knowledge-daily');
   const IN_PROGRESS_DRAFT_KEY = key('nba-mantle-daily-hardcore-in-progress');
+  const FRIEND_CODES_KEY = key('nba-mantle-friend-codes-v1');
 
   const bestPrevRef = useRef(null);
   /** Skip one `activeDailyIndex` sync reset (used when restoring a saved in-progress draft that changes the selected day). */
@@ -389,6 +470,40 @@ const NBAGuessGame = () => {
   const [accountIsVerified, setAccountIsVerified] = useState(false);
   const [authNotice, setAuthNotice] = useState('');
   const safeAccountDisplayName = typeof accountDisplayName === 'string' ? accountDisplayName : '';
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FRIEND_CODES_KEY);
+      const parsed = JSON.parse(raw || '[]');
+      if (!Array.isArray(parsed)) {
+        setFriendCodes([]);
+        return;
+      }
+      const normalized = Array.from(
+        new Set(
+          parsed
+            .map((c) => String(c || '').trim().toUpperCase())
+            .filter((c) => /^NBM-[A-Z0-9]{4,10}$/.test(c))
+        )
+      );
+      setFriendCodes(normalized);
+    } catch {
+      setFriendCodes([]);
+    }
+  }, [FRIEND_CODES_KEY]);
+
+  const persistFriendCodes = useCallback((codes) => {
+    const normalized = Array.from(
+      new Set(
+        (Array.isArray(codes) ? codes : [])
+          .map((c) => String(c || '').trim().toUpperCase())
+          .filter((c) => /^NBM-[A-Z0-9]{4,10}$/.test(c))
+      )
+    );
+    setFriendCodes(normalized);
+    try {
+      localStorage.setItem(FRIEND_CODES_KEY, JSON.stringify(normalized));
+    } catch {}
+  }, [FRIEND_CODES_KEY]);
   const [mantleRunsDetailsSupported, setMantleRunsDetailsSupported] = useState(null); // null | boolean
   const accountBackfillMarkerRef = useRef('');
   const accountBackfillInFlightRef = useRef(false);
@@ -504,7 +619,7 @@ const NBAGuessGame = () => {
     try {
       if (!supabase) throw new Error('Supabase is not configured');
       const limit = 20;
-      const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), 0) + 1;
+      const todayDailyNumber = getDailyPuzzleDayIndex(new Date(), -1) + 1;
       // Include every daily from #1 through today so past dailies (e.g. #1 after many days)
       // still count toward totals. Cap the window at `today` to avoid future-dated junk.
       const firstDailyNumber = 1;
@@ -531,6 +646,7 @@ const NBAGuessGame = () => {
           return {
             userId,
             user,
+            friendCode: toFriendCode(userId),
             completions,
             wins,
             totalGuessesWins,
@@ -661,6 +777,7 @@ const NBAGuessGame = () => {
         mode,
         todayDailyNumber,
         updatedAt: new Date().toISOString(),
+        entries: mergedEntries,
         wins,
         streaks,
         completed,
@@ -1924,8 +2041,8 @@ const NBAGuessGame = () => {
 
   // Daily # uses the shared calendar timezone (America/New_York),
   // so rollover happens at midnight in Boston/ET.
-  // Keep this at 0 so daily numbers align to the canonical NY calendar day.
-  const DAILY_PUZZLE_INDEX_OFFSET = 0;
+  // Keep gameplay pinned to the existing puzzle rollout.
+  const DAILY_PUZZLE_INDEX_OFFSET = -1;
   const getDailyPuzzleIndex = () => getDailyPuzzleDayIndex(new Date(), DAILY_PUZZLE_INDEX_OFFSET);
   const getDailyPlayerForIndex = (index) =>
     DAILY_PLAYERS[index % DAILY_PLAYERS.length] ?? DAILY_PLAYERS[0];
@@ -1996,6 +2113,7 @@ const NBAGuessGame = () => {
   }, []);
 
   const getISODateForDailyIndex = (index) => getISODateForDailyIndexFromEpoch(index);
+  const getDisplayDateForDailyIndex = (index) => getISODateForDailyIndex(index - DAILY_PUZZLE_INDEX_OFFSET);
 
   const computeDailyStats = (completions, todayIdx) => {
     const entries = Object.entries(completions || {});
@@ -2300,8 +2418,8 @@ const NBAGuessGame = () => {
     if (gameMode === 'ballKnowledgeDaily' && ballKnowledgeDailyAlreadyPlayed && !midRunDespiteHardcorePlayed) return;
     if (guessHistory.length === 0) return;
     const dateStr = isPastDailySelected
-      ? getISODateForDailyIndex(activeDailyIndex)
-      : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
+      ? getDisplayDateForDailyIndex(activeDailyIndex)
+      : (todayYmdNY || getDisplayDateForDailyIndex(activeDailyIndex));
     const mode = gameMode === 'ballKnowledgeDaily' ? 'hardcore' : 'daily';
     const history = guessHistory.map((g) => ({
       name: g.name,
@@ -3629,8 +3747,8 @@ const NBAGuessGame = () => {
             setTop5Players((top_5 && top_5.length) ? top_5 : (canUsePrefetchedTop5 ? prefetchedTargetTop5 : []));
             if (gameMode === 'daily') {
               const dateStr = isPastDailySelected
-                ? getISODateForDailyIndex(activeDailyIndex)
-                : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
+                ? getDisplayDateForDailyIndex(activeDailyIndex)
+                : (todayYmdNY || getDisplayDateForDailyIndex(activeDailyIndex));
               const fullHistory = [...guessHistory, newGuess].map((g) => ({
                 name: g.name,
                 score: g.score,
@@ -3652,8 +3770,8 @@ const NBAGuessGame = () => {
               }
             } else if (gameMode === 'ballKnowledgeDaily') {
               const dateStr = isPastDailySelected
-                ? getISODateForDailyIndex(activeDailyIndex)
-                : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
+                ? getDisplayDateForDailyIndex(activeDailyIndex)
+                : (todayYmdNY || getDisplayDateForDailyIndex(activeDailyIndex));
               const fullHistory = [...guessHistory, newGuess].map((g) => ({
                 name: g.name,
                 score: g.score,
@@ -3751,8 +3869,8 @@ const NBAGuessGame = () => {
     setShowAnswer(true);
     if (gameMode === 'daily') {
       const dateStr = isPastDailySelected
-        ? getISODateForDailyIndex(activeDailyIndex)
-        : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
+        ? getDisplayDateForDailyIndex(activeDailyIndex)
+        : (todayYmdNY || getDisplayDateForDailyIndex(activeDailyIndex));
       const history = guessHistory.map((g) => ({
         name: g.name,
         score: g.score,
@@ -3773,8 +3891,8 @@ const NBAGuessGame = () => {
       }
     } else if (gameMode === 'ballKnowledgeDaily') {
       const dateStr = isPastDailySelected
-        ? getISODateForDailyIndex(activeDailyIndex)
-        : (todayYmdNY || getISODateForDailyIndex(activeDailyIndex));
+        ? getDisplayDateForDailyIndex(activeDailyIndex)
+        : (todayYmdNY || getDisplayDateForDailyIndex(activeDailyIndex));
       const history = guessHistory.map((g) => ({
         name: g.name,
         score: g.score,
@@ -3866,6 +3984,108 @@ const NBAGuessGame = () => {
       setTimeout(() => setShowCopyToast(false), 2500);
     } else {
       setError('Could not share/copy. Please copy manually.');
+    }
+  };
+
+  const createShareCardBlob = async (override) => {
+    const mode = override?.mode ?? gameMode;
+    const dailyNumber = override?.dailyNumber ?? activeDailyNumber;
+    const guesses = override?.guesses ?? guessCount;
+    const answer = override?.answer ?? targetPlayer;
+    const top5 = Array.isArray(override?.top5) ? override.top5 : top5Players;
+    const history = Array.isArray(override?.guessHistory) ? override.guessHistory : guessHistory;
+    const scores = history
+      .map((g) => Number(g?.score))
+      .filter((s) => Number.isFinite(s))
+      .map((s) => Math.max(0, Math.min(100, s)));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1200;
+    canvas.height = 630;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(1, '#1e3a8a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(44, 44, canvas.width - 88, canvas.height - 88);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 52px Inter, Arial, sans-serif';
+    const title = mode === 'hardcore' || mode === 'ballKnowledgeDaily' ? `Hardcore Daily #${dailyNumber}` : `Daily #${dailyNumber}`;
+    ctx.fillText(title, 80, 120);
+
+    ctx.font = '600 34px Inter, Arial, sans-serif';
+    ctx.fillStyle = '#bfdbfe';
+    ctx.fillText(`Solved in ${guesses ?? '?'} guesses`, 80, 172);
+
+    ctx.font = '600 30px Inter, Arial, sans-serif';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(`Answer: ${String(answer || '').slice(0, 36)}`, 80, 224);
+
+    const topRow = Array.isArray(top5) && top5.length > 0 ? top5[0] : null;
+    const topName = topRow?.[0] ? String(topRow[0]) : '—';
+    const topScore = Number.isFinite(Number(topRow?.[1])) ? Number(topRow[1]) : null;
+    ctx.font = '500 26px Inter, Arial, sans-serif';
+    ctx.fillStyle = '#fde68a';
+    ctx.fillText(`Top similarity: ${topName}${topScore == null ? '' : ` (${topScore}/100)`}`, 80, 270);
+
+    ctx.strokeStyle = '#60a5fa';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    const chartX = 80;
+    const chartY = 320;
+    const chartW = 1040;
+    const chartH = 220;
+    ctx.strokeRect(chartX, chartY, chartW, chartH);
+
+    if (scores.length > 0) {
+      const points = buildSparklinePoints(scores, chartW, chartH, 12).split(' ');
+      ctx.beginPath();
+      points.forEach((pt, idx) => {
+        const [x, y] = pt.split(',').map(Number);
+        const px = chartX + x;
+        const py = chartY + y;
+        if (idx === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+    }
+
+    ctx.font = '500 24px Inter, Arial, sans-serif';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText('nba-deployment.vercel.app', 80, 590);
+
+    return await new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
+  };
+
+  const handleShareImage = async (override) => {
+    try {
+      const blob = await createShareCardBlob(override);
+      if (!blob) throw new Error('Share image generation failed');
+      const file = new File([blob], `nba-mantle-${override?.dailyNumber ?? activeDailyNumber}.png`, { type: 'image/png' });
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'NBA Mantle result' });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setShowCopyToast(true);
+      setTimeout(() => setShowCopyToast(false), 2500);
+    } catch (e) {
+      setError(e?.message || 'Could not export share card image.');
     }
   };
 
@@ -4688,7 +4908,7 @@ const NBAGuessGame = () => {
                         <div style={{ display: 'grid', gap: '8px', maxHeight: 'min(54vh, 520px)', overflowY: 'auto', paddingRight: '4px' }}>
                           {visibleIndices.map((idx) => {
                             const num = idx + 1;
-                            const iso = getISODateForDailyIndex(idx);
+                            const iso = getDisplayDateForDailyIndex(idx);
                             let displayDate = iso;
                             try {
                               const d = new Date(iso + 'T12:00:00');
@@ -5594,6 +5814,48 @@ const NBAGuessGame = () => {
                       Streaks only count when you solve on the scheduled day. Solving past days won’t change streaks.
                     </div>
                     <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                      {[
+                        { label: 'Daily unlocks', unlocked: getUnlockedStreakRewardTiers(dailyStats.maxStreak), tint: dailyTint },
+                        { label: 'Hardcore unlocks', unlocked: getUnlockedStreakRewardTiers(bkdStats.maxStreak), tint: bkdTint },
+                      ].map((block) => (
+                        <div
+                          key={block.label}
+                          style={{
+                            borderRadius: '12px',
+                            border: `1px solid ${block.tint.border}`,
+                            backgroundColor: block.tint.bg,
+                            padding: '10px 12px',
+                          }}
+                        >
+                          <div style={{ color: block.tint.fg, fontSize: '12px', fontWeight: 800, marginBottom: '8px' }}>
+                            {block.label}
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                            {block.unlocked.length === 0 ? (
+                              <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700 }}>No cosmetics unlocked yet</span>
+                            ) : (
+                              block.unlocked.map((tier) => (
+                                <span
+                                  key={`${block.label}-${tier.id}`}
+                                  style={{
+                                    borderRadius: '999px',
+                                    border: `1px solid ${tier.color}88`,
+                                    backgroundColor: `${tier.color}22`,
+                                    color: '#f8fafc',
+                                    padding: '4px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {tier.emoji} {tier.frame}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
                       {renderRecentGuesses('Daily', dailyStats, dailyTint)}
                       {renderRecentGuesses('Hardcore', bkdStats, bkdTint)}
                     </div>
@@ -5662,12 +5924,116 @@ const NBAGuessGame = () => {
                 </button>
               </div>
 
+              <div style={{ marginBottom: '10px', padding: '10px', borderRadius: '10px', border: '1px solid rgba(100,116,139,0.45)', background: 'rgba(15,23,42,0.45)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.9rem' }}>Friends mini-leaderboard</div>
+                  <div style={{ color: '#93c5fd', fontSize: '0.8rem', fontWeight: 700 }}>
+                    Your code: {toFriendCode(authSession?.user?.id || anonId) || 'Sign in to get a stable code'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    value={friendCodeInput}
+                    onChange={(e) => setFriendCodeInput(String(e.target.value || '').toUpperCase())}
+                    placeholder="Add friend code (NBM-XXXX)"
+                    style={{
+                      flex: '1 1 220px',
+                      minWidth: '200px',
+                      background: '#0b1220',
+                      border: '1px solid #334155',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                      padding: '8px 10px',
+                      fontSize: '0.85rem',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = String(friendCodeInput || '').trim().toUpperCase();
+                      if (!/^NBM-[A-Z0-9]{4,10}$/.test(next)) return;
+                      persistFriendCodes([...(friendCodes || []), next]);
+                      setFriendCodeInput('');
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(59,130,246,0.45)',
+                      background: 'rgba(30,64,175,0.35)',
+                      color: '#dbeafe',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Add
+                  </button>
+                </div>
+                {friendCodes.length > 0 ? (
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {friendCodes.map((code) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => persistFriendCodes(friendCodes.filter((c) => c !== code))}
+                        title="Remove friend code"
+                        style={{
+                          borderRadius: '999px',
+                          border: '1px solid rgba(148,163,184,0.4)',
+                          background: 'rgba(30,41,59,0.7)',
+                          color: '#cbd5e1',
+                          padding: '4px 10px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {code} ×
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
               {leaderboardLoading && !leaderboardData ? (
                 <div className="nm-lb-loading">Loading leaderboards…</div>
               ) : leaderboardError ? (
                 <div className="nm-lb-error">{leaderboardError}</div>
               ) : (
                 <div className="nm-lb-sections">
+                  {(() => {
+                    const rows = Array.isArray(leaderboardData?.entries) ? leaderboardData.entries : [];
+                    const codeSet = new Set(friendCodes);
+                    const friends = rows
+                      .filter((r) => codeSet.has(toFriendCode(r?.userId)))
+                      .sort((a, b) => {
+                        if ((b?.wins ?? 0) !== (a?.wins ?? 0)) return (b?.wins ?? 0) - (a?.wins ?? 0);
+                        const aa = Number.isFinite(Number(a?.avgGuesses)) ? Number(a.avgGuesses) : Infinity;
+                        const bb = Number.isFinite(Number(b?.avgGuesses)) ? Number(b.avgGuesses) : Infinity;
+                        return aa - bb;
+                      })
+                      .slice(0, 10);
+                    if (friends.length === 0) return null;
+                    return (
+                      <section className="nm-lb-section">
+                        <div className="nm-lb-section__header">
+                          <h3 className="nm-lb-section__title">Friends</h3>
+                          <p className="nm-lb-section__subtitle">Private ranking from your saved friend codes.</p>
+                        </div>
+                        <ol className="nm-lb-list">
+                          {friends.map((entry, idx) => (
+                            <li key={`friend-${entry?.userId || idx}`} className="nm-lb-item">
+                              <span className="nm-lb-item__rank">#{idx + 1}</span>
+                              <div className="nm-lb-item__main">
+                                <div className="nm-lb-item__name">{entry?.user || 'Player'}</div>
+                                <div className="nm-lb-item__meta">{entry?.wins ?? 0} wins · {entry?.avgGuesses ?? '—'} avg</div>
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                    );
+                  })()}
                   {[
                     {
                       id: 'wins',
@@ -6358,6 +6724,21 @@ const NBAGuessGame = () => {
                 const isHardcore = gameMode === 'ballKnowledgeDaily';
                 const completion = getActiveCompletionEntry();
                 const dateStr = typeof completion === 'object' && completion != null ? completion?.date ?? '' : '';
+                const completionHistory =
+                  typeof completion === 'object' && completion != null && Array.isArray(completion?.guessHistory)
+                    ? completion.guessHistory
+                    : [];
+                const historyForInsights = guessHistory.length > 0 ? guessHistory : completionHistory;
+                const insights = computePostGameInsights({
+                  history: historyForInsights,
+                  guesses: end.guesses ?? guessCount,
+                  globalAverage: postWinGlobalDailyAverage?.avg,
+                });
+                const modeStats = computeDailyStats(
+                  gameMode === 'ballKnowledgeDaily' ? ballKnowledgeDailyCompletions : dailyCompletions,
+                  todayDailyIndex
+                );
+                const rewardTier = getStreakRewardTier(modeStats?.maxStreak ?? 0);
                 let displayDate = dateStr;
                 try {
                   const d = new Date((dateStr ?? '') + 'T12:00:00');
@@ -6380,7 +6761,16 @@ const NBAGuessGame = () => {
                   <div style={{ padding: '12px', borderRadius: '12px', backgroundColor: accentBg, border: accentBorder }}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '1.7rem', marginBottom: '6px' }}>{end.state === 'won' ? '🎉' : '🎯'}</div>
-                      <div style={{ marginBottom: '6px' }}>{renderPlayerAvatar(end.answer, { size: 56, radius: 12 })}</div>
+                      <div style={{ marginBottom: '6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                        <div style={rewardTier ? { borderRadius: '16px', padding: '3px', border: `2px solid ${rewardTier.color}`, boxShadow: `0 0 18px ${rewardTier.color}66` } : {}}>
+                          {renderPlayerAvatar(end.answer, { size: 56, radius: 12 })}
+                        </div>
+                        {rewardTier ? (
+                          <div style={{ color: rewardTier.color, fontSize: '0.78rem', fontWeight: 800 }}>
+                            {rewardTier.emoji} {rewardTier.frame} unlocked ({rewardTier.streak}+ streak)
+                          </div>
+                        ) : null}
+                      </div>
                       {end.state === 'won' ? (
                         <p style={{ margin: 0, fontSize: '1rem', color: 'white' }}>
                           {gameMode === 'daily' ? 'Daily' : gameMode === 'ballKnowledgeDaily' ? 'Hardcore Daily' : 'Game'} #{activeDailyNumber}{displayDate ? ` (${displayDate})` : ''} — you got it in <strong>{end.guesses ?? '?'}</strong> guesses! The answer was <strong>{end.answer}</strong>.
@@ -6408,6 +6798,34 @@ const NBAGuessGame = () => {
                           )}
                         </div>
                       )}
+
+                      {insights ? (
+                        <div
+                          style={{
+                            marginTop: '10px',
+                            backgroundColor: 'rgba(15, 23, 42, 0.45)',
+                            border: '1px solid rgba(148, 163, 184, 0.35)',
+                            borderRadius: '10px',
+                            padding: '10px',
+                          }}
+                        >
+                          <div style={{ color: '#bfdbfe', fontSize: '0.84rem', fontWeight: 800, marginBottom: '6px' }}>Post-game insights</div>
+                          <svg viewBox="0 0 220 64" width="100%" height="48" preserveAspectRatio="none" style={{ display: 'block' }}>
+                            <polyline fill="none" stroke="#22d3ee" strokeWidth="3" points={insights.sparklinePoints || ''} />
+                          </svg>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px', marginTop: '6px' }}>
+                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
+                              Trend: <strong>{insights.trendDelta >= 0 ? '+' : ''}{insights.trendDelta}</strong>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
+                              Best leap: <strong>+{insights.bestLeap}</strong>{insights.bestLeapAt ? ` (G${insights.bestLeapAt})` : ''}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#e2e8f0' }}>
+                              Vs avg: <strong>{insights.percentileVsAverage == null ? '—' : `${insights.percentileVsAverage}th pct`}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div
@@ -6421,29 +6839,56 @@ const NBAGuessGame = () => {
                       }}
                     >
                       {end.canShare && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleShare({
-                              mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : gameMode,
-                              dailyNumber: activeDailyNumber,
-                              answer: end.answer,
-                              guesses: end.guesses ?? guessCount,
-                            })
-                          }
-                          style={{
-                            padding: '10px 16px',
-                            borderRadius: '8px',
-                            border: 'none',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            fontWeight: '800',
-                            cursor: 'pointer',
-                            fontSize: '0.9rem',
-                          }}
-                        >
-                          📤 Share
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleShare({
+                                mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : gameMode,
+                                dailyNumber: activeDailyNumber,
+                                answer: end.answer,
+                                guesses: end.guesses ?? guessCount,
+                              })
+                            }
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              backgroundColor: '#3b82f6',
+                              color: 'white',
+                              fontWeight: '800',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem',
+                            }}
+                          >
+                            📤 Share
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleShareImage({
+                                mode: gameMode === 'ballKnowledgeDaily' ? 'hardcore' : gameMode,
+                                dailyNumber: activeDailyNumber,
+                                answer: end.answer,
+                                guesses: end.guesses ?? guessCount,
+                                top5: top5Players,
+                                guessHistory: historyForInsights,
+                              })
+                            }
+                            style={{
+                              padding: '10px 16px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(191, 219, 254, 0.6)',
+                              backgroundColor: 'rgba(30, 58, 138, 0.35)',
+                              color: '#e0f2fe',
+                              fontWeight: '800',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem',
+                            }}
+                          >
+                            🖼️ Export Card
+                          </button>
+                        </>
                       )}
                       {(gameMode === 'daily' || gameMode === 'ballKnowledgeDaily') && !authLoading && !authSession?.user && (
                         <button
